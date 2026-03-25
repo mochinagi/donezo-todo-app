@@ -36,7 +36,7 @@ export default function TodoList({
                         <button
                             onClick={() => onToggle(todo.id)}  // On click, call onToggle to switch task completion status / クリック時にonToggleを呼び出し完了状態を切り替える
                             // Button styles based on completion: blue bg and white text if completed, gray bg and text if not, lighter gray on hover / 完了状態に応じたボタンスタイル：完了なら青背景白文字、未完了なら灰色背景と文字、ホバー時は薄い灰色
-                            className={`p-1 rounded-full transition-colors duration-200 ${todo.completed ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-400 hover:bg-gray-300'}`}
+                            className={`p-1 rounded-full transition-all duration-200 active:scale-90 ${todo.completed ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-400 hover:bg-gray-300'}`}
                             aria-label={todo.completed ? "未完了に戻す" : "完了にする"} // Accessibility label: "Mark as incomplete" or "Mark as complete" / アクセシビリティ用ラベル：「未完了に戻す」または「完了にする」
                         >
                             {/* Check circle icon / チェックサークルアイコン */}
