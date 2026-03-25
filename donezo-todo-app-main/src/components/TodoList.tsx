@@ -54,7 +54,11 @@ export default function TodoList({
 
                         {/* Button to delete task / タスク削除ボタン */}
                         <button
-                            onClick={() => onDelete(todo.id)}    // On click, call onDelete to remove task / クリック時にonDeleteを呼び出しタスクを削除
+                            onClick={() => {
+                                if (confirm("本当に削除しますか？")) {
+                                    onDelete(todo.id);
+                                }
+                            }}    // On click, call onDelete to remove task / クリック時にonDeleteを呼び出しタスクを削除
                             className="text-gray-400 hover:text-red-500 transition-colors" // Default gray text, red on hover / デフォルトは灰色文字、ホバー時は赤色
                             aria-label="タスクを削除"            // Accessibility label, Japanese: "Delete task" / アクセシビリティ用ラベル、日本語：「タスクを削除」
                         >
