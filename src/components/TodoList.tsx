@@ -27,7 +27,11 @@ export default function TodoList({
             {/* Map over todos array to generate a card for each task / todos配列をマップし、各タスクにカードを生成 */}
             {todos.map(todo => (
                 // Card container: horizontal layout, space between content, rounded corners, border, shadow, hover shadow effect with animation / カードコンテナ：横並び、コンテンツ両端揃え、角丸、境界線、影、ホバー時の影エフェクト（アニメーション付き）
-                <Card key={todo.id} className="flex items-center justify-between rounded-md border border-gray-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-150">
+                <Card
+                    key={todo.id}
+                    className={`flex items-center justify-between rounded-md border border-gray-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200
+  ${todo.completed ? "opacity-60 scale-[0.98]" : "opacity-100 scale-100"}`}
+                >
 
                     {/* Card content container: horizontal layout, gap between items, padding, full width / カード内容コンテナ：横並び、アイテム間隔、パディング、幅いっぱい */}
                     <CardContent className="flex items-center gap-4 py-3 px-4 w-full">
