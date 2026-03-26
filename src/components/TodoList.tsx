@@ -58,7 +58,7 @@ export default function TodoList({
                         {/* Button to delete task / タスク削除ボタン */}
                         <button
                             onClick={() => {
-                                if (confirm("本当に削除しますか？")) {
+                                if (confirm("このタスクを削除しますか？")) {
                                     onDelete(todo.id);
                                 }
                             }}    // On click, call onDelete to remove task / クリック時にonDeleteを呼び出しタスクを削除
