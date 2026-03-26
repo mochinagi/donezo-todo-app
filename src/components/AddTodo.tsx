@@ -11,8 +11,9 @@ export default function AddTodo({
     onAdd: () => void;
 }) {
 
+    // タスク追加処理（空入力防止）
     const handleAdd = () => {
-        if (!input.trim()) return; // 空入力防止
+        if (!input.trim()) return;
         onAdd();
     };
 
@@ -24,6 +25,7 @@ export default function AddTodo({
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 placeholder="やることを入力..."
+                aria-label="タスク入力欄"
                 onKeyDown={e => {
                     if (e.key === "Enter") handleAdd();
                 }}
@@ -31,7 +33,8 @@ export default function AddTodo({
 
             <Button
                 onClick={handleAdd}
-                className="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-md text-white shadow-sm"
+                disabled={!input.trim()} // 空入力時はボタン無効化
+                className="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-md text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 追加
             </Button>
