@@ -53,7 +53,9 @@ export default function TodoList({
                             // Completed tasks have line-through and gray text, incomplete tasks have dark text / 残りスペースを埋め、テキスト選択禁止、自動改行。完了済みは取り消し線と灰色文字、未完了は濃い文字
                             className={`flex-1 select-none break-words text-lg ${todo.completed ? "line-through text-gray-400" : "text-gray-900"}`}
                         >
-                            {todo.text}  {/* Task text content / タスクのテキスト内容 */}
+                            <span className={todo.completed ? "line-through text-gray-400" : ""}>
+                                {todo.text}
+                            </span>  {/* Task text content / タスクのテキスト内容 */}
                         </span>
 
                         {/* Button to delete task / タスク削除ボタン */}
