@@ -1,52 +1,91 @@
-// Define an array of task categories, each with a unique id and corresponding Japanese name / タスクのカテゴリ配列を定義。各カテゴリはユニークなidと対応する日本語名を持つ
+import { CheckCircle2, Star, Calendar, List } from "lucide-react";
+
+/**
+ * カテゴリ定義
+ * 将来的にアイコンやバッジなど拡張しやすい構造にする
+ */
 const categories = [
-    { id: 'myday', name: 'マイデイ' },          // My Day / マイデイ
-    { id: 'important', name: '重要' },         // Important / 重要
-    { id: 'planned', name: '予定あり' },        // Planned / 予定あり
-    { id: 'tasks', name: 'すべてのタスク' },    // All Tasks / すべてのタスク
+    { id: 'myday', name: 'マイデイ', icon: CheckCircle2 },
+    { id: 'important', name: '重要', icon: Star },
+    { id: 'planned', name: '予定あり', icon: Calendar },
+    { id: 'tasks', name: 'すべてのタスク', icon: List },
 ];
 
-// Define Sidebar component which receives the currently active category id and a callback when category changes / 現在アクティブなカテゴリIDとカテゴリ切り替え時のコールバックを受け取るSidebarコンポーネントを定義
+/**
+ * サイドバー内の単一アイテム
+ */
+function SidebarItem({
+    id,
+    name,
+    icon: Icon,
+    active,
+    onClick
+}: {
+    id: string;
+    name: string;
+    icon: any;
+    active: boolean;
+    onClick: () => void;
+}) {
+    return (
+        <button
+            onClick={onClick}
+            aria-current={active ? "page" : undefined}
+            className={`relative flex items-center gap-3 w-full text-left px-4 py-2 rounded-md transition-all duration-200
+            focus:outline-none focus:ring-2 focus:ring-blue-400
+            ${active
+                    ? "bg-blue-500 text-white font-semibold"
+                    : "text-gray-700 hover:bg-blue-100"
+                }`}
+        >
+            {/* アクティブ時の左インジケーター */}
+            {active && (
+                <span className="absolute left-0 top-0 h-full w-1 bg-blue-700 rounded-r-md" />
+            )}
+
+            {/* アイコン */}
+            <Icon size={18} />
+
+            {/* カテゴリ名 */}
+            <span>{name}</span>
+        </button>
+    );
+}
+
+/**
+ * サイドバーコンポーネント
+ * カテゴリ切り替えナビゲーションを提供
+ */
 export default function Sidebar({
-    active,                  // Currently selected category id / 現在選択されているカテゴリID
-    onChange                 // Called when switching category, passing the selected category id / カテゴリ切り替え時に呼ばれ、選択されたカテゴリIDを渡す関数
+    active,
+    onChange
 }: {
     active: string;
     onChange: (id: string) => void;
 }) {
     return (
-        // Sidebar container with fixed width, white background, right border, and vertical layout / 固定幅・白背景・右ボーダー・縦並びのサイドバーコンテナ
-        <aside className="w-60 bg-white border-r border-gray-300 flex flex-col">
+        <aside className="w-60 bg-white border-r border-gray-200 flex flex-col">
 
-            {/* Sidebar header area with padding, bold font, and bottom border / パディング・太字・下ボーダーがあるサイドバーのヘッダーエリア */}
-            <div className="p-6 text-2xl font-extrabold border-b border-gray-300">
-                Donezo {/* App or sidebar name / アプリ名またはサイドバー名 */}
+            {/* ヘッダー */}
+            <div className="p-6 text-2xl font-extrabold border-b border-gray-200">
+                Donezo
             </div>
 
-            {/* Navigation area taking remaining space, with padding and vertical spacing between buttons / 残りのスペースを占め、パディングとボタン間の垂直間隔を持つナビゲーションエリア */}
-            <nav className="flex-1 p-4 space-y-2">
-
-                {/* Map through categories array to generate a button for each category / categories配列をマップして各カテゴリのボタンを生成 */}
-                {categories.map(cat => (
-                    <button
-                        key={cat.id}                  // Unique key required by React to avoid rendering issues / Reactがレンダリング問題を避けるために必要なユニークキー
-                        onClick={() => onChange(cat.id)}  // Call onChange with current category id on click / クリック時に現在のカテゴリIDをonChangeに渡して呼び出す
-                        // Button styles:
-                        // Full width, left-aligned text, padding, rounded corners
-                        // Light blue background on hover
-                        // Blue background, white text, and bold font if active
-                        // Otherwise gray text
-                        // ボタンスタイル：
-                        // 幅100%、左寄せテキスト、パディング、角丸
-                        // ホバー時は薄い青背景
-                        // アクティブなら青背景・白文字・太字
-                        // それ以外はグレー文字
-                        className={`w-full text-left px-4 py-2 rounded-md hover:bg-blue-100 ${active === cat.id ? "bg-blue-500 text-white font-semibold" : "text-gray-700"}`}
-                    >
-                        {cat.name} {/* Display category name / カテゴリ名を表示 */}
-                    </button>
+            {/* ナビゲーション */}
+            <nav
+                role="navigation"
+                className="flex-1 p-4 space-y-2"
+            >
+                {categories.map((cat) => (
+                    <SidebarItem
+                        key={cat.id}
+                        id={cat.id}
+                        name={cat.name}
+                        icon={cat.icon}
+                        active={active === cat.id}
+                        onClick={() => onChange(cat.id)}
+                    />
                 ))}
-
             </nav>
         </aside>
     );
