@@ -1,85 +1,173 @@
-import * as React from "react"
+import * as React from "react";
+import { cn } from "@/lib/utils";
 
-import { cn } from "@/lib/utils"
+/**
+ * Cardコンポーネント
+ * 汎用コンテナ（variant / size / interactive対応）
+ */
+const Card = React.forwardRef<
+  HTMLDivElement,
+  React.ComponentProps<"div"> & {
+    variant?: "default" | "outline" | "elevated" | "ghost";
+    size?: "sm" | "md" | "lg";
+    interactive?: boolean;
+  }
+>(function Card(
+  {
+    className,
+    variant = "default",
+    size = "md",
+    interactive = false,
+    ...props
+  },
+  ref
+) {
 
-function Card({ className, ...props }: React.ComponentProps<"div">) {
+  const variantStyles = {
+    default: "bg-white border border-gray-200",
+    outline: "border border-gray-300 bg-transparent",
+    elevated: "bg-white shadow-md border border-gray-100",
+    ghost: "bg-transparent border-none shadow-none",
+  };
+
+  const sizeStyles = {
+    sm: "p-3",
+    md: "p-5",
+    lg: "p-6",
+  };
+
   return (
     <div
+      ref={ref}
       data-slot="card"
       className={cn(
-        "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
+        "rounded-xl flex flex-col gap-4 transition-all",
+        variantStyles[variant],
+        sizeStyles[size],
+        interactive &&
+        "hover:shadow-lg hover:-translate-y-1 cursor-pointer",
         className
       )}
       {...props}
     />
-  )
-}
+  );
+});
 
-function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
+Card.displayName = "Card";
+
+/**
+ * ヘッダー
+ */
+const CardHeader = React.forwardRef<
+  HTMLDivElement,
+  React.ComponentProps<"div">
+>(function CardHeader({ className, ...props }, ref) {
   return (
     <div
+      ref={ref}
       data-slot="card-header"
-      className={cn(
-        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-1.5 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
-        className
-      )}
+      className={cn("flex flex-col gap-1.5", className)}
       {...props}
     />
-  )
-}
+  );
+});
 
-function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+CardHeader.displayName = "CardHeader";
+
+/**
+ * タイトル
+ */
+const CardTitle = React.forwardRef<
+  HTMLDivElement,
+  React.ComponentProps<"div">
+>(function CardTitle({ className, ...props }, ref) {
   return (
     <div
+      ref={ref}
       data-slot="card-title"
-      className={cn("leading-none font-semibold", className)}
+      className={cn("font-semibold text-lg", className)}
       {...props}
     />
-  )
-}
+  );
+});
 
-function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
+CardTitle.displayName = "CardTitle";
+
+/**
+ * 説明テキスト
+ */
+const CardDescription = React.forwardRef<
+  HTMLDivElement,
+  React.ComponentProps<"div">
+>(function CardDescription({ className, ...props }, ref) {
   return (
     <div
+      ref={ref}
       data-slot="card-description"
-      className={cn("text-muted-foreground text-sm", className)}
+      className={cn("text-sm text-gray-500", className)}
       {...props}
     />
-  )
-}
+  );
+});
 
-function CardAction({ className, ...props }: React.ComponentProps<"div">) {
+CardDescription.displayName = "CardDescription";
+
+/**
+ * アクション（右上ボタンなど）
+ */
+const CardAction = React.forwardRef<
+  HTMLDivElement,
+  React.ComponentProps<"div">
+>(function CardAction({ className, ...props }, ref) {
   return (
     <div
+      ref={ref}
       data-slot="card-action"
-      className={cn(
-        "col-start-2 row-span-2 row-start-1 self-start justify-self-end",
-        className
-      )}
+      className={cn("self-end", className)}
       {...props}
     />
-  )
-}
+  );
+});
 
-function CardContent({ className, ...props }: React.ComponentProps<"div">) {
+CardAction.displayName = "CardAction";
+
+/**
+ * コンテンツ
+ */
+const CardContent = React.forwardRef<
+  HTMLDivElement,
+  React.ComponentProps<"div">
+>(function CardContent({ className, ...props }, ref) {
   return (
     <div
+      ref={ref}
       data-slot="card-content"
-      className={cn("px-6", className)}
+      className={cn("", className)}
       {...props}
     />
-  )
-}
+  );
+});
 
-function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
+CardContent.displayName = "CardContent";
+
+/**
+ * フッター
+ */
+const CardFooter = React.forwardRef<
+  HTMLDivElement,
+  React.ComponentProps<"div">
+>(function CardFooter({ className, ...props }, ref) {
   return (
     <div
+      ref={ref}
       data-slot="card-footer"
-      className={cn("flex items-center px-6 [.border-t]:pt-6", className)}
+      className={cn("flex items-center justify-between", className)}
       {...props}
     />
-  )
-}
+  );
+});
+
+CardFooter.displayName = "CardFooter";
 
 export {
   Card,
@@ -89,4 +177,4 @@ export {
   CardAction,
   CardDescription,
   CardContent,
-}
+};
