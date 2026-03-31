@@ -1,20 +1,31 @@
+import { memo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Trash2, CheckCircle2 } from "lucide-react";
 import { Todo } from "@/hooks/useTodoState";
 
 /**
- * 単一のTodoアイテムコンポーネント
- * 表示・操作（完了/削除）を担当
+ * TodoItem Props
  */
-function TodoItem({
-    todo,
-    onToggle,
-    onDelete
-}: {
+type TodoItemProps = {
     todo: Todo;
     onToggle: (id: number) => void;
     onDelete: (id: number) => void;
-}) {
+};
+
+/**
+ * 単一Todoアイテム
+ */
+const TodoItem = memo(function TodoItem({
+    todo,
+    onToggle,
+    onDelete
+}: TodoItemProps) {
+    const handleDelete = () => {
+        if (window.confirm("このタスクを削除しますか？")) {
+            onDelete(todo.id);
+        }
+    };
+
     return (
         <Card
             role="listitem"
@@ -24,20 +35,22 @@ function TodoItem({
         >
             <CardContent className="flex items-center gap-4 py-3 px-4 w-full">
 
-                {/* 完了状態を切り替えるボタン */}
+                {/* 完了ボタン */}
                 <button
                     onClick={() => onToggle(todo.id)}
-                    className={`p-2 rounded-full transition-all duration-200 active:scale-90 focus:outline-none focus:ring-2 focus:ring-blue-400
+                    aria-pressed={todo.completed}
+                    aria-label={todo.completed ? "未完了に戻す" : "完了にする"}
+                    className={`p-2 rounded-full transition-all duration-200 active:scale-90
+                    focus:outline-none focus:ring-2 focus:ring-blue-400
                     ${todo.completed
                             ? "bg-blue-600 text-white"
                             : "bg-gray-200 text-gray-400 hover:bg-gray-300"
                         }`}
-                    aria-label={todo.completed ? "未完了に戻す" : "完了にする"}
                 >
                     <CheckCircle2 size={20} />
                 </button>
 
-                {/* タスク内容表示 */}
+                {/* テキスト */}
                 <span
                     className={`flex-1 select-none break-words text-lg transition-colors
                     ${todo.completed
@@ -48,45 +61,48 @@ function TodoItem({
                     {todo.text}
                 </span>
 
-                {/* タスク削除ボタン */}
+                {/* 削除 */}
                 <button
-                    onClick={() => {
-                        if (confirm("このタスクを削除しますか？")) {
-                            onDelete(todo.id);
-                        }
-                    }}
-                    className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                    onClick={handleDelete}
                     aria-label="タスクを削除"
+                    className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
                 >
                     <Trash2 size={20} />
                 </button>
             </CardContent>
         </Card>
     );
-}
+});
 
 /**
- * Todo一覧コンポーネント
- * Todo配列を受け取り、リストとして描画する
+ * TodoList Props
+ */
+type TodoListProps = {
+    todos: Todo[];
+    onToggle: (id: number) => void;
+    onDelete: (id: number) => void;
+};
+
+/**
+ * Todo一覧
  */
 export default function TodoList({
     todos,
     onToggle,
     onDelete
-}: {
-    todos: Todo[];
-    onToggle: (id: number) => void;
-    onDelete: (id: number) => void;
-}) {
+}: TodoListProps) {
 
-    // タスクが存在しない場合の表示（空状態）
+    // 空状態
     if (todos.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center mt-24 text-gray-500 space-y-3">
+            <div
+                className="flex flex-col items-center justify-center mt-24 text-gray-500 space-y-3"
+                aria-live="polite"
+            >
                 <CheckCircle2 size={40} className="opacity-30" />
-                <p className="text-lg">タスクがまだありません</p>
+                <p className="text-lg font-medium">タスクがまだありません</p>
                 <p className="text-sm text-gray-400">
-                    新しいタスクを追加してみましょう ✨
+                    最初のタスクを追加してみましょう 🚀
                 </p>
             </div>
         );
