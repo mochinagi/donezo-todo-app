@@ -1,81 +1,109 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
+"use client";
+
+import { Input } from "@/components/ui/input";
+import { Search, X } from "lucide-react";
+import { useTodoStore } from "@/store/todoStore";
+import { useMemo } from "react";
 
 /**
- * Fonts
+ * カテゴリ定義（将来は共通ファイルに分離OK）
  */
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-/**
- * Metadata（SEO強化）
- */
-export const metadata: Metadata = {
-  title: {
-    default: "Donezo - シンプルで使いやすいTodoアプリ",
-    template: "%s | Donezo",
+const categoryMap: Record<string, { name: string; description: string }> = {
+  myday: {
+    name: "マイデイ",
+    description: "今日やるべきタスクに集中しましょう",
   },
-  description: "Donezoはシンプルで直感的に使えるTodo管理アプリです。日々のタスクをスマートに整理しましょう。",
-  keywords: ["Todo", "タスク管理", "Next.js", "React", "生産性"],
-  authors: [{ name: "Donezo Team" }],
-
-  // SNS共有（面试加分🔥）
-  openGraph: {
-    title: "Donezo Todo App",
-    description: "シンプルで使いやすいTodoアプリ",
-    url: "https://your-domain.com",
-    siteName: "Donezo",
-    locale: "ja_JP",
-    type: "website",
+  important: {
+    name: "重要",
+    description: "重要なタスクを優先的に処理しましょう",
   },
-
-  twitter: {
-    card: "summary_large_image",
-    title: "Donezo Todo App",
-    description: "シンプルで使いやすいTodoアプリ",
+  planned: {
+    name: "予定あり",
+    description: "スケジュールに基づいたタスク",
+  },
+  tasks: {
+    name: "すべてのタスク",
+    description: "すべてのタスク一覧",
   },
 };
 
 /**
- * RootLayout
+ * Header
  */
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="ja">
-      <body
-        className={`
-          ${geistSans.variable} 
-          ${geistMono.variable} 
-          antialiased
-          bg-gray-50 text-gray-900
-          min-h-screen
-        `}
-      >
-        {/* 全体レイアウトラッパー */}
-        <div className="min-h-screen flex flex-col">
-          {/* メインコンテンツ */}
-          <main className="flex-1">
-            {children}
-          </main>
+export default function Header() {
+  const { activeCategory, search, setSearch } = useTodoStore();
 
-          {/* フッター（将来用） */}
-          <footer className="text-center text-sm text-gray-400 py-4">
-            © {new Date().getFullYear()} Donezo
-          </footer>
+  /**
+   * 現在カテゴリ情報
+   */
+  const category = useMemo(() => {
+    return categoryMap[activeCategory] ?? {
+      name: "タスク",
+      description: "",
+    };
+  }, [activeCategory]);
+
+  return (
+    <header className="flex items-center justify-between px-6 py-4 border-b 
+        bg-white dark:bg-gray-900 dark:border-gray-700">
+
+      {/* 左：タイトル */}
+      <div className="flex flex-col">
+        <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+          {category.name}
+        </h2>
+        <p className="text-sm text-gray-400 dark:text-gray-500">
+          {category.description}
+        </p>
+      </div>
+
+      {/* 右：操作エリア */}
+      <div className="flex items-center gap-4">
+
+        {/* 検索 */}
+        <div
+          role="search"
+          className="relative w-72"
+        >
+          <Input
+            placeholder="タスクを検索..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-10 pr-10 focus:ring-2 focus:ring-blue-400
+                        dark:bg-gray-800 dark:border-gray-700"
+            aria-label="タスク検索"
+          />
+
+          {/* 検索アイコン */}
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            size={16}
+          />
+
+          {/* クリア */}
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 
+                            text-gray-400 hover:text-gray-600 dark:hover:text-gray-300
+                            transition"
+              aria-label="検索をクリア"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
-      </body>
-    </html>
+
+        {/* ユーザー */}
+        <div className="flex items-center gap-2">
+          <div className="text-sm text-gray-500 hidden sm:block">
+            Hello 👋
+          </div>
+          <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-bold">
+            U
+          </div>
+        </div>
+      </div>
+    </header>
   );
 }
