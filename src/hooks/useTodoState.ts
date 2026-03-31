@@ -1,88 +1,154 @@
-import { useState, useEffect } from "react"; // useEffectを追加
+import { useState, useEffect, useMemo } from "react";
 
-// タスクの型定義
+/**
+ * Todo型定義
+ */
 export interface Todo {
     id: number;
     text: string;
     completed: boolean;
 }
 
-// タスクの状態管理カスタムフック
+/**
+ * localStorageキー
+ */
+const STORAGE_KEY = "todos";
+
+/**
+ * カスタムフック
+ */
 export function useTodoState() {
 
-    // タスクリスト
-    const [todos, setTodos] = useState<Todo[]>([]);
-
-    // 初回レンダリング時にlocalStorageから読み込み
-    useEffect(() => {
-        const saved = localStorage.getItem("todos");
-        if (saved) {
-            setTodos(JSON.parse(saved));
+    /**
+     * 初期データ取得（安全版）
+     */
+    const getInitialTodos = (): Todo[] => {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            return saved ? JSON.parse(saved) : [];
+        } catch {
+            console.warn("Failed to parse todos from localStorage");
+            return [];
         }
-    }, []);
+    };
 
-    // 入力フィールド
+    /**
+     * State
+     */
+    const [todos, setTodos] = useState<Todo[]>(getInitialTodos);
     const [input, setInput] = useState("");
-
-    // 検索フィールド
     const [search, setSearch] = useState("");
-
-    // カテゴリ（今は未使用でもOK）
     const [activeCategory, setActiveCategory] = useState("tasks");
 
-    // 検索フィルター
-    const filteredTodos = todos.filter(todo =>
-        todo.text.toLowerCase().includes(search.toLowerCase())
-    );
+    /**
+     * 保存（todos変更時）
+     */
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+    }, [todos]);
 
-    // タスク追加
+    /**
+     * タスク追加
+     */
     const addTodo = () => {
-
-        // 空入力防止
-        if (!input.trim()) return;
+        const text = input.trim();
+        if (!text) return;
 
         const newTodo: Todo = {
             id: Date.now(),
-            text: input,
+            text,
             completed: false,
         };
 
-        setTodos([newTodo, ...todos]);
+        setTodos(prev => [newTodo, ...prev]);
         setInput("");
     };
 
-    // 完了状態切り替え
+    /**
+     * 完了切り替え
+     */
     const toggleTodo = (id: number) => {
-        setTodos(todos.map(todo =>
-            todo.id === id ? { ...todo, completed: !todo.completed } : todo
-        ));
+        setTodos(prev =>
+            prev.map(todo =>
+                todo.id === id
+                    ? { ...todo, completed: !todo.completed }
+                    : todo
+            )
+        );
     };
 
-    // 削除
+    /**
+     * 削除
+     */
     const deleteTodo = (id: number) => {
-        setTodos(todos.filter(todo => todo.id !== id));
+        setTodos(prev => prev.filter(todo => todo.id !== id));
     };
 
-    // 完了タスク削除
+    /**
+     * 完了削除
+     */
     const clearCompleted = () => {
-        setTodos(todos.filter(todo => !todo.completed));
+        setTodos(prev => prev.filter(todo => !todo.completed));
     };
 
-    // ⭐ここが正解位置（超重要）
-    // todosが変更されるたびにlocalStorageへ保存
-    useEffect(() => {
-        localStorage.setItem("todos", JSON.stringify(todos));
+    /**
+     * カテゴリフィルター
+     */
+    const categoryFilteredTodos = useMemo(() => {
+        switch (activeCategory) {
+            case "important":
+                // 仮：将来フラグ追加予定
+                return todos;
+            case "planned":
+                return todos;
+            case "myday":
+                return todos;
+            case "tasks":
+            default:
+                return todos;
+        }
+    }, [todos, activeCategory]);
+
+    /**
+     * 検索フィルター
+     */
+    const filteredTodos = useMemo(() => {
+        return categoryFilteredTodos.filter(todo =>
+            todo.text.toLowerCase().includes(search.toLowerCase())
+        );
+    }, [categoryFilteredTodos, search]);
+
+    /**
+     * 統計（面試加分🔥）
+     */
+    const stats = useMemo(() => {
+        const total = todos.length;
+        const completed = todos.filter(t => t.completed).length;
+        const active = total - completed;
+
+        return { total, completed, active };
     }, [todos]);
 
     return {
-        todos, setTodos,
-        input, setInput,
-        search, setSearch,
-        activeCategory, setActiveCategory,
+        // state
+        todos,
+        input,
+        search,
+        activeCategory,
+
+        // setters
+        setInput,
+        setSearch,
+        setActiveCategory,
+
+        // derived
         filteredTodos,
+        stats,
+
+        // actions
         addTodo,
         toggleTodo,
         deleteTodo,
-        clearCompleted
+        clearCompleted,
     };
 }
