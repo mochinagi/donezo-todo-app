@@ -1,19 +1,21 @@
-import { memo } from "react";
+"use client";
+
+import { memo, useMemo } from "react";
 import { CheckCircle2, Star, Calendar, List } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useTodoStore } from "@/store/todoStore";
 
 /**
- * カテゴリ型定義
+ * カテゴリ型
  */
 type Category = {
     id: string;
     name: string;
     icon: LucideIcon;
-    count?: number; // 将来用（タスク数など）
 };
 
 /**
- * カテゴリ一覧
+ * カテゴリ一覧（Headerと将来共通化OK）
  */
 const categories: Category[] = [
     { id: "myday", name: "マイデイ", icon: CheckCircle2 },
@@ -23,38 +25,34 @@ const categories: Category[] = [
 ];
 
 /**
- * SidebarItem Props
- */
-type SidebarItemProps = {
-    category: Category;
-    active: boolean;
-    onClick: () => void;
-};
-
-/**
- * 単一ナビアイテム
+ * SidebarItem
  */
 const SidebarItem = memo(function SidebarItem({
     category,
     active,
+    count,
     onClick
-}: SidebarItemProps) {
-    const { name, icon: Icon, count } = category;
+}: {
+    category: Category;
+    active: boolean;
+    count?: number;
+    onClick: () => void;
+}) {
+    const { name, icon: Icon } = category;
 
     return (
         <button
             onClick={onClick}
             role="tab"
             aria-selected={active}
-            aria-current={active ? "page" : undefined}
             className={`group relative flex items-center justify-between w-full px-4 py-2 rounded-md text-left
             transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400
             ${active
                     ? "bg-blue-500 text-white font-semibold"
-                    : "text-gray-700 hover:bg-blue-100"
+                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
         >
-            {/* 左インジケーター */}
+            {/* 左バー */}
             {active && (
                 <span className="absolute left-0 top-0 h-full w-1 bg-blue-700 rounded-r-md" />
             )}
@@ -68,13 +66,13 @@ const SidebarItem = memo(function SidebarItem({
                 <span>{name}</span>
             </div>
 
-            {/* 将来のバッジ */}
+            {/* count */}
             {count !== undefined && (
                 <span
                     className={`text-xs px-2 py-0.5 rounded-full
                     ${active
                             ? "bg-white/20 text-white"
-                            : "bg-gray-200 text-gray-600"
+                            : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
                         }`}
                 >
                     {count}
@@ -85,26 +83,29 @@ const SidebarItem = memo(function SidebarItem({
 });
 
 /**
- * Sidebar Props
+ * Sidebar（Zustand統合版）
  */
-type SidebarProps = {
-    active: string;
-    onChange: (id: string) => void;
-};
+export default function Sidebar() {
+    const { activeCategory, setCategory, todos } = useTodoStore();
 
-/**
- * サイドバー
- */
-export default function Sidebar({
-    active,
-    onChange
-}: SidebarProps) {
+    /**
+     * カウント計算
+     */
+    const counts = useMemo(() => {
+        return {
+            tasks: todos.length,
+            myday: todos.length, // 仮（将来拡張）
+            important: todos.length,
+            planned: todos.length,
+        };
+    }, [todos]);
+
     return (
-        <aside className="w-60 bg-white border-r border-gray-200 flex flex-col">
+        <aside className="w-60 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col">
 
-            {/* Header */}
-            <div className="p-6 text-2xl font-extrabold border-b border-gray-200 tracking-tight">
-                Donezo
+            {/* Logo */}
+            <div className="p-6 text-2xl font-extrabold tracking-tight border-b border-gray-200 dark:border-gray-700">
+                <span className="text-blue-500">Done</span>zo
             </div>
 
             {/* Navigation */}
@@ -116,8 +117,9 @@ export default function Sidebar({
                     <SidebarItem
                         key={cat.id}
                         category={cat}
-                        active={active === cat.id}
-                        onClick={() => onChange(cat.id)}
+                        active={activeCategory === cat.id}
+                        count={counts[cat.id as keyof typeof counts]}
+                        onClick={() => setCategory(cat.id)}
                     />
                 ))}
             </nav>
