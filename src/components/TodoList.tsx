@@ -1,50 +1,49 @@
+"use client";
+
 import { memo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Trash2, CheckCircle2 } from "lucide-react";
-import { Todo } from "@/hooks/useTodoState";
+import { useTodoStore } from "@/store/todoStore";
 
 /**
- * TodoItem Props
- */
-type TodoItemProps = {
-    todo: Todo;
-    onToggle: (id: number) => void;
-    onDelete: (id: number) => void;
-};
-
-/**
- * 単一Todoアイテム
+ * TodoItem
  */
 const TodoItem = memo(function TodoItem({
-    todo,
-    onToggle,
-    onDelete
-}: TodoItemProps) {
+    id,
+    text,
+    completed,
+}: {
+    id: number;
+    text: string;
+    completed: boolean;
+}) {
+    const { toggleTodo, deleteTodo } = useTodoStore();
+
     const handleDelete = () => {
         if (window.confirm("このタスクを削除しますか？")) {
-            onDelete(todo.id);
+            deleteTodo(id);
         }
     };
 
     return (
         <Card
             role="listitem"
-            className={`flex items-center justify-between rounded-xl border border-gray-200 shadow-sm 
-            hover:shadow-lg hover:-translate-y-1 transition-all duration-200
-            ${todo.completed ? "opacity-60 scale-[0.98]" : ""}`}
+            interactive
+            className={`flex items-center justify-between
+            ${completed ? "opacity-60 scale-[0.98]" : ""}`}
         >
-            <CardContent className="flex items-center gap-4 py-3 px-4 w-full">
+            <CardContent className="flex items-center gap-4 w-full">
 
-                {/* 完了ボタン */}
+                {/* 完了 */}
                 <button
-                    onClick={() => onToggle(todo.id)}
-                    aria-pressed={todo.completed}
-                    aria-label={todo.completed ? "未完了に戻す" : "完了にする"}
+                    onClick={() => toggleTodo(id)}
+                    aria-pressed={completed}
+                    aria-label={completed ? "未完了に戻す" : "完了にする"}
                     className={`p-2 rounded-full transition-all duration-200 active:scale-90
                     focus:outline-none focus:ring-2 focus:ring-blue-400
-                    ${todo.completed
+                    ${completed
                             ? "bg-blue-600 text-white"
-                            : "bg-gray-200 text-gray-400 hover:bg-gray-300"
+                            : "bg-gray-200 text-gray-400 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300"
                         }`}
                 >
                     <CheckCircle2 size={20} />
@@ -52,20 +51,21 @@ const TodoItem = memo(function TodoItem({
 
                 {/* テキスト */}
                 <span
-                    className={`flex-1 select-none break-words text-lg transition-colors
-                    ${todo.completed
+                    className={`flex-1 break-words text-lg transition-colors
+                    ${completed
                             ? "line-through text-gray-400"
-                            : "text-gray-900"
+                            : "text-gray-900 dark:text-gray-100"
                         }`}
                 >
-                    {todo.text}
+                    {text}
                 </span>
 
                 {/* 削除 */}
                 <button
                     onClick={handleDelete}
                     aria-label="タスクを削除"
-                    className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                    className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50
+                    dark:hover:bg-red-900/30 transition-all"
                 >
                     <Trash2 size={20} />
                 </button>
@@ -75,25 +75,15 @@ const TodoItem = memo(function TodoItem({
 });
 
 /**
- * TodoList Props
+ * TodoList
  */
-type TodoListProps = {
-    todos: Todo[];
-    onToggle: (id: number) => void;
-    onDelete: (id: number) => void;
-};
+export default function TodoList() {
+    const filteredTodos = useTodoStore((s) => s.filteredTodos());
 
-/**
- * Todo一覧
- */
-export default function TodoList({
-    todos,
-    onToggle,
-    onDelete
-}: TodoListProps) {
-
-    // 空状態
-    if (todos.length === 0) {
+    /**
+     * 空状態
+     */
+    if (filteredTodos.length === 0) {
         return (
             <div
                 className="flex flex-col items-center justify-center mt-24 text-gray-500 space-y-3"
@@ -111,14 +101,14 @@ export default function TodoList({
     return (
         <section
             role="list"
-            className="flex-1 overflow-y-auto p-6 bg-white space-y-4 max-w-2xl mx-auto"
+            className="flex-1 overflow-y-auto p-6 bg-white dark:bg-gray-950 space-y-4 max-w-2xl mx-auto"
         >
-            {todos.map((todo) => (
+            {filteredTodos.map((todo) => (
                 <TodoItem
                     key={todo.id}
-                    todo={todo}
-                    onToggle={onToggle}
-                    onDelete={onDelete}
+                    id={todo.id}
+                    text={todo.text}
+                    completed={todo.completed}
                 />
             ))}
         </section>
