@@ -1,67 +1,70 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { cva, type VariantProps } from "class-variance-authority";
 
 /**
- * Cardコンポーネント
- * 汎用コンテナ（variant / size / interactive対応）
+ * Card styles（Buttonと統一🔥）
  */
-const Card = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentProps<"div"> & {
-    variant?: "default" | "outline" | "elevated" | "ghost";
-    size?: "sm" | "md" | "lg";
-    interactive?: boolean;
-  }
->(function Card(
+const cardVariants = cva(
+  "rounded-xl flex flex-col gap-4 transition-all duration-200",
   {
-    className,
-    variant = "default",
-    size = "md",
-    interactive = false,
-    ...props
-  },
-  ref
-) {
+    variants: {
+      variant: {
+        default:
+          "bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-700",
+        outline:
+          "border border-gray-300 bg-transparent dark:border-gray-700",
+        elevated:
+          "bg-white shadow-md border border-gray-100 dark:bg-gray-900 dark:border-gray-800",
+        ghost:
+          "bg-transparent border-none shadow-none",
+      },
+      size: {
+        sm: "p-3",
+        md: "p-5",
+        lg: "p-6",
+      },
+      interactive: {
+        true: "hover:shadow-lg hover:-translate-y-1 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-blue-400 cursor-pointer",
+        false: "",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "md",
+      interactive: false,
+    },
+  }
+);
 
-  const variantStyles = {
-    default: "bg-white border border-gray-200",
-    outline: "border border-gray-300 bg-transparent",
-    elevated: "bg-white shadow-md border border-gray-100",
-    ghost: "bg-transparent border-none shadow-none",
-  };
+type CardProps = React.ComponentProps<"div"> &
+  VariantProps<typeof cardVariants>;
 
-  const sizeStyles = {
-    sm: "p-3",
-    md: "p-5",
-    lg: "p-6",
-  };
-
-  return (
-    <div
-      ref={ref}
-      data-slot="card"
-      className={cn(
-        "rounded-xl flex flex-col gap-4 transition-all",
-        variantStyles[variant],
-        sizeStyles[size],
-        interactive &&
-        "hover:shadow-lg hover:-translate-y-1 cursor-pointer",
-        className
-      )}
-      {...props}
-    />
-  );
-});
+/**
+ * Card
+ */
+const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ className, variant, size, interactive, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        data-slot="card"
+        className={cn(cardVariants({ variant, size, interactive }), className)}
+        {...props}
+      />
+    );
+  }
+);
 
 Card.displayName = "Card";
 
 /**
- * ヘッダー
+ * Header
  */
 const CardHeader = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
->(function CardHeader({ className, ...props }, ref) {
+>(({ className, ...props }, ref) => {
   return (
     <div
       ref={ref}
@@ -75,17 +78,17 @@ const CardHeader = React.forwardRef<
 CardHeader.displayName = "CardHeader";
 
 /**
- * タイトル
+ * Title（よりセマンティック🔥）
  */
 const CardTitle = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentProps<"div">
->(function CardTitle({ className, ...props }, ref) {
+  HTMLHeadingElement,
+  React.ComponentProps<"h3">
+>(({ className, ...props }, ref) => {
   return (
-    <div
+    <h3
       ref={ref}
       data-slot="card-title"
-      className={cn("font-semibold text-lg", className)}
+      className={cn("font-semibold text-lg tracking-tight", className)}
       {...props}
     />
   );
@@ -94,17 +97,17 @@ const CardTitle = React.forwardRef<
 CardTitle.displayName = "CardTitle";
 
 /**
- * 説明テキスト
+ * Description
  */
 const CardDescription = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentProps<"div">
->(function CardDescription({ className, ...props }, ref) {
+  HTMLParagraphElement,
+  React.ComponentProps<"p">
+>(({ className, ...props }, ref) => {
   return (
-    <div
+    <p
       ref={ref}
       data-slot="card-description"
-      className={cn("text-sm text-gray-500", className)}
+      className={cn("text-sm text-gray-500 dark:text-gray-400", className)}
       {...props}
     />
   );
@@ -113,12 +116,12 @@ const CardDescription = React.forwardRef<
 CardDescription.displayName = "CardDescription";
 
 /**
- * アクション（右上ボタンなど）
+ * Action
  */
 const CardAction = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
->(function CardAction({ className, ...props }, ref) {
+>(({ className, ...props }, ref) => {
   return (
     <div
       ref={ref}
@@ -132,17 +135,17 @@ const CardAction = React.forwardRef<
 CardAction.displayName = "CardAction";
 
 /**
- * コンテンツ
+ * Content（padding統一🔥）
  */
 const CardContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
->(function CardContent({ className, ...props }, ref) {
+>(({ className, ...props }, ref) => {
   return (
     <div
       ref={ref}
       data-slot="card-content"
-      className={cn("", className)}
+      className={cn("text-sm", className)}
       {...props}
     />
   );
@@ -151,17 +154,20 @@ const CardContent = React.forwardRef<
 CardContent.displayName = "CardContent";
 
 /**
- * フッター
+ * Footer
  */
 const CardFooter = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
->(function CardFooter({ className, ...props }, ref) {
+>(({ className, ...props }, ref) => {
   return (
     <div
       ref={ref}
       data-slot="card-footer"
-      className={cn("flex items-center justify-between", className)}
+      className={cn(
+        "flex items-center justify-between pt-2",
+        className
+      )}
       {...props}
     />
   );
