@@ -1,12 +1,11 @@
+"use client";
+
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Plus, AlertCircle } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
+import clsx from "clsx";
 
-/**
- * タスク追加コンポーネント
- * 入力と追加操作を担当
- */
 export default function AddTodo({
     input,
     setInput,
@@ -16,15 +15,10 @@ export default function AddTodo({
     setInput: (val: string) => void;
     onAdd: () => void;
 }) {
-
-    // エラーメッセージ管理
     const [error, setError] = useState("");
+    const inputRef = useRef<HTMLInputElement>(null);
 
-    /**
-     * タスク追加処理
-     * 空入力チェック + 入力リセット
-     */
-    const handleAdd = () => {
+    const handleAdd = useCallback(() => {
         if (!input.trim()) {
             setError("タスク内容を入力してください");
             return;
@@ -33,7 +27,8 @@ export default function AddTodo({
         onAdd();
         setInput("");
         setError("");
-    };
+        inputRef.current?.focus();
+    }, [input, onAdd, setInput]);
 
     return (
         <div className="p-6 bg-white border-b border-gray-200 space-y-2">
@@ -42,9 +37,9 @@ export default function AddTodo({
             <div className="flex gap-3">
 
                 <div className="relative flex-1">
-
                     {/* 入力欄 */}
                     <Input
+                        ref={inputRef}
                         value={input}
                         onChange={(e) => {
                             setInput(e.target.value);
@@ -54,10 +49,11 @@ export default function AddTodo({
                         aria-label="タスク入力欄"
                         aria-describedby={error ? "todo-error" : undefined}
                         maxLength={100}
-                        className="pl-10 pr-3 focus:ring-2 focus:ring-blue-400"
+                        className="pl-10 pr-3 focus:ring-2 focus:ring-blue-400 focus:ring-offset-1 transition-shadow rounded-md"
                         onKeyDown={(e) => {
                             if (e.key === "Enter") handleAdd();
                         }}
+                        autoFocus
                     />
 
                     {/* アイコン */}
@@ -72,7 +68,10 @@ export default function AddTodo({
                     onClick={handleAdd}
                     disabled={!input.trim()}
                     aria-label="タスク追加"
-                    className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 px-5 py-2 text-white rounded-md shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    className={clsx(
+                        "flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-5 py-2 text-white rounded-md shadow-sm transition transform disabled:opacity-50 disabled:cursor-not-allowed",
+                        "hover:scale-105"
+                    )}
                 >
                     <Plus size={16} />
                     追加
@@ -83,7 +82,8 @@ export default function AddTodo({
             {error && (
                 <div
                     id="todo-error"
-                    className="flex items-center gap-1 text-sm text-red-500"
+                    className="flex items-center gap-1 text-sm text-red-500 transition-opacity duration-300"
+                    role="alert"
                 >
                     <AlertCircle size={14} />
                     {error}
