@@ -1,156 +1,125 @@
-@import "tailwindcss";
-@import "tw-animate-css";
+/* ========================================
+   グローバルスタイル (globals.css)
+   アプリ全体のベーススタイルとテーマ
+======================================== */
 
-@custom-variant dark (&:is(.dark *));
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-
-  --color-destructive: var(--destructive);
-
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-}
-
-/* =========================
-   Root Theme
-========================= */
+/* -----------------------------
+   ルート変数 (ライト/ダークテーマ)
+----------------------------- */
 :root {
-  --radius: 0.625rem;
-
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.147 0.004 49.25);
-
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.147 0.004 49.25);
-
-  --primary: oklch(0.216 0.006 56.043);
-  --primary-foreground: oklch(0.985 0.001 106.423);
-
-  --secondary: oklch(0.97 0.001 106.424);
-  --secondary-foreground: oklch(0.216 0.006 56.043);
-
-  --muted: oklch(0.97 0.001 106.424);
-  --muted-foreground: oklch(0.553 0.013 58.071);
-
-  --accent: oklch(0.97 0.001 106.424);
-  --accent-foreground: oklch(0.216 0.006 56.043);
-
-  --destructive: oklch(0.577 0.245 27.325);
-
-  --border: oklch(0.923 0.003 48.717);
-  --input: oklch(0.923 0.003 48.717);
-  --ring: oklch(0.709 0.01 56.259);
+  --color-bg: #f9fafb;
+  /* 背景色 */
+  --color-text: #111827;
+  /* テキスト色 */
+  --color-border: #d1d5db;
+  /* ボーダー色 */
+  --color-primary: #3b82f6;
+  /* プライマリ色 */
+  --transition-duration: 0.2s;
 }
 
-/* =========================
-   Dark Mode
-========================= */
-.dark {
-  --background: oklch(0.147 0.004 49.25);
-  --foreground: oklch(0.985 0.001 106.423);
-
-  --card: oklch(0.216 0.006 56.043);
-  --card-foreground: oklch(0.985 0.001 106.423);
-
-  --primary: oklch(0.923 0.003 48.717);
-  --primary-foreground: oklch(0.216 0.006 56.043);
-
-  --secondary: oklch(0.268 0.007 34.298);
-  --secondary-foreground: oklch(0.985 0.001 106.423);
-
-  --muted: oklch(0.268 0.007 34.298);
-  --muted-foreground: oklch(0.709 0.01 56.259);
-
-  --accent: oklch(0.268 0.007 34.298);
-  --accent-foreground: oklch(0.985 0.001 106.423);
-
-  --destructive: oklch(0.704 0.191 22.216);
-
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.553 0.013 58.071);
+/* ダークテーマ変数 */
+[data-theme='dark'] {
+  --color-bg: #111827;
+  --color-text: #f9fafb;
+  --color-border: #374151;
+  --color-primary: #3b82f6;
 }
 
-/* =========================
-   Base Layer
-========================= */
-@layer base {
+/* -----------------------------
+   ボックスサイジング & 基本リセット
+----------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
-  *,
-  *::before,
-  *::after {
-    @apply border-border;
-    box-sizing: border-box;
-  }
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Noto Sans JP", "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  scroll-behavior: smooth;
+  /* スムーズスクロール */
+  line-height: 1.6;
+  transition: background-color var(--transition-duration) ease, color var(--transition-duration) ease;
+}
 
-  html {
-    scroll-behavior: smooth;
-  }
+/* -----------------------------
+   フォーカススタイル (アクセシビリティ)
+----------------------------- */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
 
-  body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
-    -webkit-font-smoothing: antialiased;
-  }
+/* -----------------------------
+   デフォルト要素スタイル
+----------------------------- */
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+  transition: color var(--transition-duration) ease;
+}
 
-  /* Selection */
-  ::selection {
-    background: hsl(220 90% 56% / 0.3);
-  }
+a:hover {
+  text-decoration: underline;
+}
 
-  /* Focus 全局兜底 */
-  :focus-visible {
-    outline: none;
-    @apply ring-2 ring-blue-400;
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+input,
+textarea,
+select,
+button {
+  font-family: inherit;
+  transition: border-color var(--transition-duration) ease, background-color var(--transition-duration) ease;
+}
+
+ul,
+ol {
+  padding-left: 1.5rem;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* -----------------------------
+   アニメーション & モーション設定
+----------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
   }
 }
 
-/* =========================
-   Scrollbar
-========================= */
-@layer utilities {
-  ::-webkit-scrollbar {
-    width: 8px;
-  }
+/* -----------------------------
+   共通ユーティリティ
+----------------------------- */
+.hidden {
+  display: none !important;
+}
 
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    background: rgba(100, 100, 100, 0.3);
-    border-radius: 9999px;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(100, 100, 100, 0.5);
-  }
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }
