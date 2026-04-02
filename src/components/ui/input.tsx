@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
@@ -14,19 +16,10 @@ const Input = React.forwardRef<
     size?: "sm" | "md" | "lg";
   }
 >(function Input(
-  {
-    className,
-    type = "text",
-    leftIcon,
-    rightIcon,
-    error,
-    size = "md",
-    ...props
-  },
+  { className, type = "text", leftIcon, rightIcon, error, size = "md", ...props },
   ref
 ) {
 
-  // サイズ別スタイル
   const sizeStyles = {
     sm: "h-8 text-sm px-2",
     md: "h-9 text-sm px-3",
@@ -34,11 +27,11 @@ const Input = React.forwardRef<
   };
 
   return (
-    <div className="relative w-full">
+    <div className="relative w-full group">
 
       {/* 左アイコン */}
       {leftIcon && (
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-gray-600 transition-colors">
           {leftIcon}
         </div>
       )}
@@ -49,24 +42,16 @@ const Input = React.forwardRef<
         data-slot="input"
         aria-invalid={error || undefined}
         className={cn(
-          "w-full min-w-0 rounded-md border bg-transparent outline-none transition-all",
-          "placeholder:text-muted-foreground",
+          "w-full min-w-0 rounded-md border bg-transparent outline-none transition-all ease-in-out duration-200",
+          "placeholder:text-muted-foreground transition-colors",
           "disabled:cursor-not-allowed disabled:opacity-50",
-
-          // サイズ
           sizeStyles[size],
-
-          // padding（アイコン対応）
           leftIcon && "pl-10",
           rightIcon && "pr-10",
-
-          // 通常状態
-          "border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200",
-
-          // エラー状態
-          error &&
-          "border-red-500 focus:border-red-500 focus:ring-red-200",
-
+          // 通常状态
+          "border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 focus:ring-offset-1",
+          // 错误状态
+          error && "border-red-500 focus:border-red-500 focus:ring-red-200",
           className
         )}
         {...props}
@@ -74,7 +59,7 @@ const Input = React.forwardRef<
 
       {/* 右アイコン */}
       {rightIcon && (
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" aria-hidden="true">
           {rightIcon}
         </div>
       )}
