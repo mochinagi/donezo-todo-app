@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { Loader2 } from "lucide-react";
@@ -71,8 +73,10 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ) => {
     const Comp = asChild ? Slot : "button";
     const isDisabled = loading || disabled;
-
     const isIconOnly = size === "icon";
+
+    // Loader 根据按钮 size 自适应
+    const loaderSize = size === "sm" ? 14 : size === "lg" ? 18 : 16;
 
     return (
       <Comp
@@ -82,15 +86,17 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         aria-busy={loading || undefined}
         aria-disabled={isDisabled}
         aria-label={isIconOnly ? props["aria-label"] : undefined}
-        className={cn(buttonVariants({ variant, size }), className)}
+        className={cn(
+          buttonVariants({ variant, size }),
+          "hover:scale-105 active:scale-95 transform transition-transform duration-200",
+          className
+        )}
         disabled={isDisabled}
         {...props}
       >
-        {/* 内容 */}
         <span className="flex items-center gap-2">
-          {loading && <Loader2 className="animate-spin" size={16} />}
+          {loading && <Loader2 className="animate-spin" size={loaderSize} />}
 
-          {/* loading 时优先显示 loadingText */}
           {!isIconOnly && (
             <span>
               {loading ? loadingText ?? children : children}
@@ -98,8 +104,11 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           )}
         </span>
 
-        {/* screen reader */}
-        {loading && <span className="sr-only">Loading</span>}
+        {loading && (
+          <span className="sr-only" aria-live="polite">
+            Loading
+          </span>
+        )}
       </Comp>
     );
   }
