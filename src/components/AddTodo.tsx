@@ -6,20 +6,19 @@ import { Plus, AlertCircle } from "lucide-react";
 import { useState, useRef, useCallback } from "react";
 import clsx from "clsx";
 
-export default function AddTodo({
-    input,
-    setInput,
-    onAdd
-}: {
+interface AddTodoProps {
     input: string;
     setInput: (val: string) => void;
     onAdd: () => void;
-}) {
+}
+
+export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
     const [error, setError] = useState("");
     const inputRef = useRef<HTMLInputElement>(null);
 
     const handleAdd = useCallback(() => {
-        if (!input.trim()) {
+        const trimmedInput = input.trim();
+        if (!trimmedInput) {
             setError("タスク内容を入力してください");
             return;
         }
@@ -32,12 +31,9 @@ export default function AddTodo({
 
     return (
         <div className="p-6 bg-white border-b border-gray-200 space-y-2">
-
-            {/* 入力エリア */}
             <div className="flex gap-3">
-
                 <div className="relative flex-1">
-                    {/* 入力欄 */}
+                    {/* 输入栏 */}
                     <Input
                         ref={inputRef}
                         value={input}
@@ -56,21 +52,21 @@ export default function AddTodo({
                         autoFocus
                     />
 
-                    {/* アイコン */}
+                    {/* 输入栏图标 */}
                     <Plus
                         size={16}
                         className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                     />
                 </div>
 
-                {/* 追加ボタン */}
+                {/* 添加按钮 */}
                 <Button
                     onClick={handleAdd}
                     disabled={!input.trim()}
                     aria-label="タスク追加"
                     className={clsx(
                         "flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-5 py-2 text-white rounded-md shadow-sm transition transform disabled:opacity-50 disabled:cursor-not-allowed",
-                        "hover:scale-105"
+                        "hover:scale-105 active:scale-95"
                     )}
                 >
                     <Plus size={16} />
@@ -78,12 +74,13 @@ export default function AddTodo({
                 </Button>
             </div>
 
-            {/* エラーメッセージ */}
+            {/* 错误信息 */}
             {error && (
                 <div
                     id="todo-error"
                     className="flex items-center gap-1 text-sm text-red-500 transition-opacity duration-300"
                     role="alert"
+                    aria-live="polite"
                 >
                     <AlertCircle size={14} />
                     {error}
