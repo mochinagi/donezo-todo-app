@@ -15,9 +15,13 @@ interface TodoProps {
  * TodoItem
  */
 const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, completed }) {
-    const { toggleTodo, deleteTodo } = useTodoStore();
+    const toggleTodo = useTodoStore((s) => s.toggleTodo);
+    const deleteTodo = useTodoStore((s) => s.deleteTodo);
 
-    const handleToggle = useCallback(() => toggleTodo(id), [id, toggleTodo]);
+    const handleToggle = useCallback(() => {
+        toggleTodo(id);
+    }, [id, toggleTodo]);
+
     const handleDelete = useCallback(() => {
         if (window.confirm("このタスクを削除しますか？")) {
             deleteTodo(id);
@@ -25,7 +29,7 @@ const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, complet
     }, [id, deleteTodo]);
 
     const buttonClass = completed
-        ? "bg-blue-600 text-white"
+        ? "bg-blue-600 text-white shadow"
         : "bg-gray-200 text-gray-400 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300";
 
     const textClass = completed
@@ -35,11 +39,11 @@ const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, complet
     return (
         <Card
             role="listitem"
-            interactive
-            className={`flex items-center justify-between transform transition-all duration-200
-                ${completed ? "opacity-60 scale-[0.98]" : "hover:scale-[1.02]"}`}
+            className={`flex items-center justify-between transition-all duration-200
+            ${completed ? "opacity-60 scale-[0.98]" : "hover:scale-[1.02]"}`}
         >
             <CardContent className="flex items-center gap-4 w-full">
+                {/* 完了ボタン */}
                 <button
                     onClick={handleToggle}
                     aria-pressed={completed}
@@ -49,19 +53,16 @@ const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, complet
                     <CheckCircle2 size={20} />
                 </button>
 
-                <span
+                {/* タスクテキスト */}
+                <button
                     onClick={handleToggle}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") handleToggle();
-                    }}
                     aria-label={`タスク: ${text}. ${completed ? "完了済み" : "未完了"}`}
-                    className={`flex-1 break-words text-lg cursor-pointer transition-colors ${textClass}`}
+                    className={`flex-1 text-left break-words text-lg transition-colors ${textClass}`}
                 >
                     {text}
-                </span>
+                </button>
 
+                {/* 削除 */}
                 <button
                     onClick={handleDelete}
                     aria-label="タスクを削除"
@@ -88,7 +89,9 @@ export default function TodoList() {
             >
                 <CheckCircle2 size={40} className="opacity-30" />
                 <p className="text-lg font-medium">タスクがまだありません</p>
-                <p className="text-sm text-gray-400">最初のタスクを追加してみましょう 🚀</p>
+                <p className="text-sm text-gray-400">
+                    最初のタスクを追加してみましょう 🚀
+                </p>
             </div>
         );
     }
