@@ -2,6 +2,7 @@ import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import { ThemeProvider } from "@/components/theme-provider";
+import AppToaster from "@/components/ui/toaster";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -19,6 +20,10 @@ export default function RootLayout({
       <body className="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 min-h-screen flex h-screen overflow-hidden">
 
         <ThemeProvider>
+
+          {/* Toast */}
+          <AppToaster />
+
           {/* Sidebar */}
           <aside className="flex-shrink-0" aria-label="サイドバー">
             <Sidebar />
@@ -27,12 +32,10 @@ export default function RootLayout({
           {/* Main Layout */}
           <section className="flex flex-col flex-1">
 
-            {/* Header */}
             <header className="flex-shrink-0" aria-label="ヘッダー">
               <Header />
             </header>
 
-            {/* Main */}
             <main
               id="main-content"
               className="flex-1 overflow-y-auto p-6"
