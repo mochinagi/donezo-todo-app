@@ -1,10 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 
 /* -----------------------------
    Todo型定義
 ----------------------------- */
 export interface Todo {
-    id: number;
+    id: string;
     text: string;
     completed: boolean;
 }
@@ -16,71 +16,111 @@ export type FilterType = "all" | "completed" | "active";
 
 /* -----------------------------
    useTodoState Hook
-   Todo状態管理フック
 ----------------------------- */
 export function useTodoState(initialTodos: Todo[] = []) {
     const [todos, setTodos] = useState<Todo[]>(initialTodos);
+    const [filter, setFilter] = useState<FilterType>("all");
 
     /* -----------------------------
        タスク追加
     ----------------------------- */
     const addTodo = useCallback((text: string) => {
+        const trimmed = text.trim();
+        if (!trimmed) return;
+
         const newTodo: Todo = {
-            id: Date.now(),
-            text,
+            id: crypto.randomUUID(),
+            text: trimmed,
             completed: false,
         };
+
         setTodos((prev) => [...prev, newTodo]);
     }, []);
 
     /* -----------------------------
        タスク削除
     ----------------------------- */
-    const deleteTodo = useCallback((id: number) => {
+    const deleteTodo = useCallback((id: string) => {
         setTodos((prev) => prev.filter((todo) => todo.id !== id));
     }, []);
 
     /* -----------------------------
        完了状態切替
     ----------------------------- */
-    const toggleTodo = useCallback((id: number) => {
+    const toggleTodo = useCallback((id: string) => {
         setTodos((prev) =>
             prev.map((todo) =>
-                todo.id === id ? { ...todo, completed: !todo.completed } : todo
+                todo.id === id
+                    ? { ...todo, completed: !todo.completed }
+                    : todo
             )
         );
     }, []);
 
     /* -----------------------------
-       全タスク削除
+       編集
+    ----------------------------- */
+    const editTodo = useCallback((id: string, text: string) => {
+        const trimmed = text.trim();
+        if (!trimmed) return;
+
+        setTodos((prev) =>
+            prev.map((todo) =>
+                todo.id === id ? { ...todo, text: trimmed } : todo
+            )
+        );
+    }, []);
+
+    /* -----------------------------
+       並び替え（DnD用）
+    ----------------------------- */
+    const reorderTodos = useCallback((newTodos: Todo[]) => {
+        setTodos(newTodos);
+    }, []);
+
+    /* -----------------------------
+       全削除
     ----------------------------- */
     const clearTodos = useCallback(() => {
         setTodos([]);
     }, []);
 
     /* -----------------------------
-       フィルタ済みタスク取得
+       フィルタ済み
     ----------------------------- */
-    const filteredTodos = useCallback(
-        (filter: FilterType = "all") => {
-            switch (filter) {
-                case "completed":
-                    return todos.filter((todo) => todo.completed);
-                case "active":
-                    return todos.filter((todo) => !todo.completed);
-                default:
-                    return todos;
-            }
-        },
-        [todos]
-    );
+    const filteredTodos = useMemo(() => {
+        switch (filter) {
+            case "completed":
+                return todos.filter((t) => t.completed);
+            case "active":
+                return todos.filter((t) => !t.completed);
+            default:
+                return todos;
+        }
+    }, [todos, filter]);
+
+    /* -----------------------------
+       統計（面試加分）
+    ----------------------------- */
+    const stats = useMemo(() => {
+        const total = todos.length;
+        const completed = todos.filter((t) => t.completed).length;
+        const active = total - completed;
+
+        return { total, completed, active };
+    }, [todos]);
 
     return {
         todos,
+        filter,
+        setFilter,
         addTodo,
         deleteTodo,
         toggleTodo,
+        editTodo,
+        reorderTodos,
         clearTodos,
         filteredTodos,
+        stats,
     };
 }
