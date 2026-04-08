@@ -12,9 +12,9 @@ import {
     useSensor,
     useSensors,
     DragEndEvent,
+    DragStartEvent,
 } from "@dnd-kit/core";
 import {
-    arrayMove,
     SortableContext,
     verticalListSortingStrategy,
     useSortable,
@@ -27,6 +27,11 @@ interface TodoProps {
     completed: boolean;
 }
 
+interface TodoListProps {
+    setIsDragging?: (dragging: boolean) => void;
+    setSidebarOpen?: (open: boolean) => void;
+}
+
 /** 可拖拽 TodoItem */
 const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, completed }) {
     const toggleTodo = useTodoStore((s) => s.toggleTodo);
@@ -37,12 +42,8 @@ const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, complet
         if (window.confirm("このタスクを削除しますか？")) deleteTodo(id);
     }, [id, deleteTodo]);
 
-    /** @dnd-kit sortable */
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
-    const style = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-    };
+    const style = { transform: CSS.Transform.toString(transform), transition };
 
     const buttonClass = useMemo(
         () =>
@@ -67,8 +68,8 @@ const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, complet
             style={style}
             {...attributes}
             {...listeners}
-            className={`flex items-center justify-between transition-all duration-200 ${completed ? "opacity-60 scale-[0.98]" : "hover:scale-[1.02]"
-                }`}
+            className={`flex items-center justify-between transition-all duration-200 ${completed ? "opacity-60 scale-[0.98]" : "hover:scale-[1.02]"}`
+            }
         >
             <CardContent className="flex items-center gap-4 w-full">
                 {/* 完了ボタン */}
@@ -104,14 +105,21 @@ const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, complet
     );
 });
 
-export default function TodoList() {
+export default function TodoList({ setIsDragging, setSidebarOpen }: TodoListProps) {
     const todos = useTodoStore((s) => s.filteredTodos());
     const reorderTodos = useTodoStore((s) => s.reorderTodos);
 
     const sensors = useSensors(useSensor(PointerSensor));
 
+    const handleDragStart = (event: DragStartEvent) => {
+        if (setIsDragging) setIsDragging(true);
+        if (setSidebarOpen) setSidebarOpen(false); // 拖拽时收起 Sidebar
+    };
+
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
+        if (setIsDragging) setIsDragging(false);
+
         if (over && active.id !== over.id) {
             const oldIndex = todos.findIndex((t) => t.id === active.id);
             const newIndex = todos.findIndex((t) => t.id === over.id);
@@ -133,7 +141,12 @@ export default function TodoList() {
     }
 
     return (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+        >
             <SortableContext items={todos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                 <section
                     role="list"
