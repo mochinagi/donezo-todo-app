@@ -5,23 +5,44 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Trash2, CheckCircle2 } from "lucide-react";
 import { useTodoStore } from "@/store/todoStore";
 
+import {
+    DndContext,
+    closestCenter,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    DragEndEvent,
+} from "@dnd-kit/core";
+import {
+    arrayMove,
+    SortableContext,
+    verticalListSortingStrategy,
+    useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+
 interface TodoProps {
     id: number;
     text: string;
     completed: boolean;
 }
 
+/** 可拖拽 TodoItem */
 const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, completed }) {
     const toggleTodo = useTodoStore((s) => s.toggleTodo);
     const deleteTodo = useTodoStore((s) => s.deleteTodo);
 
     const handleToggle = useCallback(() => toggleTodo(id), [id, toggleTodo]);
-
     const handleDelete = useCallback(() => {
-        if (window.confirm("このタスクを削除しますか？")) {
-            deleteTodo(id);
-        }
+        if (window.confirm("このタスクを削除しますか？")) deleteTodo(id);
     }, [id, deleteTodo]);
+
+    /** @dnd-kit sortable */
+    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+    };
 
     const buttonClass = useMemo(
         () =>
@@ -42,8 +63,12 @@ const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, complet
     return (
         <Card
             role="listitem"
-            className={`flex items-center justify-between transition-all duration-200
-        ${completed ? "opacity-60 scale-[0.98]" : "hover:scale-[1.02]"}`}
+            ref={setNodeRef}
+            style={style}
+            {...attributes}
+            {...listeners}
+            className={`flex items-center justify-between transition-all duration-200 ${completed ? "opacity-60 scale-[0.98]" : "hover:scale-[1.02]"
+                }`}
         >
             <CardContent className="flex items-center gap-4 w-full">
                 {/* 完了ボタン */}
@@ -59,7 +84,8 @@ const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, complet
 
                 {/* タスクテキスト */}
                 <span
-                    className={`flex-1 text-left break-words text-lg transition-colors ${textClass}`}
+                    onClick={handleToggle}
+                    className={`flex-1 text-left break-words text-lg transition-colors cursor-pointer ${textClass}`}
                 >
                     {text}
                 </span>
@@ -79,9 +105,21 @@ const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, complet
 });
 
 export default function TodoList() {
-    const filteredTodos = useTodoStore((s) => s.filteredTodos());
+    const todos = useTodoStore((s) => s.filteredTodos());
+    const reorderTodos = useTodoStore((s) => s.reorderTodos);
 
-    if (filteredTodos.length === 0) {
+    const sensors = useSensors(useSensor(PointerSensor));
+
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (over && active.id !== over.id) {
+            const oldIndex = todos.findIndex((t) => t.id === active.id);
+            const newIndex = todos.findIndex((t) => t.id === over.id);
+            reorderTodos(oldIndex, newIndex);
+        }
+    };
+
+    if (todos.length === 0) {
         return (
             <div
                 className="flex flex-col items-center justify-center mt-24 text-gray-500 space-y-3 animate-fade-in"
@@ -95,13 +133,17 @@ export default function TodoList() {
     }
 
     return (
-        <section
-            role="list"
-            className="flex-1 overflow-y-auto p-6 bg-white dark:bg-gray-950 space-y-4 max-w-2xl mx-auto"
-        >
-            {filteredTodos.map((todo) => (
-                <TodoItem key={todo.id} {...todo} />
-            ))}
-        </section>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={todos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+                <section
+                    role="list"
+                    className="flex-1 overflow-y-auto p-6 bg-white dark:bg-gray-950 space-y-4 max-w-2xl mx-auto"
+                >
+                    {todos.map((todo) => (
+                        <TodoItem key={todo.id} {...todo} />
+                    ))}
+                </section>
+            </SortableContext>
+        </DndContext>
     );
 }
