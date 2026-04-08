@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback } from "react";
+import { memo, useCallback, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Trash2, CheckCircle2 } from "lucide-react";
 import { useTodoStore } from "@/store/todoStore";
@@ -11,16 +11,11 @@ interface TodoProps {
     completed: boolean;
 }
 
-/**
- * TodoItem
- */
 const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, completed }) {
     const toggleTodo = useTodoStore((s) => s.toggleTodo);
     const deleteTodo = useTodoStore((s) => s.deleteTodo);
 
-    const handleToggle = useCallback(() => {
-        toggleTodo(id);
-    }, [id, toggleTodo]);
+    const handleToggle = useCallback(() => toggleTodo(id), [id, toggleTodo]);
 
     const handleDelete = useCallback(() => {
         if (window.confirm("このタスクを削除しますか？")) {
@@ -28,19 +23,27 @@ const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, complet
         }
     }, [id, deleteTodo]);
 
-    const buttonClass = completed
-        ? "bg-blue-600 text-white shadow"
-        : "bg-gray-200 text-gray-400 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300";
+    const buttonClass = useMemo(
+        () =>
+            completed
+                ? "bg-blue-600 text-white shadow"
+                : "bg-gray-200 text-gray-400 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300",
+        [completed]
+    );
 
-    const textClass = completed
-        ? "line-through text-gray-400"
-        : "text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400";
+    const textClass = useMemo(
+        () =>
+            completed
+                ? "line-through text-gray-400"
+                : "text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400",
+        [completed]
+    );
 
     return (
         <Card
             role="listitem"
             className={`flex items-center justify-between transition-all duration-200
-            ${completed ? "opacity-60 scale-[0.98]" : "hover:scale-[1.02]"}`}
+        ${completed ? "opacity-60 scale-[0.98]" : "hover:scale-[1.02]"}`}
         >
             <CardContent className="flex items-center gap-4 w-full">
                 {/* 完了ボタン */}
@@ -48,24 +51,24 @@ const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, complet
                     onClick={handleToggle}
                     aria-pressed={completed}
                     aria-label={completed ? "未完了に戻す" : "完了にする"}
+                    title={completed ? "Mark as incomplete" : "Mark as complete"}
                     className={`p-2 rounded-full transition-all duration-200 active:scale-90 focus:outline-none focus:ring-2 focus:ring-blue-400 ${buttonClass}`}
                 >
                     <CheckCircle2 size={20} />
                 </button>
 
                 {/* タスクテキスト */}
-                <button
-                    onClick={handleToggle}
-                    aria-label={`タスク: ${text}. ${completed ? "完了済み" : "未完了"}`}
+                <span
                     className={`flex-1 text-left break-words text-lg transition-colors ${textClass}`}
                 >
                     {text}
-                </button>
+                </span>
 
-                {/* 削除 */}
+                {/* 削除ボタン */}
                 <button
                     onClick={handleDelete}
                     aria-label="タスクを削除"
+                    title="Delete task"
                     className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-all duration-200"
                 >
                     <Trash2 size={20} />
@@ -75,9 +78,6 @@ const TodoItem: React.FC<TodoProps> = memo(function TodoItem({ id, text, complet
     );
 });
 
-/**
- * TodoList
- */
 export default function TodoList() {
     const filteredTodos = useTodoStore((s) => s.filteredTodos());
 
@@ -89,9 +89,7 @@ export default function TodoList() {
             >
                 <CheckCircle2 size={40} className="opacity-30" />
                 <p className="text-lg font-medium">タスクがまだありません</p>
-                <p className="text-sm text-gray-400">
-                    最初のタスクを追加してみましょう 🚀
-                </p>
+                <p className="text-sm text-gray-400">最初のタスクを追加してみましょう 🚀</p>
             </div>
         );
     }
