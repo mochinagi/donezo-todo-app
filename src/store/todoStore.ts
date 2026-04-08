@@ -19,21 +19,20 @@ export type FilterType = "all" | "completed" | "active";
    Store型定義
 ----------------------------- */
 type TodoStore = {
-    // state
     todos: Todo[];
     search: string;
     activeCategory: string;
 
-    // actions
     addTodo: (text: string) => void;
     toggleTodo: (id: number) => void;
     deleteTodo: (id: number) => void;
     clearCompleted: () => void;
+    toggleAll: (completed: boolean) => void;
+    reorderTodos: (startIndex: number, endIndex: number) => void;
 
     setSearch: (value: string) => void;
     setCategory: (id: string) => void;
 
-    // derived
     filteredTodos: (filter?: FilterType) => Todo[];
     filteredTodosByCategory: () => Todo[];
     getCounts: () => { total: number; completed: number; active: number };
@@ -45,7 +44,6 @@ type TodoStore = {
 export const useTodoStore = create<TodoStore>()(
     persist(
         (set, get) => ({
-            // state
             todos: [],
             search: "",
             activeCategory: "tasks",
@@ -53,7 +51,7 @@ export const useTodoStore = create<TodoStore>()(
             /* -----------------------------
                タスク追加
             ----------------------------- */
-            addTodo: (text) => {
+            addTodo: (text: string) => {
                 const value = text.trim();
                 if (!value) return;
 
@@ -72,7 +70,7 @@ export const useTodoStore = create<TodoStore>()(
             /* -----------------------------
                タスク完了切替
             ----------------------------- */
-            toggleTodo: (id) => {
+            toggleTodo: (id: number) => {
                 set((state) => ({
                     todos: state.todos.map((t) =>
                         t.id === id ? { ...t, completed: !t.completed } : t
@@ -83,7 +81,7 @@ export const useTodoStore = create<TodoStore>()(
             /* -----------------------------
                タスク削除
             ----------------------------- */
-            deleteTodo: (id) => {
+            deleteTodo: (id: number) => {
                 set((state) => ({
                     todos: state.todos.filter((t) => t.id !== id),
                 }));
@@ -99,18 +97,38 @@ export const useTodoStore = create<TodoStore>()(
             },
 
             /* -----------------------------
+               全タスク完了切替
+            ----------------------------- */
+            toggleAll: (completed: boolean) => {
+                set((state) => ({
+                    todos: state.todos.map((t) => ({ ...t, completed })),
+                }));
+            },
+
+            /* -----------------------------
+               タスク並び替え (ドラッグ＆ドロップ用)
+            ----------------------------- */
+            reorderTodos: (startIndex: number, endIndex: number) => {
+                set((state) => {
+                    const todos = [...state.todos];
+                    const [moved] = todos.splice(startIndex, 1);
+                    todos.splice(endIndex, 0, moved);
+                    return { todos };
+                });
+            },
+
+            /* -----------------------------
                検索
             ----------------------------- */
-            setSearch: (value) => set({ search: value }),
+            setSearch: (value: string) => set({ search: value }),
 
             /* -----------------------------
                カテゴリ設定
             ----------------------------- */
-            setCategory: (id) => set({ activeCategory: id }),
+            setCategory: (id: string) => set({ activeCategory: id }),
 
             /* -----------------------------
                タスクフィルタリング
-               filter: all | completed | active
             ----------------------------- */
             filteredTodos: (filter: FilterType = "all") => {
                 const { todos, search } = get();
@@ -155,6 +173,7 @@ export const useTodoStore = create<TodoStore>()(
         }),
         {
             name: "todo-storage", // localStorage key
+            version: 1,
         }
     )
 );
