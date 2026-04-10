@@ -5,6 +5,9 @@ import { CheckCircle2, Star, Calendar, List } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTodoStore } from "@/store/todoStore";
 
+/* -----------------------------
+   Category 定義
+----------------------------- */
 interface Category {
     id: string;
     name: string;
@@ -12,46 +15,57 @@ interface Category {
 }
 
 const categories: Category[] = [
-    { id: "myday", name: "マイデイ", icon: CheckCircle2 },
-    { id: "important", name: "重要", icon: Star },
-    { id: "planned", name: "予定あり", icon: Calendar },
     { id: "tasks", name: "すべてのタスク", icon: List },
+    { id: "active", name: "未完了", icon: CheckCircle2 },
+    { id: "completed", name: "完了済み", icon: CheckCircle2 },
 ];
 
+/* -----------------------------
+   Sidebar Item
+----------------------------- */
 interface SidebarItemProps {
     category: Category;
     active: boolean;
     count?: number;
-    onClick: () => void;
+    onClick: (id: string) => void;
 }
 
-const SidebarItem = memo(function SidebarItem({ category, active, count, onClick }: SidebarItemProps) {
-    const { name, icon: Icon } = category;
+const SidebarItem = memo(function SidebarItem({
+    category,
+    active,
+    count,
+    onClick,
+}: SidebarItemProps) {
+    const { name, icon: Icon, id } = category;
+
+    const handleClick = useCallback(() => {
+        onClick(id);
+    }, [id, onClick]);
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLButtonElement>) => {
             if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                onClick();
+                onClick(id);
             }
         },
-        [onClick]
+        [id, onClick]
     );
 
     return (
         <button
-            onClick={onClick}
+            onClick={handleClick}
             onKeyDown={handleKeyDown}
             role="tab"
             aria-selected={active}
             className={`group relative flex items-center justify-between w-full px-4 py-2 rounded-md text-left
                 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400
                 ${active
-                    ? "bg-blue-500 text-white font-semibold"
+                    ? "bg-blue-500 text-white font-semibold shadow"
                     : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
         >
-            {/* 左バー */}
+            {/* active indicator */}
             {active && (
                 <span className="absolute left-0 top-0 h-full w-1 bg-blue-700 rounded-r-md" />
             )}
@@ -59,14 +73,15 @@ const SidebarItem = memo(function SidebarItem({ category, active, count, onClick
             <div className="flex items-center gap-3">
                 <Icon
                     size={18}
-                    className={`transition-transform duration-200 ${!active && "group-hover:scale-110"}`}
+                    className={`transition-transform duration-200 ${!active && "group-hover:scale-110"
+                        }`}
                 />
                 <span>{name}</span>
             </div>
 
             {count !== undefined && (
                 <span
-                    className={`text-xs px-2 py-0.5 rounded-full transition-colors duration-200
+                    className={`text-xs px-2 py-0.5 rounded-full transition
                         ${active
                             ? "bg-white/20 text-white"
                             : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
@@ -79,17 +94,40 @@ const SidebarItem = memo(function SidebarItem({ category, active, count, onClick
     );
 });
 
+/* -----------------------------
+   Sidebar
+----------------------------- */
 export default function Sidebar() {
     const { activeCategory, setCategory, todos } = useTodoStore();
 
+    /* -----------------------------
+       counts（单次循环优化）
+    ----------------------------- */
     const counts = useMemo(() => {
+        let total = 0;
+        let completed = 0;
+
+        for (const t of todos) {
+            total++;
+            if (t.completed) completed++;
+        }
+
         return {
-            tasks: todos.length,
-            myday: todos.filter((t) => t.myDay).length,
-            important: todos.filter((t) => t.important).length,
-            planned: todos.filter((t) => t.dueDate != null).length,
+            tasks: total,
+            active: total - completed,
+            completed: completed,
         };
     }, [todos]);
+
+    /* -----------------------------
+       stable handler
+    ----------------------------- */
+    const handleSelect = useCallback(
+        (id: string) => {
+            setCategory(id);
+        },
+        [setCategory]
+    );
 
     return (
         <aside className="w-60 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col">
@@ -106,7 +144,7 @@ export default function Sidebar() {
                         category={cat}
                         active={activeCategory === cat.id}
                         count={counts[cat.id as keyof typeof counts]}
-                        onClick={() => setCategory(cat.id)}
+                        onClick={handleSelect}
                     />
                 ))}
             </nav>
