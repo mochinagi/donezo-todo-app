@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 
 /* -----------------------------
-   Todo型定義
+   型定義
 ----------------------------- */
 export interface Todo {
     id: string;
@@ -9,14 +9,8 @@ export interface Todo {
     completed: boolean;
 }
 
-/* -----------------------------
-   フィルタタイプ定義
------------------------------ */
 export type FilterType = "all" | "completed" | "active";
 
-/* -----------------------------
-   localStorage key
------------------------------ */
 const STORAGE_KEY = "donezo-todos";
 
 /* -----------------------------
@@ -24,82 +18,91 @@ const STORAGE_KEY = "donezo-todos";
 ----------------------------- */
 export function useTodoState(initialTodos: Todo[] = []) {
     /* -----------------------------
-       初期化（localStorage優先）
+       初期化（安全な localStorage）
     ----------------------------- */
     const [todos, setTodos] = useState<Todo[]>(() => {
         if (typeof window === "undefined") return initialTodos;
 
-        const stored = localStorage.getItem(STORAGE_KEY);
-        return stored ? JSON.parse(stored) : initialTodos;
+        try {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            return stored ? JSON.parse(stored) : initialTodos;
+        } catch {
+            return initialTodos;
+        }
     });
 
     const [filter, setFilter] = useState<FilterType>("all");
 
     /* -----------------------------
-       Undo用
+       Undo Stack（複数対応）
     ----------------------------- */
-    const lastDeleted = useRef<Todo | null>(null);
+    const undoStack = useRef<Todo[]>([]);
 
     /* -----------------------------
-       保存（自動）
+       保存（軽量debounce）
     ----------------------------- */
+    const saveTimeout = useRef<NodeJS.Timeout | null>(null);
+
     useEffect(() => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+        if (saveTimeout.current) clearTimeout(saveTimeout.current);
+
+        saveTimeout.current = setTimeout(() => {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+        }, 300);
     }, [todos]);
 
     /* -----------------------------
-       タスク追加
+       追加
     ----------------------------- */
     const addTodo = useCallback((text: string) => {
         const trimmed = text.trim();
         if (!trimmed) return;
 
-        const newTodo: Todo = {
-            id: crypto.randomUUID(),
-            text: trimmed,
-            completed: false,
-        };
-
-        setTodos((prev) => [...prev, newTodo]);
+        setTodos((prev) => [
+            ...prev,
+            {
+                id: crypto.randomUUID(),
+                text: trimmed,
+                completed: false,
+            },
+        ]);
     }, []);
 
     /* -----------------------------
-       タスク削除（Undo対応）
+       削除（Undo stack）
     ----------------------------- */
     const deleteTodo = useCallback((id: string) => {
         setTodos((prev) => {
             const target = prev.find((t) => t.id === id);
-            if (target) lastDeleted.current = target;
+            if (target) undoStack.current.push(target);
 
-            return prev.filter((todo) => todo.id !== id);
+            return prev.filter((t) => t.id !== id);
         });
     }, []);
 
     /* -----------------------------
-       Undo
+       Undo（複数）
     ----------------------------- */
     const undoDelete = useCallback(() => {
-        if (!lastDeleted.current) return;
+        const last = undoStack.current.pop();
+        if (!last) return;
 
-        setTodos((prev) => [...prev, lastDeleted.current!]);
-        lastDeleted.current = null;
+        setTodos((prev) => [...prev, last]);
     }, []);
 
     /* -----------------------------
-       完了状態切替
+       Toggle
     ----------------------------- */
     const toggleTodo = useCallback((id: string) => {
         setTodos((prev) =>
-            prev.map((todo) =>
-                todo.id === id
-                    ? { ...todo, completed: !todo.completed }
-                    : todo
+            prev.map((t) =>
+                t.id === id ? { ...t, completed: !t.completed } : t
             )
         );
     }, []);
 
     /* -----------------------------
-       全部トグル
+       全部切替
     ----------------------------- */
     const toggleAll = useCallback(() => {
         setTodos((prev) => {
@@ -116,17 +119,22 @@ export function useTodoState(initialTodos: Todo[] = []) {
         if (!trimmed) return;
 
         setTodos((prev) =>
-            prev.map((todo) =>
-                todo.id === id ? { ...todo, text: trimmed } : todo
+            prev.map((t) =>
+                t.id === id ? { ...t, text: trimmed } : t
             )
         );
     }, []);
 
     /* -----------------------------
-       並び替え（DnD用）
+       並び替え（改善版）
     ----------------------------- */
-    const reorderTodos = useCallback((newTodos: Todo[]) => {
-        setTodos(newTodos);
+    const reorderTodos = useCallback((from: number, to: number) => {
+        setTodos((prev) => {
+            const updated = [...prev];
+            const [moved] = updated.splice(from, 1);
+            updated.splice(to, 0, moved);
+            return updated;
+        });
     }, []);
 
     /* -----------------------------
@@ -134,24 +142,20 @@ export function useTodoState(initialTodos: Todo[] = []) {
     ----------------------------- */
     const clearTodos = useCallback(() => {
         setTodos([]);
+        undoStack.current = [];
     }, []);
 
     /* -----------------------------
-       フィルタ済み
+       フィルタ
     ----------------------------- */
     const filteredTodos = useMemo(() => {
-        switch (filter) {
-            case "completed":
-                return todos.filter((t) => t.completed);
-            case "active":
-                return todos.filter((t) => !t.completed);
-            default:
-                return todos;
-        }
+        if (filter === "completed") return todos.filter((t) => t.completed);
+        if (filter === "active") return todos.filter((t) => !t.completed);
+        return todos;
     }, [todos, filter]);
 
     /* -----------------------------
-       統計（1回ループで計算）
+       統計 + 派生状態
     ----------------------------- */
     const stats = useMemo(() => {
         let completed = 0;
@@ -163,7 +167,13 @@ export function useTodoState(initialTodos: Todo[] = []) {
         const total = todos.length;
         const active = total - completed;
 
-        return { total, completed, active };
+        return {
+            total,
+            completed,
+            active,
+            isEmpty: total === 0,
+            allCompleted: total > 0 && completed === total,
+        };
     }, [todos]);
 
     return {
