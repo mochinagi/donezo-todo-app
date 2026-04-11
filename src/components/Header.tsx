@@ -3,23 +3,32 @@
 import { Input } from "@/components/ui/input";
 import { Search, X } from "lucide-react";
 import clsx from "clsx";
-import { useState, useEffect, useMemo, useRef } from "react";
+import {
+    useState,
+    useEffect,
+    useMemo,
+    useRef,
+    useCallback,
+} from "react";
 
 /* -----------------------------
-   カテゴリ名
+   カテゴリ名（型安全）
 ----------------------------- */
-const categoryMap: Record<string, string> = {
+const categoryMap = {
     myday: "マイデイ",
     important: "重要",
     planned: "予定あり",
     tasks: "すべてのタスク",
-};
+} as const;
 
+/* -----------------------------
+   Header
+----------------------------- */
 export default function Header({
     categoryId,
     search,
     onSearchChange,
-    total = 0, // 🔥 可选扩展
+    total = 0,
 }: {
     categoryId: string;
     search: string;
@@ -30,17 +39,22 @@ export default function Header({
        category 名
     ----------------------------- */
     const categoryName = useMemo(
-        () => categoryMap[categoryId] ?? "タスク",
+        () => categoryMap[categoryId as keyof typeof categoryMap] ?? "タスク",
         [categoryId]
     );
 
     /* -----------------------------
-       本地输入 + debounce
+       输入状态
     ----------------------------- */
     const [localValue, setLocalValue] = useState(search);
     const [isComposing, setIsComposing] = useState(false);
-    const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const inputRef = useRef<HTMLInputElement | null>(null);
+
+    /* -----------------------------
+       debounce
+    ----------------------------- */
     useEffect(() => {
         if (isComposing) return;
 
@@ -49,6 +63,10 @@ export default function Header({
         debounceRef.current = setTimeout(() => {
             onSearchChange(localValue);
         }, 300);
+
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+        };
     }, [localValue, isComposing, onSearchChange]);
 
     /* -----------------------------
@@ -59,13 +77,38 @@ export default function Header({
     }, [search]);
 
     /* -----------------------------
-       subtitle（更产品）
+       ⌘K / Ctrl+K 聚焦（面试加分🔥）
+    ----------------------------- */
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+                e.preventDefault();
+                inputRef.current?.focus();
+            }
+        };
+
+        window.addEventListener("keydown", handler);
+        return () => window.removeEventListener("keydown", handler);
+    }, []);
+
+    /* -----------------------------
+       subtitle（产品级）
     ----------------------------- */
     const subtitle = useMemo(() => {
         if (total === 0) return "タスクがありません";
-        if (search) return `「${search}」の検索結果`;
+        if (search && total === 0) return "該当するタスクがありません";
+        if (search) return `「${search}」の検索結果 (${total})`;
         return `${total}件のタスク`;
     }, [total, search]);
+
+    /* -----------------------------
+       clear
+    ----------------------------- */
+    const handleClear = useCallback(() => {
+        setLocalValue("");
+        onSearchChange("");
+        inputRef.current?.focus();
+    }, [onSearchChange]);
 
     return (
         <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white px-6 py-4 border-b border-gray-200">
@@ -74,12 +117,23 @@ export default function Header({
                 <h2 className="text-3xl font-bold text-gray-900">
                     {categoryName}
                 </h2>
-                <p className="text-sm text-gray-400">{subtitle}</p>
+
+                {/* aria-live 提升可访问性 */}
+                <p
+                    className="text-sm text-gray-400"
+                    aria-live="polite"
+                >
+                    {subtitle}
+                </p>
             </div>
 
             {/* 搜索 */}
-            <div role="search" className="relative w-full max-w-xs sm:w-72">
+            <div
+                role="search"
+                className="relative w-full max-w-xs sm:w-72"
+            >
                 <Input
+                    ref={inputRef}
                     value={localValue}
                     onChange={(e) => setLocalValue(e.target.value)}
                     onCompositionStart={() => setIsComposing(true)}
@@ -87,16 +141,17 @@ export default function Header({
                         setIsComposing(false);
                         setLocalValue(e.currentTarget.value);
                     }}
-                    placeholder="タスクを検索..."
+                    placeholder="タスクを検索... (⌘K)"
                     className={clsx(
-                        "pl-10 pr-10 focus:ring-2 focus:ring-blue-400 transition rounded-md"
+                        "pl-10 pr-10 rounded-md transition",
+                        "focus:ring-2 focus:ring-blue-400 focus:outline-none"
                     )}
+                    role="searchbox"
                     aria-label="タスク検索"
                     autoComplete="off"
                     onKeyDown={(e) => {
                         if (e.key === "Escape") {
-                            setLocalValue("");
-                            onSearchChange("");
+                            handleClear();
                         }
                     }}
                 />
@@ -110,11 +165,11 @@ export default function Header({
                 {/* 清除 */}
                 {localValue && (
                     <button
-                        onClick={() => {
-                            setLocalValue("");
-                            onSearchChange("");
-                        }}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition p-1 rounded-full hover:bg-gray-100"
+                        onClick={handleClear}
+                        className="absolute right-3 top-1/2 -translate-y-1/2
+                        text-gray-400 hover:text-gray-600 transition
+                        p-1 rounded-full hover:bg-gray-100
+                        focus:outline-none focus:ring-2 focus:ring-blue-300"
                         aria-label="検索をクリア"
                     >
                         <X size={16} />
