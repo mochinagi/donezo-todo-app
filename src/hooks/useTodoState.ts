@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 
 /* -----------------------------
@@ -10,6 +12,11 @@ export interface Todo {
 }
 
 export type FilterType = "all" | "completed" | "active";
+
+type UndoItem = {
+    todo: Todo;
+    index: number;
+};
 
 const STORAGE_KEY = "donezo-todos";
 
@@ -34,14 +41,14 @@ export function useTodoState(initialTodos: Todo[] = []) {
     const [filter, setFilter] = useState<FilterType>("all");
 
     /* -----------------------------
-       Undo Stack（複数対応）
+       Undo Stack（位置付き）
     ----------------------------- */
-    const undoStack = useRef<Todo[]>([]);
+    const undoStack = useRef<UndoItem[]>([]);
 
     /* -----------------------------
-       保存（軽量debounce）
+       保存（debounce + cleanup）
     ----------------------------- */
-    const saveTimeout = useRef<NodeJS.Timeout | null>(null);
+    const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         if (saveTimeout.current) clearTimeout(saveTimeout.current);
@@ -49,45 +56,63 @@ export function useTodoState(initialTodos: Todo[] = []) {
         saveTimeout.current = setTimeout(() => {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
         }, 300);
+
+        return () => {
+            if (saveTimeout.current) clearTimeout(saveTimeout.current);
+        };
     }, [todos]);
 
     /* -----------------------------
-       追加
+       追加（防重复）
     ----------------------------- */
     const addTodo = useCallback((text: string) => {
         const trimmed = text.trim();
         if (!trimmed) return;
 
-        setTodos((prev) => [
-            ...prev,
-            {
-                id: crypto.randomUUID(),
-                text: trimmed,
-                completed: false,
-            },
-        ]);
+        setTodos((prev) => {
+            const exists = prev.some((t) => t.text === trimmed);
+            if (exists) return prev;
+
+            return [
+                ...prev,
+                {
+                    id: crypto.randomUUID(),
+                    text: trimmed,
+                    completed: false,
+                },
+            ];
+        });
     }, []);
 
     /* -----------------------------
-       削除（Undo stack）
+       削除（记录 index）
     ----------------------------- */
     const deleteTodo = useCallback((id: string) => {
         setTodos((prev) => {
-            const target = prev.find((t) => t.id === id);
-            if (target) undoStack.current.push(target);
+            const index = prev.findIndex((t) => t.id === id);
+            if (index === -1) return prev;
+
+            undoStack.current.push({
+                todo: prev[index],
+                index,
+            });
 
             return prev.filter((t) => t.id !== id);
         });
     }, []);
 
     /* -----------------------------
-       Undo（複数）
+       Undo（恢复位置）
     ----------------------------- */
     const undoDelete = useCallback(() => {
         const last = undoStack.current.pop();
         if (!last) return;
 
-        setTodos((prev) => [...prev, last]);
+        setTodos((prev) => {
+            const updated = [...prev];
+            updated.splice(last.index, 0, last.todo);
+            return updated;
+        });
     }, []);
 
     /* -----------------------------
@@ -126,10 +151,20 @@ export function useTodoState(initialTodos: Todo[] = []) {
     }, []);
 
     /* -----------------------------
-       並び替え（改善版）
+       並び替え（安全版）
     ----------------------------- */
     const reorderTodos = useCallback((from: number, to: number) => {
         setTodos((prev) => {
+            if (
+                from === to ||
+                from < 0 ||
+                to < 0 ||
+                from >= prev.length ||
+                to >= prev.length
+            ) {
+                return prev;
+            }
+
             const updated = [...prev];
             const [moved] = updated.splice(from, 1);
             updated.splice(to, 0, moved);
@@ -146,31 +181,35 @@ export function useTodoState(initialTodos: Todo[] = []) {
     }, []);
 
     /* -----------------------------
-       フィルタ
+       フィルタ（拡張しやすい）
     ----------------------------- */
+    const filterMap: Record<FilterType, (t: Todo) => boolean> = {
+        all: () => true,
+        completed: (t) => t.completed,
+        active: (t) => !t.completed,
+    };
+
     const filteredTodos = useMemo(() => {
-        if (filter === "completed") return todos.filter((t) => t.completed);
-        if (filter === "active") return todos.filter((t) => !t.completed);
-        return todos;
+        return todos.filter(filterMap[filter]);
     }, [todos, filter]);
 
     /* -----------------------------
-       統計 + 派生状態
+       統計（reduce版）
     ----------------------------- */
     const stats = useMemo(() => {
-        let completed = 0;
-
-        for (const t of todos) {
-            if (t.completed) completed++;
-        }
-
-        const total = todos.length;
-        const active = total - completed;
+        const { total, completed } = todos.reduce(
+            (acc, t) => {
+                acc.total++;
+                if (t.completed) acc.completed++;
+                return acc;
+            },
+            { total: 0, completed: 0 }
+        );
 
         return {
             total,
             completed,
-            active,
+            active: total - completed,
             isEmpty: total === 0,
             allCompleted: total > 0 && completed === total,
         };
