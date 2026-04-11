@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Trash2, CheckCircle2 } from "lucide-react";
+import { Trash2, CheckCircle2, GripVertical } from "lucide-react";
 import { useTodoStore } from "@/store/todoStore";
 
 import {
@@ -15,11 +15,13 @@ import {
     DragStartEvent,
     DragOverlay,
 } from "@dnd-kit/core";
+
 import {
     SortableContext,
     verticalListSortingStrategy,
     useSortable,
 } from "@dnd-kit/sortable";
+
 import { CSS } from "@dnd-kit/utilities";
 
 interface TodoProps {
@@ -33,54 +35,42 @@ interface TodoListProps {
     setSidebarOpen?: (open: boolean) => void;
 }
 
-/** 单个 TodoItem */
-const TodoItem = memo(function TodoItem({ id, text, completed }: TodoProps) {
-    const { toggleTodo, deleteTodo } = useTodoStore();
-
-    const handleToggle = useCallback(() => toggleTodo(id), [id, toggleTodo]);
-
-    const handleDelete = useCallback(() => {
-        deleteTodo(id);
-    }, [id, deleteTodo]);
-
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-        useSortable({ id });
-
-    const style = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-        zIndex: isDragging ? 50 : undefined,
-    };
-
-    const buttonClass = useMemo(
-        () =>
-            completed
-                ? "bg-blue-600 text-white shadow"
-                : "bg-gray-200 text-gray-400 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300",
-        [completed]
-    );
+/** 🔥 纯 UI（不带拖拽逻辑） */
+const TodoItemUI = ({
+    text,
+    completed,
+    onToggle,
+    onDelete,
+    dragging,
+}: any) => {
+    const buttonClass = completed
+        ? "bg-blue-600 text-white shadow"
+        : "bg-gray-200 text-gray-400 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300";
 
     return (
         <Card
-            ref={setNodeRef}
-            style={style}
-            {...attributes}
-            {...listeners}
             className={`flex items-center justify-between transition-all duration-200
-                ${completed ? "opacity-60 scale-[0.98]" : "hover:scale-[1.02]"}
-                ${isDragging ? "shadow-xl rotate-1" : ""}
-            `}
+            ${completed ? "opacity-60 scale-[0.98]" : "hover:scale-[1.02]"}
+            ${dragging ? "shadow-xl rotate-1" : ""}
+        `}
         >
             <CardContent className="flex items-center gap-4 w-full">
+
+                {/* 🟰 Drag Handle */}
+                <div className="cursor-grab text-gray-400 hover:text-gray-600">
+                    <GripVertical size={20} />
+                </div>
+
                 <button
-                    onClick={handleToggle}
+                    onClick={onToggle}
+                    disabled={dragging}
                     className={`p-2 rounded-full transition ${buttonClass}`}
                 >
                     <CheckCircle2 size={20} />
                 </button>
 
                 <span
-                    onClick={handleToggle}
+                    onClick={onToggle}
                     className={`flex-1 cursor-pointer text-lg ${completed
                         ? "line-through text-gray-400"
                         : "hover:text-blue-500"
@@ -90,13 +80,57 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: TodoProps) {
                 </span>
 
                 <button
-                    onClick={handleDelete}
+                    onClick={onDelete}
+                    disabled={dragging}
                     className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition"
                 >
                     <Trash2 size={20} />
                 </button>
             </CardContent>
         </Card>
+    );
+};
+
+/** 🔥 带拖拽逻辑 */
+const TodoItem = memo(function TodoItem({ id, text, completed }: TodoProps) {
+    const { toggleTodo, deleteTodo } = useTodoStore();
+
+    const handleToggle = useCallback(() => toggleTodo(id), [id, toggleTodo]);
+    const handleDelete = useCallback(() => deleteTodo(id), [id, deleteTodo]);
+
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({ id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        willChange: "transform",
+        zIndex: isDragging ? 50 : undefined,
+    };
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            {...attributes}
+        >
+            {/* 👇 只让 handle 可拖拽 */}
+            <div {...listeners}>
+                <TodoItemUI
+                    text={text}
+                    completed={completed}
+                    onToggle={handleToggle}
+                    onDelete={handleDelete}
+                    dragging={isDragging}
+                />
+            </div>
+        </div>
     );
 });
 
@@ -109,7 +143,13 @@ export default function TodoList({
 
     const [activeId, setActiveId] = useState<number | null>(null);
 
-    const sensors = useSensors(useSensor(PointerSensor));
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: {
+                distance: 8, // 👈 防误触关键
+            },
+        })
+    );
 
     const handleDragStart = (event: DragStartEvent) => {
         setActiveId(event.active.id as number);
@@ -119,6 +159,7 @@ export default function TodoList({
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
+
         setActiveId(null);
         setIsDragging?.(false);
 
@@ -129,19 +170,19 @@ export default function TodoList({
         }
     };
 
+    const activeTodo = todos.find((t) => t.id === activeId);
+
     if (todos.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center mt-24 text-gray-500 space-y-4">
+            <div className="flex flex-col items-center justify-center mt-24 text-gray-500 space-y-4 animate-fade-in">
                 <CheckCircle2 size={48} className="opacity-20" />
                 <p className="text-lg font-semibold">まだタスクがありません</p>
                 <p className="text-sm text-gray-400">
-                    新しいタスクを追加して始めましょう ✨
+                    最初のタスクを追加してみよう ✨
                 </p>
             </div>
         );
     }
-
-    const activeTodo = todos.find((t) => t.id === activeId);
 
     return (
         <DndContext
@@ -161,11 +202,15 @@ export default function TodoList({
                 </section>
             </SortableContext>
 
-            {/* 🔥 拖拽浮层 */}
+            {/* 🔥 Drag Overlay */}
             <DragOverlay>
                 {activeTodo ? (
-                    <div className="opacity-80 scale-105">
-                        <TodoItem {...activeTodo} />
+                    <div className="opacity-90 scale-105 pointer-events-none">
+                        <TodoItemUI
+                            text={activeTodo.text}
+                            completed={activeTodo.completed}
+                            dragging
+                        />
                     </div>
                 ) : null}
             </DragOverlay>
