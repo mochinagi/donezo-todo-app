@@ -24,6 +24,8 @@ import {
 
 import { CSS } from "@dnd-kit/utilities";
 
+/* ================= TYPES ================= */
+
 interface TodoProps {
     id: number;
     text: string;
@@ -35,14 +37,25 @@ interface TodoListProps {
     setSidebarOpen?: (open: boolean) => void;
 }
 
-/** 🔥 纯 UI（不带拖拽逻辑） */
-const TodoItemUI = ({
+interface TodoItemUIProps {
+    text: string;
+    completed: boolean;
+    onToggle?: () => void;
+    onDelete?: () => void;
+    dragging?: boolean;
+    dragHandleProps?: any;
+}
+
+/* ================= UI ================= */
+
+const TodoItemUI = memo(function TodoItemUI({
     text,
     completed,
     onToggle,
     onDelete,
     dragging,
-}: any) => {
+    dragHandleProps,
+}: TodoItemUIProps) {
     const buttonClass = completed
         ? "bg-blue-600 text-white shadow"
         : "bg-gray-200 text-gray-400 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300";
@@ -56,8 +69,11 @@ const TodoItemUI = ({
         >
             <CardContent className="flex items-center gap-4 w-full">
 
-                {/* 🟰 Drag Handle */}
-                <div className="cursor-grab text-gray-400 hover:text-gray-600">
+                {/* ✅ 真正独立的拖拽 handle */}
+                <div
+                    {...dragHandleProps}
+                    className="cursor-grab text-gray-400 hover:text-gray-600"
+                >
                     <GripVertical size={20} />
                 </div>
 
@@ -89,9 +105,10 @@ const TodoItemUI = ({
             </CardContent>
         </Card>
     );
-};
+});
 
-/** 🔥 带拖拽逻辑 */
+/* ================= SORTABLE ITEM ================= */
+
 const TodoItem = memo(function TodoItem({ id, text, completed }: TodoProps) {
     const { toggleTodo, deleteTodo } = useTodoStore();
 
@@ -115,24 +132,20 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: TodoProps) {
     };
 
     return (
-        <div
-            ref={setNodeRef}
-            style={style}
-            {...attributes}
-        >
-            {/* 👇 只让 handle 可拖拽 */}
-            <div {...listeners}>
-                <TodoItemUI
-                    text={text}
-                    completed={completed}
-                    onToggle={handleToggle}
-                    onDelete={handleDelete}
-                    dragging={isDragging}
-                />
-            </div>
+        <div ref={setNodeRef} style={style} {...attributes}>
+            <TodoItemUI
+                text={text}
+                completed={completed}
+                onToggle={handleToggle}
+                onDelete={handleDelete}
+                dragging={isDragging}
+                dragHandleProps={listeners} // ✅ 只给 handle
+            />
         </div>
     );
 });
+
+/* ================= LIST ================= */
 
 export default function TodoList({
     setIsDragging,
@@ -146,31 +159,39 @@ export default function TodoList({
     const sensors = useSensors(
         useSensor(PointerSensor, {
             activationConstraint: {
-                distance: 8, // 👈 防误触关键
+                distance: 8,
             },
         })
     );
 
-    const handleDragStart = (event: DragStartEvent) => {
+    const handleDragStart = useCallback((event: DragStartEvent) => {
         setActiveId(event.active.id as number);
         setIsDragging?.(true);
         setSidebarOpen?.(false);
-    };
+    }, []);
 
-    const handleDragEnd = (event: DragEndEvent) => {
+    const handleDragEnd = useCallback((event: DragEndEvent) => {
         const { active, over } = event;
 
         setActiveId(null);
         setIsDragging?.(false);
 
-        if (over && active.id !== over.id) {
+        if (!over) return;
+
+        if (active.id !== over.id) {
             const oldIndex = todos.findIndex((t) => t.id === active.id);
             const newIndex = todos.findIndex((t) => t.id === over.id);
+
+            if (oldIndex === -1 || newIndex === -1) return;
+
             reorderTodos(oldIndex, newIndex);
         }
-    };
+    }, [todos, reorderTodos]);
 
-    const activeTodo = todos.find((t) => t.id === activeId);
+    const activeTodo = useMemo(
+        () => todos.find((t) => t.id === activeId),
+        [activeId, todos]
+    );
 
     if (todos.length === 0) {
         return (
@@ -202,7 +223,6 @@ export default function TodoList({
                 </section>
             </SortableContext>
 
-            {/* 🔥 Drag Overlay */}
             <DragOverlay>
                 {activeTodo ? (
                     <div className="opacity-90 scale-105 pointer-events-none">
