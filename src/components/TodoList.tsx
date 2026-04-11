@@ -14,7 +14,10 @@ import {
     DragEndEvent,
     DragStartEvent,
     DragOverlay,
+    type DraggableAttributes,
 } from "@dnd-kit/core";
+
+import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 
 import {
     SortableContext,
@@ -43,7 +46,7 @@ interface TodoItemUIProps {
     onToggle?: () => void;
     onDelete?: () => void;
     dragging?: boolean;
-    dragHandleProps?: any;
+    dragHandleProps?: DraggableAttributes & SyntheticListenerMap;
 }
 
 /* ================= UI ================= */
@@ -62,17 +65,17 @@ const TodoItemUI = memo(function TodoItemUI({
 
     return (
         <Card
-            className={`flex items-center justify-between transition-all duration-200
+            className={`group flex items-center justify-between transition-all duration-200
             ${completed ? "opacity-60 scale-[0.98]" : "hover:scale-[1.02]"}
-            ${dragging ? "shadow-xl rotate-1" : ""}
+            ${dragging ? "shadow-xl rotate-1 pointer-events-none" : ""}
         `}
         >
             <CardContent className="flex items-center gap-4 w-full">
 
-                {/* ✅ 真正独立的拖拽 handle */}
+                {/* Drag Handle */}
                 <div
                     {...dragHandleProps}
-                    className="cursor-grab text-gray-400 hover:text-gray-600"
+                    className="cursor-grab text-gray-400 hover:text-gray-600 active:cursor-grabbing"
                 >
                     <GripVertical size={20} />
                 </div>
@@ -95,13 +98,16 @@ const TodoItemUI = memo(function TodoItemUI({
                     {text}
                 </span>
 
-                <button
-                    onClick={onDelete}
-                    disabled={dragging}
-                    className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition"
-                >
-                    <Trash2 size={20} />
-                </button>
+                {/* 删除按钮 hover 才出现 */}
+                <div className="opacity-0 group-hover:opacity-100 transition">
+                    <button
+                        onClick={onDelete}
+                        disabled={dragging}
+                        className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition"
+                    >
+                        <Trash2 size={20} />
+                    </button>
+                </div>
             </CardContent>
         </Card>
     );
@@ -132,14 +138,14 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: TodoProps) {
     };
 
     return (
-        <div ref={setNodeRef} style={style} {...attributes}>
+        <div ref={setNodeRef} style={style}>
             <TodoItemUI
                 text={text}
                 completed={completed}
                 onToggle={handleToggle}
                 onDelete={handleDelete}
                 dragging={isDragging}
-                dragHandleProps={listeners} // ✅ 只给 handle
+                dragHandleProps={{ ...listeners, ...attributes }}
             />
         </div>
     );
@@ -196,7 +202,7 @@ export default function TodoList({
     if (todos.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center mt-24 text-gray-500 space-y-4 animate-fade-in">
-                <CheckCircle2 size={48} className="opacity-20" />
+                <CheckCircle2 size={48} className="opacity-20 animate-pulse" />
                 <p className="text-lg font-semibold">まだタスクがありません</p>
                 <p className="text-sm text-gray-400">
                     最初のタスクを追加してみよう ✨
@@ -225,7 +231,7 @@ export default function TodoList({
 
             <DragOverlay>
                 {activeTodo ? (
-                    <div className="opacity-90 scale-105 pointer-events-none">
+                    <div className="opacity-90 scale-105 shadow-2xl rotate-2 pointer-events-none">
                         <TodoItemUI
                             text={activeTodo.text}
                             completed={activeTodo.completed}
