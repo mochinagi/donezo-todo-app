@@ -14,9 +14,9 @@ import {
     DragEndEvent,
     DragStartEvent,
     DragOverlay,
-    type DraggableAttributes,
 } from "@dnd-kit/core";
 
+import type { DraggableAttributes } from "@dnd-kit/core";
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 
 import {
@@ -65,17 +65,17 @@ const TodoItemUI = memo(function TodoItemUI({
 
     return (
         <Card
-            className={`group flex items-center justify-between transition-all duration-200
+            className={`group flex items-center justify-between transition-all duration-200 select-none
             ${completed ? "opacity-60 scale-[0.98]" : "hover:scale-[1.02]"}
             ${dragging ? "shadow-xl rotate-1 pointer-events-none" : ""}
         `}
         >
             <CardContent className="flex items-center gap-4 w-full">
 
-                {/* Drag Handle */}
                 <div
                     {...dragHandleProps}
-                    className="cursor-grab text-gray-400 hover:text-gray-600 active:cursor-grabbing"
+                    className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600"
+                    style={{ touchAction: "none" }}
                 >
                     <GripVertical size={20} />
                 </div>
@@ -83,12 +83,14 @@ const TodoItemUI = memo(function TodoItemUI({
                 <button
                     onClick={onToggle}
                     disabled={dragging}
+                    aria-pressed={completed}
                     className={`p-2 rounded-full transition ${buttonClass}`}
                 >
                     <CheckCircle2 size={20} />
                 </button>
 
                 <span
+                    role="button"
                     onClick={onToggle}
                     className={`flex-1 cursor-pointer text-lg ${completed
                         ? "line-through text-gray-400"
@@ -98,7 +100,6 @@ const TodoItemUI = memo(function TodoItemUI({
                     {text}
                 </span>
 
-                {/* 删除按钮 hover 才出现 */}
                 <div className="opacity-0 group-hover:opacity-100 transition">
                     <button
                         onClick={onDelete}
@@ -164,35 +165,44 @@ export default function TodoList({
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
-            activationConstraint: {
-                distance: 8,
-            },
+            activationConstraint: { distance: 8 },
         })
     );
 
-    const handleDragStart = useCallback((event: DragStartEvent) => {
-        setActiveId(event.active.id as number);
-        setIsDragging?.(true);
-        setSidebarOpen?.(false);
-    }, []);
+    const idToIndex = useMemo(() => {
+        const map = new Map<number, number>();
+        todos.forEach((t, i) => map.set(t.id, i));
+        return map;
+    }, [todos]);
 
-    const handleDragEnd = useCallback((event: DragEndEvent) => {
-        const { active, over } = event;
+    const handleDragStart = useCallback(
+        (event: DragStartEvent) => {
+            setActiveId(event.active.id as number);
+            setIsDragging?.(true);
+            setSidebarOpen?.(false);
+        },
+        [setIsDragging, setSidebarOpen]
+    );
 
-        setActiveId(null);
-        setIsDragging?.(false);
+    const handleDragEnd = useCallback(
+        (event: DragEndEvent) => {
+            const { active, over } = event;
 
-        if (!over) return;
+            setActiveId(null);
+            setIsDragging?.(false);
 
-        if (active.id !== over.id) {
-            const oldIndex = todos.findIndex((t) => t.id === active.id);
-            const newIndex = todos.findIndex((t) => t.id === over.id);
+            if (!over) return;
+            if (active.id === over.id) return;
 
-            if (oldIndex === -1 || newIndex === -1) return;
+            const oldIndex = idToIndex.get(active.id as number);
+            const newIndex = idToIndex.get(over.id as number);
+
+            if (oldIndex == null || newIndex == null) return;
 
             reorderTodos(oldIndex, newIndex);
-        }
-    }, [todos, reorderTodos]);
+        },
+        [idToIndex, reorderTodos, setIsDragging]
+    );
 
     const activeTodo = useMemo(
         () => todos.find((t) => t.id === activeId),
@@ -201,7 +211,7 @@ export default function TodoList({
 
     if (todos.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center mt-24 text-gray-500 space-y-4 animate-fade-in">
+            <div className="flex flex-col items-center justify-center mt-24 text-gray-500 space-y-4 animate-fade-in select-none">
                 <CheckCircle2 size={48} className="opacity-20 animate-pulse" />
                 <p className="text-lg font-semibold">まだタスクがありません</p>
                 <p className="text-sm text-gray-400">
@@ -217,6 +227,10 @@ export default function TodoList({
             collisionDetection={closestCenter}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
+            onDragCancel={() => {
+                setActiveId(null);
+                setIsDragging?.(false);
+            }}
         >
             <SortableContext
                 items={todos.map((t) => t.id)}
