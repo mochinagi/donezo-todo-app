@@ -1,15 +1,17 @@
 "use client";
 
 import { memo, useMemo, useCallback } from "react";
-import { CheckCircle2, Star, Calendar, List } from "lucide-react";
+import { CheckCircle2, List } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTodoStore } from "@/store/todoStore";
 
 /* -----------------------------
-   Category 定義
+   类型
 ----------------------------- */
+type CategoryId = "tasks" | "active" | "completed";
+
 interface Category {
-    id: string;
+    id: CategoryId;
     name: string;
     icon: LucideIcon;
 }
@@ -26,8 +28,8 @@ const categories: Category[] = [
 interface SidebarItemProps {
     category: Category;
     active: boolean;
-    count?: number;
-    onClick: (id: string) => void;
+    count: number;
+    onClick: (id: CategoryId) => void;
 }
 
 const SidebarItem = memo(function SidebarItem({
@@ -54,14 +56,16 @@ const SidebarItem = memo(function SidebarItem({
 
     return (
         <button
+            id={`tab-${id}`}
             onClick={handleClick}
             onKeyDown={handleKeyDown}
             role="tab"
             aria-selected={active}
+            aria-controls={`panel-${id}`}
             className={`group relative flex items-center justify-between w-full px-4 py-2 rounded-md text-left
                 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400
                 ${active
-                    ? "bg-blue-500 text-white font-semibold shadow"
+                    ? "bg-blue-500 text-white font-semibold shadow scale-[1.02]"
                     : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
         >
@@ -79,17 +83,15 @@ const SidebarItem = memo(function SidebarItem({
                 <span>{name}</span>
             </div>
 
-            {count !== undefined && (
-                <span
-                    className={`text-xs px-2 py-0.5 rounded-full transition
-                        ${active
-                            ? "bg-white/20 text-white"
-                            : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
-                        }`}
-                >
-                    {count}
-                </span>
-            )}
+            <span
+                className={`text-xs px-2 py-0.5 rounded-full transition
+                    ${active
+                        ? "bg-white/20 text-white"
+                        : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                    }`}
+            >
+                {count}
+            </span>
         </button>
     );
 });
@@ -98,10 +100,10 @@ const SidebarItem = memo(function SidebarItem({
    Sidebar
 ----------------------------- */
 export default function Sidebar() {
-    const { activeCategory, setCategory, todos } = useTodoStore();
+    const { activeCategory, setActiveCategory, todos } = useTodoStore();
 
     /* -----------------------------
-       counts（单次循环优化）
+       counts（单次循环）
     ----------------------------- */
     const counts = useMemo(() => {
         let total = 0;
@@ -120,13 +122,13 @@ export default function Sidebar() {
     }, [todos]);
 
     /* -----------------------------
-       stable handler
+       handler
     ----------------------------- */
     const handleSelect = useCallback(
-        (id: string) => {
-            setCategory(id);
+        (id: CategoryId) => {
+            setActiveCategory(id);
         },
-        [setCategory]
+        [setActiveCategory]
     );
 
     return (
@@ -143,7 +145,7 @@ export default function Sidebar() {
                         key={cat.id}
                         category={cat}
                         active={activeCategory === cat.id}
-                        count={counts[cat.id as keyof typeof counts]}
+                        count={counts[cat.id]}
                         onClick={handleSelect}
                     />
                 ))}
