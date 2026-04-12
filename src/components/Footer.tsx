@@ -22,16 +22,25 @@ export default function Footer({
     ----------------------------- */
     const { remaining, progress, statusText, progressColor } = useMemo(() => {
         const remaining = total - completed;
-        const progress = total === 0 ? 0 : Math.round((completed / total) * 100);
+        const progress =
+            total === 0 ? 0 : Math.round((completed / total) * 100);
 
         let statusText = "まだ始まっていません";
-        if (progress === 100) statusText = "🎉 すべて完了！";
-        else if (progress >= 80) statusText = "もう少しで完了！";
-        else if (progress >= 50) statusText = "順調に進んでいます";
-        else if (progress > 0) statusText = "スタートしました";
+
+        if (total === 0) {
+            statusText = "タスクを追加してみましょう";
+        } else if (completed === total) {
+            statusText = "🎉 すべて完了！";
+        } else if (progress >= 80) {
+            statusText = "もう少しで完了！";
+        } else if (progress >= 50) {
+            statusText = "順調に進んでいます";
+        } else if (progress > 0) {
+            statusText = "スタートしました";
+        }
 
         const progressColor =
-            progress === 100
+            completed === total && total > 0
                 ? "bg-green-500"
                 : progress >= 80
                     ? "bg-purple-500"
@@ -41,15 +50,23 @@ export default function Footer({
     }, [total, completed]);
 
     /* -----------------------------
-       clear completed（带反馈）
+       clear completed（带 undo）
     ----------------------------- */
     const handleClear = useCallback(() => {
         if (completed === 0) return;
 
+        const prevCompleted = completed;
+
         onClearCompleted();
 
-        toast.success("完了済みタスクを削除しました", {
-            description: "必要ならUndoできます（今后可以扩展）",
+        toast("完了済みタスクを削除しました", {
+            action: {
+                label: "元に戻す",
+                onClick: () => {
+                    // 👉 这里未来可以接 undo 逻辑
+                    toast.info("Undoはまだ実装されていません");
+                },
+            },
         });
     }, [completed, onClearCompleted]);
 
@@ -61,32 +78,36 @@ export default function Footer({
                     {total}件中 {completed}件完了（残り {remaining}件）
                 </span>
 
-                {completed > 0 && (
-                    <button
-                        onClick={handleClear}
-                        className="px-3 py-1 rounded-md text-red-500 hover:bg-red-50 transition-all duration-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-red-300"
-                        aria-label="完了済みタスクを削除"
-                    >
-                        完了済みをクリア
-                    </button>
-                )}
+                <button
+                    onClick={handleClear}
+                    disabled={completed === 0}
+                    className="px-3 py-1 rounded-md text-red-500 hover:bg-red-50 transition-all duration-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                    aria-label="完了済みタスクを削除"
+                >
+                    完了済みをクリア
+                </button>
             </div>
 
             {/* 進捗バー */}
             <div
                 className="w-full bg-gray-200 rounded-full h-2 overflow-hidden"
                 role="progressbar"
+                aria-label="タスク進捗"
                 aria-valuenow={progress}
                 aria-valuemin={0}
                 aria-valuemax={100}
             >
                 <div
                     className={`h-full ${progressColor} transition-all duration-500 ease-out`}
-                    style={{ width: `${progress}%` }}
+                    style={{
+                        width: `${progress}%`,
+                        willChange: "width",
+                        opacity: total === 0 ? 0.3 : 1,
+                    }}
                 />
             </div>
 
-            {/* 进度 & 状态 */}
+            {/* 状态 */}
             <div className="flex justify-between text-xs text-gray-400">
                 <span>{statusText}</span>
                 <span>進捗: {progress}%</span>
