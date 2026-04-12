@@ -12,7 +12,7 @@ import {
 } from "react";
 
 /* -----------------------------
-   カテゴリ名（型安全）
+   カテゴリ名
 ----------------------------- */
 const categoryMap = {
     myday: "マイデイ",
@@ -39,7 +39,10 @@ export default function Header({
        category 名
     ----------------------------- */
     const categoryName = useMemo(
-        () => categoryMap[categoryId as keyof typeof categoryMap] ?? "タスク",
+        () =>
+            categoryMap[
+            categoryId as keyof typeof categoryMap
+            ] ?? "タスク",
         [categoryId]
     );
 
@@ -58,14 +61,18 @@ export default function Header({
     useEffect(() => {
         if (isComposing) return;
 
-        if (debounceRef.current) clearTimeout(debounceRef.current);
+        if (debounceRef.current) {
+            clearTimeout(debounceRef.current);
+        }
 
         debounceRef.current = setTimeout(() => {
             onSearchChange(localValue);
         }, 300);
 
         return () => {
-            if (debounceRef.current) clearTimeout(debounceRef.current);
+            if (debounceRef.current) {
+                clearTimeout(debounceRef.current);
+            }
         };
     }, [localValue, isComposing, onSearchChange]);
 
@@ -77,13 +84,14 @@ export default function Header({
     }, [search]);
 
     /* -----------------------------
-       ⌘K / Ctrl+K 聚焦（面试加分🔥）
+       ⌘K / Ctrl+K
     ----------------------------- */
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
                 e.preventDefault();
                 inputRef.current?.focus();
+                inputRef.current?.select(); // 🔥 全选
             }
         };
 
@@ -92,12 +100,18 @@ export default function Header({
     }, []);
 
     /* -----------------------------
-       subtitle（产品级）
+       subtitle
     ----------------------------- */
     const subtitle = useMemo(() => {
-        if (total === 0) return "タスクがありません";
-        if (search && total === 0) return "該当するタスクがありません";
-        if (search) return `「${search}」の検索結果 (${total})`;
+        if (search && total === 0) {
+            return "該当するタスクがありません";
+        }
+        if (total === 0) {
+            return "タスクがありません";
+        }
+        if (search) {
+            return `「${search}」の検索結果 (${total})`;
+        }
         return `${total}件のタスク`;
     }, [total, search]);
 
@@ -105,6 +119,10 @@ export default function Header({
        clear
     ----------------------------- */
     const handleClear = useCallback(() => {
+        if (debounceRef.current) {
+            clearTimeout(debounceRef.current);
+        }
+
         setLocalValue("");
         onSearchChange("");
         inputRef.current?.focus();
@@ -118,7 +136,6 @@ export default function Header({
                     {categoryName}
                 </h2>
 
-                {/* aria-live 提升可访问性 */}
                 <p
                     className="text-sm text-gray-400"
                     aria-live="polite"
@@ -144,10 +161,12 @@ export default function Header({
                     placeholder="タスクを検索... (⌘K)"
                     className={clsx(
                         "pl-10 pr-10 rounded-md transition",
-                        "focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                        "focus:ring-2 focus:ring-blue-400 focus:outline-none",
+                        localValue && "text-gray-900"
                     )}
                     role="searchbox"
                     aria-label="タスク検索"
+                    aria-controls="todo-list"
                     autoComplete="off"
                     onKeyDown={(e) => {
                         if (e.key === "Escape") {
@@ -156,13 +175,14 @@ export default function Header({
                     }}
                 />
 
-                {/* icon */}
                 <Search
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                    className={clsx(
+                        "absolute left-3 top-1/2 -translate-y-1/2",
+                        localValue ? "text-gray-600" : "text-gray-400"
+                    )}
                     size={16}
                 />
 
-                {/* 清除 */}
                 {localValue && (
                     <button
                         onClick={handleClear}
