@@ -10,7 +10,7 @@ import { toast } from "sonner";
 interface AddTodoProps {
     input: string;
     setInput: (val: string) => void;
-    onAdd: () => Promise<void> | void; // 🔥 支持 async
+    onAdd: () => Promise<void> | void;
 }
 
 export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
@@ -21,7 +21,7 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
     const MAX_LENGTH = 100;
 
     /* -----------------------------
-       校验逻辑
+       校验
     ----------------------------- */
     const validate = useCallback((value: string) => {
         const trimmed = value.trim();
@@ -34,17 +34,21 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
     }, []);
 
     /* -----------------------------
-       实时校验（轻量）
+       实时校验
     ----------------------------- */
     const liveError = useMemo(() => {
         if (!input) return "";
         return validate(input);
     }, [input, validate]);
 
+    const displayError = error || liveError;
+
     /* -----------------------------
        提交
     ----------------------------- */
     const handleAdd = useCallback(async () => {
+        if (isSubmitting) return;
+
         const err = validate(input);
         if (err) {
             setError(err);
@@ -54,7 +58,7 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
         try {
             setIsSubmitting(true);
 
-            await onAdd(); // 🔥 支持 async
+            await onAdd();
 
             toast.success("タスクを追加しました");
 
@@ -62,12 +66,12 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
             setError("");
 
             inputRef.current?.focus();
-        } catch (e) {
+        } catch {
             toast.error("タスクの追加に失敗しました");
         } finally {
             setIsSubmitting(false);
         }
-    }, [input, onAdd, setInput, validate]);
+    }, [input, onAdd, setInput, validate, isSubmitting]);
 
     /* -----------------------------
        输入变化
@@ -77,24 +81,29 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
         if (error) setError("");
     };
 
+    const trimmedLength = input.trim().length;
+
     return (
         <div className="p-6 bg-white border-b border-gray-200 space-y-2">
             <div className="flex gap-3">
                 <div className="relative flex-1">
-                    {/* 输入 */}
+
                     <Input
                         ref={inputRef}
                         value={input}
                         onChange={(e) => handleChange(e.target.value)}
                         placeholder="やることを入力して Enter..."
                         aria-label="タスク入力欄"
-                        aria-describedby={error ? "todo-error" : undefined}
-                        aria-invalid={!!error}
+                        aria-describedby={displayError ? "todo-error" : undefined}
+                        aria-invalid={!!displayError}
                         maxLength={MAX_LENGTH}
                         disabled={isSubmitting}
                         className="pl-10 pr-12 focus:ring-2 focus:ring-blue-400 transition rounded-md"
                         onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                            if (
+                                e.key === "Enter" &&
+                                !e.nativeEvent.isComposing
+                            ) {
                                 handleAdd();
                             }
                             if (e.key === "Escape") {
@@ -103,25 +112,23 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
                             }
                         }}
                         onBlur={() => {
+                            if (!input) return;
                             const err = validate(input);
                             if (err) setError(err);
                         }}
                         autoFocus
                     />
 
-                    {/* icon */}
                     <Plus
                         size={16}
                         className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                     />
 
-                    {/* 字数 */}
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-                        {input.length}/{MAX_LENGTH}
+                        {trimmedLength}/{MAX_LENGTH}
                     </span>
                 </div>
 
-                {/* 按钮 */}
                 <Button
                     type="button"
                     onClick={handleAdd}
@@ -138,16 +145,15 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
                 </Button>
             </div>
 
-            {/* 错误 */}
-            {(error || liveError) && (
+            {displayError && (
                 <div
                     id="todo-error"
                     className="flex items-center gap-1 text-sm text-red-500 transition-opacity duration-200"
                     role="alert"
-                    aria-live="polite"
+                    aria-live="assertive"
                 >
                     <AlertCircle size={14} />
-                    {error || liveError}
+                    {displayError}
                 </div>
             )}
         </div>
