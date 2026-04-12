@@ -1,7 +1,7 @@
 "use client";
 
 import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 
 /* -----------------------------
    Theme 型定義
@@ -21,42 +21,64 @@ export function ThemeProvider({
             attribute="class"
             defaultTheme="system"
             enableSystem
-            disableTransitionOnChange // 🔥 防止切换闪动
+            disableTransitionOnChange
         >
-            <ThemeWrapper>{children}</ThemeWrapper>
+            {children}
         </NextThemesProvider>
     );
 }
 
 /* -----------------------------
-   Mounted 保護（超重要）
+   Theme Ready（防闪烁 hook）
 ----------------------------- */
-function ThemeWrapper({ children }: { children: React.ReactNode }) {
+export function useThemeReady() {
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
         setMounted(true);
     }, []);
 
-    if (!mounted) return null;
-
-    return <>{children}</>;
+    return mounted;
 }
 
 /* -----------------------------
-   Custom Hook（更好用）
+   Custom Hook（增强版）
 ----------------------------- */
 export function useAppTheme() {
-    const { theme, setTheme, resolvedTheme } = useTheme();
+    const { theme, setTheme, resolvedTheme, systemTheme } = useTheme();
+
+    const currentTheme = (theme ?? "system") as AppTheme;
+    const currentResolved = (resolvedTheme ?? "light") as AppTheme;
+
+    const isDark = currentResolved === "dark";
+    const isLight = currentResolved === "light";
+    const isSystem = currentTheme === "system";
 
     const toggleTheme = () => {
-        setTheme(resolvedTheme === "dark" ? "light" : "dark");
+        setTheme(isDark ? "light" : "dark");
     };
 
+    const actions = useMemo(
+        () => ({
+            setLight: () => setTheme("light"),
+            setDark: () => setTheme("dark"),
+            setSystem: () => setTheme("system"),
+        }),
+        [setTheme]
+    );
+
     return {
-        theme: theme as AppTheme,
-        resolvedTheme: resolvedTheme as AppTheme,
+        theme: currentTheme,
+        resolvedTheme: currentResolved,
+        systemTheme: systemTheme as AppTheme,
+
+        isDark,
+        isLight,
+        isSystem,
+
         setTheme: setTheme as (theme: AppTheme) => void,
         toggleTheme,
+
+        ...actions,
     };
 }
