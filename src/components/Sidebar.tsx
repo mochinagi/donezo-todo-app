@@ -16,11 +16,11 @@ interface Category {
     icon: LucideIcon;
 }
 
-const categories: Category[] = [
+const categories = [
     { id: "tasks", name: "すべてのタスク", icon: List },
     { id: "active", name: "未完了", icon: CheckCircle2 },
     { id: "completed", name: "完了済み", icon: CheckCircle2 },
-];
+] as const;
 
 /* -----------------------------
    Sidebar Item
@@ -44,47 +44,40 @@ const SidebarItem = memo(function SidebarItem({
         onClick(id);
     }, [id, onClick]);
 
-    const handleKeyDown = useCallback(
-        (e: React.KeyboardEvent<HTMLButtonElement>) => {
-            if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onClick(id);
-            }
-        },
-        [id, onClick]
-    );
-
     return (
         <button
-            id={`tab-${id}`}
             onClick={handleClick}
-            onKeyDown={handleKeyDown}
             role="tab"
             aria-selected={active}
-            aria-controls={`panel-${id}`}
-            className={`group relative flex items-center justify-between w-full px-4 py-2 rounded-md text-left
-                transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400
+            className={`group relative flex items-center justify-between w-full px-4 py-2.5 rounded-lg text-left
+                transition-all duration-200
                 ${active
-                    ? "bg-blue-500 text-white font-semibold shadow scale-[1.02]"
+                    ? "bg-blue-500 text-white shadow-md"
                     : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
         >
-            {/* active indicator */}
-            {active && (
-                <span className="absolute left-0 top-0 h-full w-1 bg-blue-700 rounded-r-md" />
-            )}
+            {/* 左侧激活条 */}
+            <span
+                className={`absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-r
+                transition-all duration-200
+                ${active ? "bg-blue-700 opacity-100" : "opacity-0 group-hover:opacity-50 bg-gray-400"}
+                `}
+            />
 
+            {/* 左侧内容 */}
             <div className="flex items-center gap-3">
                 <Icon
                     size={18}
-                    className={`transition-transform duration-200 ${!active && "group-hover:scale-110"
-                        }`}
+                    className={`transition-transform duration-200
+                        ${!active && "group-hover:scale-110"}
+                    `}
                 />
-                <span>{name}</span>
+                <span className="text-sm">{name}</span>
             </div>
 
+            {/* count */}
             <span
-                className={`text-xs px-2 py-0.5 rounded-full transition
+                className={`text-xs px-2 py-0.5 rounded-full font-medium transition
                     ${active
                         ? "bg-white/20 text-white"
                         : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
@@ -103,7 +96,7 @@ export default function Sidebar() {
     const { activeCategory, setActiveCategory, todos } = useTodoStore();
 
     /* -----------------------------
-       counts（单次循环）
+       counts（单次循环优化）
     ----------------------------- */
     const counts = useMemo(() => {
         let total = 0;
@@ -117,7 +110,7 @@ export default function Sidebar() {
         return {
             tasks: total,
             active: total - completed,
-            completed: completed,
+            completed,
         };
     }, [todos]);
 
@@ -132,7 +125,7 @@ export default function Sidebar() {
     );
 
     return (
-        <aside className="w-60 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+        <aside className="w-64 bg-white/80 dark:bg-gray-900/80 backdrop-blur border-r border-gray-200 dark:border-gray-700 flex flex-col">
             {/* Logo */}
             <div className="p-6 text-2xl font-extrabold tracking-tight border-b border-gray-200 dark:border-gray-700">
                 <span className="text-blue-500">Done</span>zo
