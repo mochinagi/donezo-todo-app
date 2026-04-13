@@ -28,15 +28,15 @@ export default function Footer({
         let statusText = "まだ始まっていません";
 
         if (total === 0) {
-            statusText = "タスクを追加してみましょう";
+            statusText = "タスクを追加してみましょう ✨";
         } else if (completed === total) {
-            statusText = "🎉 すべて完了！";
+            statusText = "🎉 すべて完了！素晴らしい！";
         } else if (progress >= 80) {
-            statusText = "もう少しで完了！";
+            statusText = "あと少しで完了！🔥";
         } else if (progress >= 50) {
-            statusText = "順調に進んでいます";
+            statusText = "順調に進んでいます 👍";
         } else if (progress > 0) {
-            statusText = "スタートしました";
+            statusText = "スタートしました 💡";
         }
 
         const progressColor =
@@ -50,20 +50,21 @@ export default function Footer({
     }, [total, completed]);
 
     /* -----------------------------
-       clear completed（带 undo）
+       clear completed（带确认 + undo）
     ----------------------------- */
     const handleClear = useCallback(() => {
         if (completed === 0) return;
 
-        const prevCompleted = completed;
+        const confirmed = confirm("完了済みタスクを削除しますか？");
+
+        if (!confirmed) return;
 
         onClearCompleted();
 
-        toast("完了済みタスクを削除しました", {
+        toast.success("完了済みタスクを削除しました", {
             action: {
                 label: "元に戻す",
                 onClick: () => {
-                    // 👉 这里未来可以接 undo 逻辑
                     toast.info("Undoはまだ実装されていません");
                 },
             },
@@ -71,9 +72,13 @@ export default function Footer({
     }, [completed, onClearCompleted]);
 
     return (
-        <footer className="bg-white border-t border-gray-200 px-6 py-4 space-y-4 max-w-2xl mx-auto">
+        <footer
+            className="bg-white/80 dark:bg-gray-900/80 backdrop-blur
+            border-t border-gray-200 dark:border-gray-700
+            px-6 py-4 space-y-4 max-w-2xl mx-auto"
+        >
             {/* 統計 */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm text-gray-600 gap-2">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm text-gray-600 dark:text-gray-300 gap-2">
                 <span>
                     {total}件中 {completed}件完了（残り {remaining}件）
                 </span>
@@ -81,7 +86,12 @@ export default function Footer({
                 <button
                     onClick={handleClear}
                     disabled={completed === 0}
-                    className="px-3 py-1 rounded-md text-red-500 hover:bg-red-50 transition-all duration-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-3 py-1 rounded-md text-red-500
+                    hover:bg-red-50 dark:hover:bg-red-900/30
+                    transition-all duration-200
+                    hover:scale-105 active:scale-95
+                    focus:outline-none focus:ring-2 focus:ring-red-300
+                    disabled:opacity-40 disabled:cursor-not-allowed"
                     aria-label="完了済みタスクを削除"
                 >
                     完了済みをクリア
@@ -90,7 +100,7 @@ export default function Footer({
 
             {/* 進捗バー */}
             <div
-                className="w-full bg-gray-200 rounded-full h-2 overflow-hidden"
+                className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden"
                 role="progressbar"
                 aria-label="タスク進捗"
                 aria-valuenow={progress}
