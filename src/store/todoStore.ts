@@ -12,7 +12,7 @@ export interface Todo {
     completed: boolean;
 }
 
-export type FilterType = "all" | "completed" | "active";
+export type FilterType = "tasks" | "completed" | "active";
 
 /* -----------------------------
    工具：派生计算
@@ -35,9 +35,10 @@ const calcStats = (todos: Todo[]) => {
    Store 类型
 ----------------------------- */
 type TodoStore = {
+    /* state */
     todos: Todo[];
     search: string;
-    activeCategory: string;
+    activeCategory: FilterType;
     lastUpdated: number;
 
     /* derived */
@@ -45,6 +46,7 @@ type TodoStore = {
 
     /* actions */
     addTodo: (text: string) => void;
+    updateTodo: (id: string, text: string) => void;
     toggleTodo: (id: string) => void;
     deleteTodo: (id: string) => void;
     clearCompleted: () => void;
@@ -52,7 +54,7 @@ type TodoStore = {
     reorderTodos: (from: number, to: number) => void;
 
     setSearch: (value: string) => void;
-    setActiveCategory: (id: string) => void;
+    setActiveCategory: (id: FilterType) => void;
 };
 
 /* -----------------------------
@@ -61,16 +63,17 @@ type TodoStore = {
 export const useTodoStore = create<TodoStore>()(
     persist(
         (set, get) => ({
+            /* state */
             todos: [],
             search: "",
             activeCategory: "tasks",
             lastUpdated: Date.now(),
 
             /* -----------------------------
-               派生：过滤
+               派生：过滤（升级🔥）
             ----------------------------- */
             filteredTodos: () => {
-                const { todos, search } = get();
+                const { todos, search, activeCategory } = get();
 
                 const keyword = search.trim().toLowerCase();
 
@@ -79,7 +82,17 @@ export const useTodoStore = create<TodoStore>()(
                         .toLowerCase()
                         .includes(keyword);
 
-                    return matchText;
+                    if (!matchText) return false;
+
+                    if (activeCategory === "active") {
+                        return !t.completed;
+                    }
+
+                    if (activeCategory === "completed") {
+                        return t.completed;
+                    }
+
+                    return true;
                 });
             },
 
@@ -111,6 +124,19 @@ export const useTodoStore = create<TodoStore>()(
                         lastUpdated: Date.now(),
                     };
                 });
+            },
+
+            /* ----------------------------- */
+            updateTodo: (id, text) => {
+                const value = text.trim();
+                if (!value) return;
+
+                set((state) => ({
+                    todos: state.todos.map((t) =>
+                        t.id === id ? { ...t, text: value } : t
+                    ),
+                    lastUpdated: Date.now(),
+                }));
             },
 
             /* ----------------------------- */
@@ -153,13 +179,12 @@ export const useTodoStore = create<TodoStore>()(
             },
 
             /* ----------------------------- */
-            reorderTodos: (from: number, to: number) => {
+            reorderTodos: (from, to) => {
                 set((state) => {
-                    if (from === to) return state;
-
                     const todos = [...state.todos];
 
                     if (
+                        from === to ||
                         from < 0 ||
                         to < 0 ||
                         from >= todos.length ||
@@ -179,15 +204,14 @@ export const useTodoStore = create<TodoStore>()(
             },
 
             /* ----------------------------- */
-            setSearch: (value: string) =>
-                set({ search: value }),
+            setSearch: (value) => set({ search: value }),
 
-            setActiveCategory: (id: string) =>
+            setActiveCategory: (id) =>
                 set({ activeCategory: id }),
         }),
         {
             name: "todo-storage",
-            version: 4,
+            version: 5,
 
             storage: createJSONStorage(() => localStorage),
 
@@ -195,22 +219,21 @@ export const useTodoStore = create<TodoStore>()(
                 todos: state.todos,
             }),
 
-            migrate: (persistedState: unknown, version) => {
+            migrate: (persistedState: unknown) => {
                 const state = persistedState as any;
 
-                if (!state) return { todos: [] };
-
-                if (version < 3) {
-                    return {
-                        ...state,
-                        todos: state.todos.map((t: any) => ({
-                            ...t,
-                            id: String(t.id),
-                        })),
-                    };
+                if (!state || !Array.isArray(state.todos)) {
+                    return { todos: [] };
                 }
 
-                return state;
+                return {
+                    ...state,
+                    todos: state.todos.map((t: any) => ({
+                        id: String(t.id),
+                        text: String(t.text ?? ""),
+                        completed: Boolean(t.completed),
+                    })),
+                };
             },
         }
     )
