@@ -21,7 +21,7 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
     const MAX_LENGTH = 100;
 
     /* -----------------------------
-       校验
+       校验（纯函数）
     ----------------------------- */
     const validate = useCallback((value: string) => {
         const trimmed = value.trim();
@@ -34,7 +34,7 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
     }, []);
 
     /* -----------------------------
-       实时校验
+       实时校验（更温和）
     ----------------------------- */
     const liveError = useMemo(() => {
         if (!input) return "";
@@ -44,12 +44,14 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
     const displayError = error || liveError;
 
     /* -----------------------------
-       提交
+       提交（强化版）
     ----------------------------- */
     const handleAdd = useCallback(async () => {
         if (isSubmitting) return;
 
-        const err = validate(input);
+        const trimmed = input.trim();
+        const err = validate(trimmed);
+
         if (err) {
             setError(err);
             return;
@@ -83,8 +85,18 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
 
     const trimmedLength = input.trim().length;
 
+    /* 字数颜色（UX细节🔥） */
+    const lengthColor = useMemo(() => {
+        if (trimmedLength > MAX_LENGTH) return "text-red-500";
+        if (trimmedLength > MAX_LENGTH * 0.8) return "text-yellow-500";
+        return "text-gray-400";
+    }, [trimmedLength]);
+
     return (
-        <div className="p-6 bg-white border-b border-gray-200 space-y-2">
+        <div
+            className="p-6 bg-white/80 dark:bg-gray-900/80 backdrop-blur
+            border-b border-gray-200 dark:border-gray-700 space-y-2"
+        >
             <div className="flex gap-3">
                 <div className="relative flex-1">
 
@@ -98,7 +110,12 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
                         aria-invalid={!!displayError}
                         maxLength={MAX_LENGTH}
                         disabled={isSubmitting}
-                        className="pl-10 pr-12 focus:ring-2 focus:ring-blue-400 transition rounded-md"
+                        className={clsx(
+                            "pl-10 pr-12 rounded-lg transition-all",
+                            "focus:ring-2 focus:ring-blue-400 focus:outline-none",
+                            "hover:bg-gray-50 dark:hover:bg-gray-800",
+                            displayError && "border-red-400 focus:ring-red-400"
+                        )}
                         onKeyDown={(e) => {
                             if (
                                 e.key === "Enter" &&
@@ -119,23 +136,32 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
                         autoFocus
                     />
 
+                    {/* icon */}
                     <Plus
                         size={16}
                         className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                     />
 
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                    {/* 字数 */}
+                    <span
+                        className={clsx(
+                            "absolute right-3 top-1/2 -translate-y-1/2 text-xs transition",
+                            lengthColor
+                        )}
+                    >
                         {trimmedLength}/{MAX_LENGTH}
                     </span>
                 </div>
 
+                {/* 按钮 */}
                 <Button
                     type="button"
                     onClick={handleAdd}
                     disabled={!input.trim() || isSubmitting || !!liveError}
                     aria-label="タスク追加"
                     className={clsx(
-                        "flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-5 py-2 text-white rounded-md shadow-sm transition",
+                        "flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white",
+                        "px-5 py-2 rounded-lg shadow-sm transition-all",
                         "hover:scale-105 active:scale-95",
                         "disabled:opacity-50 disabled:cursor-not-allowed"
                     )}
@@ -145,6 +171,7 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
                 </Button>
             </div>
 
+            {/* 错误 */}
             {displayError && (
                 <div
                     id="todo-error"
