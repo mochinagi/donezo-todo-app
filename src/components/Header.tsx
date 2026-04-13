@@ -52,28 +52,20 @@ export default function Header({
     const [localValue, setLocalValue] = useState(search);
     const [isComposing, setIsComposing] = useState(false);
 
-    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
+    const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
     /* -----------------------------
-       debounce
+       debounce（优化版）
     ----------------------------- */
     useEffect(() => {
         if (isComposing) return;
 
-        if (debounceRef.current) {
-            clearTimeout(debounceRef.current);
-        }
-
-        debounceRef.current = setTimeout(() => {
+        const timer = setTimeout(() => {
             onSearchChange(localValue);
         }, 300);
 
-        return () => {
-            if (debounceRef.current) {
-                clearTimeout(debounceRef.current);
-            }
-        };
+        return () => clearTimeout(timer);
     }, [localValue, isComposing, onSearchChange]);
 
     /* -----------------------------
@@ -91,7 +83,7 @@ export default function Header({
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
                 e.preventDefault();
                 inputRef.current?.focus();
-                inputRef.current?.select(); // 🔥 全选
+                inputRef.current?.select();
             }
         };
 
@@ -100,18 +92,12 @@ export default function Header({
     }, []);
 
     /* -----------------------------
-       subtitle
+       subtitle（优化语义）
     ----------------------------- */
     const subtitle = useMemo(() => {
-        if (search && total === 0) {
-            return "該当するタスクがありません";
-        }
-        if (total === 0) {
-            return "タスクがありません";
-        }
-        if (search) {
-            return `「${search}」の検索結果 (${total})`;
-        }
+        if (search && total === 0) return "該当するタスクがありません";
+        if (total === 0) return "タスクがありません";
+        if (search) return `「${search}」の検索結果（${total}件）`;
         return `${total}件のタスク`;
     }, [total, search]);
 
@@ -119,20 +105,19 @@ export default function Header({
        clear
     ----------------------------- */
     const handleClear = useCallback(() => {
-        if (debounceRef.current) {
-            clearTimeout(debounceRef.current);
-        }
-
         setLocalValue("");
         onSearchChange("");
         inputRef.current?.focus();
     }, [onSearchChange]);
 
     return (
-        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white px-6 py-4 border-b border-gray-200">
+        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between
+            bg-white/80 dark:bg-gray-900/80 backdrop-blur
+            px-6 py-4 border-b border-gray-200 dark:border-gray-700"
+        >
             {/* 标题 */}
             <div className="flex flex-col mb-3 sm:mb-0">
-                <h2 className="text-3xl font-bold text-gray-900">
+                <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
                     {categoryName}
                 </h2>
 
@@ -160,35 +145,36 @@ export default function Header({
                     }}
                     placeholder="タスクを検索... (⌘K)"
                     className={clsx(
-                        "pl-10 pr-10 rounded-md transition",
+                        "pl-10 pr-10 rounded-lg transition-all",
                         "focus:ring-2 focus:ring-blue-400 focus:outline-none",
-                        localValue && "text-gray-900"
+                        "hover:bg-gray-50 dark:hover:bg-gray-800",
+                        localValue && "text-gray-900 dark:text-gray-100"
                     )}
                     role="searchbox"
                     aria-label="タスク検索"
                     aria-controls="todo-list"
                     autoComplete="off"
                     onKeyDown={(e) => {
-                        if (e.key === "Escape") {
-                            handleClear();
-                        }
+                        if (e.key === "Escape") handleClear();
                     }}
                 />
 
+                {/* 搜索图标 */}
                 <Search
                     className={clsx(
-                        "absolute left-3 top-1/2 -translate-y-1/2",
+                        "absolute left-3 top-1/2 -translate-y-1/2 transition",
                         localValue ? "text-gray-600" : "text-gray-400"
                     )}
                     size={16}
                 />
 
+                {/* clear */}
                 {localValue && (
                     <button
                         onClick={handleClear}
                         className="absolute right-3 top-1/2 -translate-y-1/2
                         text-gray-400 hover:text-gray-600 transition
-                        p-1 rounded-full hover:bg-gray-100
+                        p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700
                         focus:outline-none focus:ring-2 focus:ring-blue-300"
                         aria-label="検索をクリア"
                     >
