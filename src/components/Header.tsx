@@ -22,6 +22,27 @@ const categoryMap = {
 } as const;
 
 /* -----------------------------
+   debounce hook（🔥面试加分点）
+----------------------------- */
+function useDebouncedCallback<T extends (...args: any[]) => void>(
+    callback: T,
+    delay: number
+) {
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+    return useCallback(
+        (...args: Parameters<T>) => {
+            if (timerRef.current) clearTimeout(timerRef.current);
+
+            timerRef.current = setTimeout(() => {
+                callback(...args);
+            }, delay);
+        },
+        [callback, delay]
+    );
+}
+
+/* -----------------------------
    Header
 ----------------------------- */
 export default function Header({
@@ -53,20 +74,21 @@ export default function Header({
     const [isComposing, setIsComposing] = useState(false);
 
     const inputRef = useRef<HTMLInputElement | null>(null);
-    const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
     /* -----------------------------
-       debounce（优化版）
+       debounce
     ----------------------------- */
+    const debouncedSearch = useDebouncedCallback(
+        (value: string) => {
+            onSearchChange(value);
+        },
+        300
+    );
+
     useEffect(() => {
         if (isComposing) return;
-
-        const timer = setTimeout(() => {
-            onSearchChange(localValue);
-        }, 300);
-
-        return () => clearTimeout(timer);
-    }, [localValue, isComposing, onSearchChange]);
+        debouncedSearch(localValue);
+    }, [localValue, isComposing, debouncedSearch]);
 
     /* -----------------------------
        同步外部
@@ -76,14 +98,21 @@ export default function Header({
     }, [search]);
 
     /* -----------------------------
-       ⌘K / Ctrl+K
+       ⌘K / Ctrl+K（优化版🔥）
     ----------------------------- */
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
                 e.preventDefault();
-                inputRef.current?.focus();
-                inputRef.current?.select();
+
+                const input = inputRef.current;
+                if (!input) return;
+
+                input.focus();
+
+                if (input.value) {
+                    input.select();
+                }
             }
         };
 
@@ -92,12 +121,19 @@ export default function Header({
     }, []);
 
     /* -----------------------------
-       subtitle（优化语义）
+       subtitle（结构更清晰）
     ----------------------------- */
     const subtitle = useMemo(() => {
-        if (search && total === 0) return "該当するタスクがありません";
-        if (total === 0) return "タスクがありません";
-        if (search) return `「${search}」の検索結果（${total}件）`;
+        if (total === 0) {
+            return search
+                ? "該当するタスクがありません"
+                : "タスクがありません";
+        }
+
+        if (search) {
+            return `「${search}」の検索結果（${total}件）`;
+        }
+
         return `${total}件のタスク`;
     }, [total, search]);
 
@@ -111,7 +147,8 @@ export default function Header({
     }, [onSearchChange]);
 
     return (
-        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between
+        <header
+            className="flex flex-col sm:flex-row items-start sm:items-center justify-between
             bg-white/80 dark:bg-gray-900/80 backdrop-blur
             px-6 py-4 border-b border-gray-200 dark:border-gray-700"
         >
@@ -143,7 +180,11 @@ export default function Header({
                         setIsComposing(false);
                         setLocalValue(e.currentTarget.value);
                     }}
-                    placeholder="タスクを検索... (⌘K)"
+                    placeholder={
+                        localValue
+                            ? "検索中..."
+                            : "タスクを検索... (⌘K)"
+                    }
                     className={clsx(
                         "pl-10 pr-10 rounded-lg transition-all",
                         "focus:ring-2 focus:ring-blue-400 focus:outline-none",
