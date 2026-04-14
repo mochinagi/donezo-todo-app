@@ -8,68 +8,78 @@
 import { useMemo, useCallback } from "react";
 import { toast } from "sonner";
 
+/* ================= TYPES ================= */
+
+type Todo = {
+    id: number;
+    text: string;
+    completed: boolean;
+};
+
+interface FooterProps {
+    total: number;
+    completed: number;
+    onClearCompleted: () => Todo[];
+    onRestore?: (todos: Todo[]) => void;
+    showPercentage?: boolean;
+}
+
+/* ================= COMPONENT ================= */
+
 export default function Footer({
     total,
     completed,
     onClearCompleted,
-}: {
-    total: number;
-    completed: number;
-    onClearCompleted: () => void;
-}) {
+    onRestore,
+    showPercentage = true,
+}: FooterProps) {
+
     /* -----------------------------
-       derived state
+       derived state（整理版）
     ----------------------------- */
-    const { remaining, progress, statusText, progressColor } = useMemo(() => {
-        const remaining = total - completed;
-        const progress =
-            total === 0 ? 0 : Math.round((completed / total) * 100);
+    const remaining = total - completed;
 
-        let statusText = "まだ始まっていません";
-
-        if (total === 0) {
-            statusText = "タスクを追加してみましょう ✨";
-        } else if (completed === total) {
-            statusText = "🎉 すべて完了！素晴らしい！";
-        } else if (progress >= 80) {
-            statusText = "あと少しで完了！🔥";
-        } else if (progress >= 50) {
-            statusText = "順調に進んでいます 👍";
-        } else if (progress > 0) {
-            statusText = "スタートしました 💡";
-        }
-
-        const progressColor =
-            completed === total && total > 0
-                ? "bg-green-500"
-                : progress >= 80
-                    ? "bg-purple-500"
-                    : "bg-blue-500";
-
-        return { remaining, progress, statusText, progressColor };
+    const progress = useMemo(() => {
+        if (total === 0) return 0;
+        return Math.round((completed / total) * 100);
     }, [total, completed]);
 
+    const statusText = useMemo(() => {
+        if (total === 0) return "タスクを追加してみましょう ✨";
+        if (completed === total) return "🎉 すべて完了！素晴らしい！";
+        if (progress >= 80) return "あと少しで完了！🔥";
+        if (progress >= 50) return "順調に進んでいます 👍";
+        if (progress > 0) return "スタートしました 💡";
+        return "まだ始まっていません";
+    }, [total, completed, progress]);
+
+    const progressColor = useMemo(() => {
+        if (completed === total && total > 0) return "bg-green-500";
+        if (progress >= 80) return "bg-purple-500";
+        return "bg-blue-500";
+    }, [completed, total, progress]);
+
     /* -----------------------------
-       clear completed（带确认 + undo）
+       clear completed（真实 undo🔥）
     ----------------------------- */
     const handleClear = useCallback(() => {
         if (completed === 0) return;
 
-        const confirmed = confirm("完了済みタスクを削除しますか？");
-
-        if (!confirmed) return;
-
-        onClearCompleted();
+        // 👉 先执行删除
+        const removed = onClearCompleted();
 
         toast.success("完了済みタスクを削除しました", {
-            action: {
-                label: "元に戻す",
-                onClick: () => {
-                    toast.info("Undoはまだ実装されていません");
-                },
-            },
+            action: onRestore
+                ? {
+                    label: "元に戻す",
+                    onClick: () => {
+                        onRestore(removed);
+                        toast.success("復元しました");
+                    },
+                }
+                : undefined,
         });
-    }, [completed, onClearCompleted]);
+    }, [completed, onClearCompleted, onRestore]);
 
     return (
         <footer
@@ -111,7 +121,6 @@ export default function Footer({
                     className={`h-full ${progressColor} transition-all duration-500 ease-out`}
                     style={{
                         width: `${progress}%`,
-                        willChange: "width",
                         opacity: total === 0 ? 0.3 : 1,
                     }}
                 />
@@ -120,7 +129,7 @@ export default function Footer({
             {/* 状态 */}
             <div className="flex justify-between text-xs text-gray-400">
                 <span>{statusText}</span>
-                <span>進捗: {progress}%</span>
+                {showPercentage && <span>進捗: {progress}%</span>}
             </div>
         </footer>
     );
