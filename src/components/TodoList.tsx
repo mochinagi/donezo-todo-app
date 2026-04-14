@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Trash2, CheckCircle2, GripVertical } from "lucide-react";
 import { useTodoStore } from "@/store/todoStore";
@@ -25,22 +25,48 @@ import {
 
 import { CSS } from "@dnd-kit/utilities";
 
+/* ================= TYPES ================= */
+
+type Todo = {
+    id: number;
+    text: string;
+    completed: boolean;
+};
+
+type TodoItemUIProps = {
+    text: string;
+    completed: boolean;
+    dragging?: boolean;
+    isEditing: boolean;
+    onToggle: () => void;
+    onDelete: () => void;
+    onEditStart: () => void;
+    onEditSave: (val: string) => void;
+    onEditCancel: () => void;
+    dragHandleProps?: any;
+};
+
 /* ================= UI ================= */
 
 const TodoItemUI = memo(function TodoItemUI({
     text,
     completed,
+    dragging,
+    isEditing,
     onToggle,
     onDelete,
-    dragging,
-    onEdit,
-    isEditing,
-}: any) {
+    onEditStart,
+    onEditSave,
+    onEditCancel,
+    dragHandleProps,
+}: TodoItemUIProps) {
     const [editText, setEditText] = useState(text);
 
-    const buttonClass = completed
-        ? "bg-blue-600 text-white shadow"
-        : "bg-gray-200 text-gray-400 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300";
+    const handleSave = () => {
+        const trimmed = editText.trim();
+        if (trimmed) onEditSave(trimmed);
+        else onEditCancel();
+    };
 
     return (
         <Card
@@ -51,14 +77,22 @@ const TodoItemUI = memo(function TodoItemUI({
         >
             <CardContent className="flex items-center gap-4 w-full">
 
-                <div className="cursor-grab active:cursor-grabbing text-gray-400">
+                {/* ✅ 只允许这里拖 */}
+                <div
+                    {...dragHandleProps}
+                    className="cursor-grab active:cursor-grabbing text-gray-400"
+                >
                     <GripVertical size={20} />
                 </div>
 
                 <button
                     onClick={onToggle}
                     disabled={dragging}
-                    className={`p-2 rounded-full transition ${buttonClass}`}
+                    className={`p-2 rounded-full transition
+                        ${completed
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-200 text-gray-400 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300"
+                        }`}
                 >
                     <CheckCircle2 size={20} />
                 </button>
@@ -68,18 +102,20 @@ const TodoItemUI = memo(function TodoItemUI({
                         autoFocus
                         value={editText}
                         onChange={(e) => setEditText(e.target.value)}
+                        onBlur={handleSave}
                         onKeyDown={(e) => {
-                            if (e.key === "Enter") onEdit(editText);
-                            if (e.key === "Escape") onEdit(null);
+                            if (e.key === "Enter") handleSave();
+                            if (e.key === "Escape") onEditCancel();
                         }}
                         className="flex-1 bg-transparent border-b outline-none"
                     />
                 ) : (
                     <span
-                        onDoubleClick={() => onEdit(text)}
-                        className={`flex-1 cursor-pointer text-lg ${completed
-                            ? "line-through text-gray-400"
-                            : "hover:text-blue-500"
+                        onDoubleClick={onEditStart}
+                        className={`flex-1 cursor-pointer text-lg
+                            ${completed
+                                ? "line-through text-gray-400"
+                                : "hover:text-blue-500"
                             }`}
                     >
                         {text}
@@ -102,7 +138,7 @@ const TodoItemUI = memo(function TodoItemUI({
 
 /* ================= ITEM ================= */
 
-const TodoItem = memo(function TodoItem({ id, text, completed }: any) {
+const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
     const { toggleTodo, deleteTodo, updateTodo } = useTodoStore();
     const [editing, setEditing] = useState(false);
 
@@ -120,8 +156,16 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: any) {
         transition,
     };
 
+    const handleSave = useCallback(
+        (val: string) => {
+            updateTodo(id, val);
+            setEditing(false);
+        },
+        [id, updateTodo]
+    );
+
     return (
-        <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+        <div ref={setNodeRef} style={style}>
             <TodoItemUI
                 text={text}
                 completed={completed}
@@ -129,10 +173,10 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: any) {
                 isEditing={editing}
                 onToggle={() => toggleTodo(id)}
                 onDelete={() => deleteTodo(id)}
-                onEdit={(val: string | null) => {
-                    if (val !== null) updateTodo(id, val);
-                    setEditing(!editing);
-                }}
+                onEditStart={() => setEditing(true)}
+                onEditSave={handleSave}
+                onEditCancel={() => setEditing(false)}
+                dragHandleProps={{ ...attributes, ...listeners }}
             />
         </div>
     );
@@ -140,7 +184,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: any) {
 
 /* ================= LIST ================= */
 
-export default function TodoList({ setIsDragging }: any) {
+export default function TodoList({ setIsDragging }: { setIsDragging?: (v: boolean) => void }) {
     const todos = useTodoStore((s) => s.filteredTodos());
     const reorderTodos = useTodoStore((s) => s.reorderTodos);
 
@@ -197,8 +241,17 @@ export default function TodoList({ setIsDragging }: any) {
 
             <DragOverlay>
                 {activeTodo && (
-                    <div className="opacity-90 scale-105">
-                        <TodoItemUI {...activeTodo} dragging />
+                    <div className="opacity-80 scale-105">
+                        <TodoItemUI
+                            {...activeTodo}
+                            isEditing={false}
+                            onToggle={() => { }}
+                            onDelete={() => { }}
+                            onEditStart={() => { }}
+                            onEditSave={() => { }}
+                            onEditCancel={() => { }}
+                            dragging
+                        />
                     </div>
                 )}
             </DragOverlay>
