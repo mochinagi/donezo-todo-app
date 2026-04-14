@@ -7,23 +7,33 @@ import { useState, useRef, useCallback, useMemo } from "react";
 import clsx from "clsx";
 import { toast } from "sonner";
 
+/* ================= CONST ================= */
+
+const MAX_LENGTH = 100;
+
+/* ================= TYPES ================= */
+
 interface AddTodoProps {
     input: string;
     setInput: (val: string) => void;
-    onAdd: () => Promise<void> | void;
+    onAdd: (text: string) => Promise<void> | void;
 }
 
-export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
+/* ================= COMPONENT ================= */
+
+export default function AddTodo({
+    input,
+    setInput,
+    onAdd,
+}: AddTodoProps) {
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    const MAX_LENGTH = 100;
-
     /* -----------------------------
        校验（纯函数）
     ----------------------------- */
-    const validate = useCallback((value: string) => {
+    const validate = useCallback((value: string): string => {
         const trimmed = value.trim();
 
         if (!trimmed) return "タスク内容を入力してください";
@@ -44,7 +54,7 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
     const displayError = error || liveError;
 
     /* -----------------------------
-       提交（强化版）
+       提交（升级版🔥）
     ----------------------------- */
     const handleAdd = useCallback(async () => {
         if (isSubmitting) return;
@@ -60,13 +70,14 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
         try {
             setIsSubmitting(true);
 
-            await onAdd();
+            await onAdd(trimmed);
 
             toast.success("タスクを追加しました");
 
             setInput("");
             setError("");
 
+            // 🔥 保持输入流畅
             inputRef.current?.focus();
         } catch {
             toast.error("タスクの追加に失敗しました");
@@ -85,7 +96,7 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
 
     const trimmedLength = input.trim().length;
 
-    /* 字数颜色（UX细节🔥） */
+    /* 字数颜色 */
     const lengthColor = useMemo(() => {
         if (trimmedLength > MAX_LENGTH) return "text-red-500";
         if (trimmedLength > MAX_LENGTH * 0.8) return "text-yellow-500";
@@ -104,7 +115,11 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
                         ref={inputRef}
                         value={input}
                         onChange={(e) => handleChange(e.target.value)}
-                        placeholder="やることを入力して Enter..."
+                        placeholder={
+                            isSubmitting
+                                ? "追加中..."
+                                : "やることを入力して Enter..."
+                        }
                         aria-label="タスク入力欄"
                         aria-describedby={displayError ? "todo-error" : undefined}
                         aria-invalid={!!displayError}
@@ -114,6 +129,7 @@ export default function AddTodo({ input, setInput, onAdd }: AddTodoProps) {
                             "pl-10 pr-12 rounded-lg transition-all",
                             "focus:ring-2 focus:ring-blue-400 focus:outline-none",
                             "hover:bg-gray-50 dark:hover:bg-gray-800",
+                            isSubmitting && "cursor-not-allowed opacity-80",
                             displayError && "border-red-400 focus:ring-red-400"
                         )}
                         onKeyDown={(e) => {
