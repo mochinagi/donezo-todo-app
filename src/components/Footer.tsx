@@ -35,13 +35,17 @@ export default function Footer({
 }: FooterProps) {
 
     /* -----------------------------
-       derived state（整理版）
+       derived state（拆分版🔥）
     ----------------------------- */
+
     const remaining = total - completed;
 
     const progress = useMemo(() => {
         if (total === 0) return 0;
-        return Math.round((completed / total) * 100);
+        return Math.min(
+            100,
+            Math.max(0, Math.round((completed / total) * 100))
+        );
     }, [total, completed]);
 
     const statusText = useMemo(() => {
@@ -65,15 +69,15 @@ export default function Footer({
     const handleClear = useCallback(() => {
         if (completed === 0) return;
 
-        // 👉 先执行删除
-        const removed = onClearCompleted();
+        // 删除并拿到被删除数据
+        const removedTodos = onClearCompleted();
 
         toast.success("完了済みタスクを削除しました", {
             action: onRestore
                 ? {
                     label: "元に戻す",
                     onClick: () => {
-                        onRestore(removed);
+                        onRestore(removedTodos);
                         toast.success("復元しました");
                     },
                 }
