@@ -5,13 +5,13 @@
  * タスク統計と完了操作
  */
 
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
 import { toast } from "sonner";
 
 /* ================= TYPES ================= */
 
 type Todo = {
-    id: number;
+    id: string;
     text: string;
     completed: boolean;
 };
@@ -19,7 +19,7 @@ type Todo = {
 interface FooterProps {
     total: number;
     completed: number;
-    onClearCompleted: () => Todo[];
+    onClearCompleted: () => Todo[] | Promise<Todo[]>;
     onRestore?: (todos: Todo[]) => void;
     showPercentage?: boolean;
 }
@@ -33,57 +33,60 @@ export default function Footer({
     onRestore,
     showPercentage = true,
 }: FooterProps) {
+    const [loading, setLoading] = useState(false);
 
-    /* -----------------------------
-       derived state（拆分版🔥）
-    ----------------------------- */
+    /* ---------------- DERIVED ---------------- */
 
-    const remaining = total - completed;
+    const { remaining, progress, statusText, progressColor } = useMemo(() => {
+        const remaining = total - completed;
 
-    const progress = useMemo(() => {
-        if (total === 0) return 0;
-        return Math.min(
-            100,
-            Math.max(0, Math.round((completed / total) * 100))
-        );
+        const progress =
+            total === 0 ? 0 : Math.round((completed / total) * 100);
+
+        let statusText = "まだ始まっていません";
+
+        if (total === 0) statusText = "タスクを追加してみましょう ✨";
+        else if (completed === total)
+            statusText = "🎉 すべて完了！素晴らしい！";
+        else if (progress >= 80) statusText = "あと少しで完了！🔥";
+        else if (progress >= 50) statusText = "順調に進んでいます 👍";
+        else if (progress > 0) statusText = "スタートしました 💡";
+
+        let progressColor = "bg-blue-500";
+        if (completed === total && total > 0) progressColor = "bg-green-500";
+        else if (progress >= 80) progressColor = "bg-purple-500";
+
+        return { remaining, progress, statusText, progressColor };
     }, [total, completed]);
 
-    const statusText = useMemo(() => {
-        if (total === 0) return "タスクを追加してみましょう ✨";
-        if (completed === total) return "🎉 すべて完了！素晴らしい！";
-        if (progress >= 80) return "あと少しで完了！🔥";
-        if (progress >= 50) return "順調に進んでいます 👍";
-        if (progress > 0) return "スタートしました 💡";
-        return "まだ始まっていません";
-    }, [total, completed, progress]);
+    /* ---------------- CLEAR ---------------- */
 
-    const progressColor = useMemo(() => {
-        if (completed === total && total > 0) return "bg-green-500";
-        if (progress >= 80) return "bg-purple-500";
-        return "bg-blue-500";
-    }, [completed, total, progress]);
+    const handleClear = useCallback(async () => {
+        if (completed === 0 || loading) return;
 
-    /* -----------------------------
-       clear completed（真实 undo🔥）
-    ----------------------------- */
-    const handleClear = useCallback(() => {
-        if (completed === 0) return;
+        try {
+            setLoading(true);
 
-        // 删除并拿到被删除数据
-        const removedTodos = onClearCompleted();
+            const removedTodos = await onClearCompleted();
 
-        toast.success("完了済みタスクを削除しました", {
-            action: onRestore
-                ? {
-                    label: "元に戻す",
-                    onClick: () => {
-                        onRestore(removedTodos);
-                        toast.success("復元しました");
-                    },
-                }
-                : undefined,
-        });
-    }, [completed, onClearCompleted, onRestore]);
+            toast.success("完了済みタスクを削除しました", {
+                description: `${removedTodos.length}件削除されました`,
+                action: onRestore
+                    ? {
+                        label: "元に戻す",
+                        onClick: () => {
+                            onRestore(removedTodos);
+                            toast.success("復元しました");
+                        },
+                    }
+                    : undefined,
+            });
+        } catch {
+            toast.error("削除に失敗しました");
+        } finally {
+            setLoading(false);
+        }
+    }, [completed, onClearCompleted, onRestore, loading]);
 
     return (
         <footer
@@ -93,22 +96,22 @@ export default function Footer({
         >
             {/* 統計 */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm text-gray-600 dark:text-gray-300 gap-2">
-                <span>
+                <span aria-live="polite">
                     {total}件中 {completed}件完了（残り {remaining}件）
                 </span>
 
                 <button
                     onClick={handleClear}
-                    disabled={completed === 0}
+                    disabled={completed === 0 || loading}
+                    aria-label="完了済みタスクを削除"
                     className="px-3 py-1 rounded-md text-red-500
                     hover:bg-red-50 dark:hover:bg-red-900/30
                     transition-all duration-200
                     hover:scale-105 active:scale-95
                     focus:outline-none focus:ring-2 focus:ring-red-300
                     disabled:opacity-40 disabled:cursor-not-allowed"
-                    aria-label="完了済みタスクを削除"
                 >
-                    完了済みをクリア
+                    {loading ? "削除中..." : "完了済みをクリア"}
                 </button>
             </div>
 
