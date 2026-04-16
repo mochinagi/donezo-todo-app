@@ -10,13 +10,14 @@ const compat = new FlatCompat({
   baseDirectory: __dirname,
 });
 
-const eslintConfig = [
+export default [
   js.configs.recommended,
 
   ...compat.extends(
     "next/core-web-vitals",
     "next/typescript",
-    "plugin:react-hooks/recommended"
+    "plugin:react-hooks/recommended",
+    "plugin:import/recommended"
   ),
 
   {
@@ -26,14 +27,13 @@ const eslintConfig = [
       "dist",
       "build",
       "out",
+      "coverage",
+      ".env*",
     ],
   },
 
   {
     rules: {
-      /* -----------------------------
-         TypeScript
-      ----------------------------- */
       "@typescript-eslint/no-unused-vars": [
         "warn",
         { argsIgnorePattern: "^_" },
@@ -41,23 +41,19 @@ const eslintConfig = [
 
       "@typescript-eslint/consistent-type-imports": "warn",
 
-      "@typescript-eslint/no-explicit-any": "off", // 可根据你需求改 strict
+      "@typescript-eslint/no-explicit-any": [
+        "warn",
+        { ignoreRestArgs: true },
+      ],
 
-      /* -----------------------------
-         React
-      ----------------------------- */
       "react-hooks/exhaustive-deps": "warn",
 
-      /* -----------------------------
-         General
-      ----------------------------- */
+      "react/jsx-key": "warn",
+
       "no-console": ["warn", { allow: ["warn", "error"] }],
 
       "no-debugger": "warn",
 
-      /* -----------------------------
-         Import（🔥加分项）
-      ----------------------------- */
       "import/order": [
         "warn",
         {
@@ -68,11 +64,14 @@ const eslintConfig = [
             ["parent", "sibling", "index"],
           ],
           "newlines-between": "always",
-          alphabetize: { order: "asc", caseInsensitive: true },
+          alphabetize: {
+            order: "asc",
+            caseInsensitive: true,
+          },
         },
       ],
+
+      "import/no-duplicates": "warn",
     },
   },
 ];
-
-export default eslintConfig;
