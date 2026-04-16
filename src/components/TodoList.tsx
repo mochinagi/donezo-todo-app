@@ -43,7 +43,7 @@ type TodoItemUIProps = {
     onEditStart: () => void;
     onEditSave: (val: string) => void;
     onEditCancel: () => void;
-    dragHandleProps?: any;
+    dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
 };
 
 /* ================= UI ================= */
@@ -62,7 +62,6 @@ const TodoItemUI = memo(function TodoItemUI({
 }: TodoItemUIProps) {
     const [editText, setEditText] = useState(text);
 
-    // ✅ 同步外部 text
     useEffect(() => {
         setEditText(text);
     }, [text]);
@@ -76,13 +75,12 @@ const TodoItemUI = memo(function TodoItemUI({
     return (
         <Card
             className={`group flex items-center justify-between transition-all duration-200 select-none
-            ${completed ? "opacity-60 scale-[0.98]" : "hover:scale-[1.02]"}
-            ${dragging ? "shadow-xl rotate-1 pointer-events-none" : ""}
+            ${completed ? "opacity-60" : "hover:scale-[1.02]"}
+            ${dragging ? "shadow-xl scale-105 opacity-70" : ""}
         `}
         >
             <CardContent className="flex items-center gap-4 w-full">
 
-                {/* 拖拽 handle */}
                 <div
                     {...dragHandleProps}
                     className="cursor-grab active:cursor-grabbing text-gray-400"
@@ -108,7 +106,6 @@ const TodoItemUI = memo(function TodoItemUI({
                         autoFocus
                         value={editText}
                         onChange={(e) => setEditText(e.target.value)}
-                        onBlur={handleSave}
                         onKeyDown={(e) => {
                             if (e.key === "Enter") handleSave();
                             if (e.key === "Escape") onEditCancel();
@@ -163,22 +160,6 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
         transition,
     };
 
-    const handleToggle = useCallback(() => {
-        toggleTodo(id);
-    }, [id, toggleTodo]);
-
-    const handleDelete = useCallback(() => {
-        deleteTodo(id);
-    }, [id, deleteTodo]);
-
-    const handleSave = useCallback(
-        (val: string) => {
-            updateTodo(id, val);
-            setEditing(false);
-        },
-        [id, updateTodo]
-    );
-
     return (
         <div ref={setNodeRef} style={style}>
             <TodoItemUI
@@ -186,10 +167,13 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
                 completed={completed}
                 dragging={isDragging}
                 isEditing={editing}
-                onToggle={handleToggle}
-                onDelete={handleDelete}
+                onToggle={() => toggleTodo(id)}
+                onDelete={() => deleteTodo(id)}
                 onEditStart={() => setEditing(true)}
-                onEditSave={handleSave}
+                onEditSave={(val) => {
+                    updateTodo(id, val);
+                    setEditing(false);
+                }}
                 onEditCancel={() => setEditing(false)}
                 dragHandleProps={{ ...attributes, ...listeners }}
             />
@@ -225,7 +209,7 @@ export default function TodoList({
     };
 
     const handleDragEnd = (event: DragEndEvent) => {
-        const { active, over } = event;
+        const { active, over };
 
         setActiveId(null);
         setIsDragging?.(false);
@@ -252,6 +236,12 @@ export default function TodoList({
                 strategy={verticalListSortingStrategy}
             >
                 <section className="flex-1 p-6 space-y-4 max-w-2xl mx-auto">
+                    {todos.length === 0 && (
+                        <div className="text-center text-gray-400">
+                            No todos yet 👀
+                        </div>
+                    )}
+
                     {todos.map((todo) => (
                         <TodoItem key={todo.id} {...todo} />
                     ))}
