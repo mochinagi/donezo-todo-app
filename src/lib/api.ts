@@ -1,105 +1,118 @@
-/* ================= TYPES ================= */
-
 export type Todo = {
     id: number;
     text: string;
     completed: boolean;
 };
 
-/* ================= CONFIG ================= */
-
 const USE_MOCK = true;
 const BASE_URL = "/api";
-
-/* ================= UTILS ================= */
 
 const delay = (ms: number) =>
     new Promise((res) => setTimeout(res, ms));
 
-const handleResponse = async (res: Response) => {
-    if (!res.ok) {
-        const message = await res.text();
-        throw new Error(message || "API Error");
+/* mock data（带状态） */
+let mockTodos: Todo[] = [
+    { id: 1, text: "Mock Task", completed: false },
+    { id: 2, text: "Learn Zustand", completed: true },
+];
+
+/* request 封装 */
+async function request<T>(
+    url: string,
+    options?: RequestInit
+): Promise<T> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    try {
+        const res = await fetch(url, {
+            ...options,
+            signal: controller.signal,
+            headers: {
+                "Content-Type": "application/json",
+                ...(options?.headers || {}),
+            },
+        });
+
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text || "Request failed");
+        }
+
+        return res.json();
+    } catch (err: any) {
+        if (err.name === "AbortError") {
+            throw new Error("Request timeout");
+        }
+        throw err;
+    } finally {
+        clearTimeout(timeout);
     }
-    return res.json();
-};
+}
 
-/* ================= API ================= */
-
-// GET
+/* GET */
 export const fetchTodos = async (): Promise<Todo[]> => {
     if (USE_MOCK) {
-        await delay(500);
-
-        return [
-            { id: 1, text: "Mock Task", completed: false },
-            { id: 2, text: "Learn Zustand", completed: true },
-        ];
+        await delay(300);
+        return [...mockTodos];
     }
 
-    const res = await fetch(`${BASE_URL}/todos`);
-    return handleResponse(res);
+    return request<Todo[]>(`${BASE_URL}/todos`);
 };
 
-// POST
+/* POST */
 export const addTodo = async (text: string): Promise<Todo> => {
     if (USE_MOCK) {
-        await delay(300);
+        await delay(200);
 
-        return {
+        const newTodo: Todo = {
             id: Date.now(),
             text,
             completed: false,
         };
+
+        mockTodos.unshift(newTodo);
+        return newTodo;
     }
 
-    const res = await fetch(`${BASE_URL}/todos`, {
+    return request<Todo>(`${BASE_URL}/todos`, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
         body: JSON.stringify({ text }),
     });
-
-    return handleResponse(res);
 };
 
-// PATCH
+/* PATCH */
 export const updateTodo = async (
     id: number,
     updates: Partial<Omit<Todo, "id">>
 ): Promise<Todo> => {
     if (USE_MOCK) {
-        await delay(300);
+        await delay(200);
 
-        return {
-            id,
-            text: updates.text ?? "Updated Task",
-            completed: updates.completed ?? false,
-        };
+        mockTodos = mockTodos.map((t) =>
+            t.id === id ? { ...t, ...updates } : t
+        );
+
+        const updated = mockTodos.find((t) => t.id === id)!;
+        return updated;
     }
 
-    const res = await fetch(`${BASE_URL}/todos/${id}`, {
+    return request<Todo>(`${BASE_URL}/todos/${id}`, {
         method: "PATCH",
-        headers: {
-            "Content-Type": "application/json",
-        },
         body: JSON.stringify(updates),
     });
-
-    return handleResponse(res);
 };
 
-// DELETE
+/* DELETE */
 export const deleteTodo = async (id: number): Promise<void> => {
     if (USE_MOCK) {
-        await delay(300);
+        await delay(200);
+
+        mockTodos = mockTodos.filter((t) => t.id !== id);
         return;
     }
 
-    const res = await fetch(`${BASE_URL}/todos/${id}`, {
+    await request(`${BASE_URL}/todos/${id}`, {
         method: "DELETE",
     });
-
-    await handleResponse(res);
 };
