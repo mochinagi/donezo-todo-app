@@ -2,7 +2,7 @@
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, AlertCircle } from "lucide-react";
+import { Plus, AlertCircle, Loader2 } from "lucide-react";
 import { useState, useRef, useCallback, useMemo } from "react";
 import clsx from "clsx";
 import { toast } from "sonner";
@@ -13,10 +13,12 @@ const MAX_LENGTH = 100;
 
 /* ================= TYPES ================= */
 
+type OnAdd = (text: string) => Promise<void> | void;
+
 interface AddTodoProps {
     input: string;
     setInput: (val: string) => void;
-    onAdd: (text: string) => Promise<void> | void;
+    onAdd: OnAdd;
 }
 
 /* ================= COMPONENT ================= */
@@ -28,6 +30,7 @@ export default function AddTodo({
 }: AddTodoProps) {
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [lastSubmitted, setLastSubmitted] = useState("");
 
     const inputRef = useRef<HTMLInputElement>(null);
     const isComposingRef = useRef(false);
@@ -49,16 +52,23 @@ export default function AddTodo({
         return error || validate(input);
     }, [input, error, validate]);
 
+    const trimmed = input.trim();
+    const trimmedLength = trimmed.length;
+
     /* ---------------- ADD ---------------- */
 
     const handleAdd = useCallback(async () => {
         if (isSubmitting) return;
 
-        const trimmed = input.trim();
-        const err = validate(trimmed);
+        const err = validate(input);
 
         if (err) {
             setError(err);
+            return;
+        }
+
+        if (trimmed === lastSubmitted) {
+            toast.info("同じタスクは追加できません");
             return;
         }
 
@@ -69,18 +79,17 @@ export default function AddTodo({
 
             toast.success(`「${trimmed}」を追加しました`);
 
+            setLastSubmitted(trimmed);
             setInput("");
             setError("");
 
-            // 🔥 focus + 选中（体验更好）
             inputRef.current?.focus();
-            inputRef.current?.select();
         } catch {
             toast.error("タスクの追加に失敗しました");
         } finally {
             setIsSubmitting(false);
         }
-    }, [input, onAdd, setInput, validate, isSubmitting]);
+    }, [input, trimmed, lastSubmitted, onAdd, setInput, validate, isSubmitting]);
 
     /* ---------------- INPUT ---------------- */
 
@@ -91,8 +100,6 @@ export default function AddTodo({
         },
         [setInput, error]
     );
-
-    const trimmedLength = input.trim().length;
 
     const lengthColor = useMemo(() => {
         if (trimmedLength > MAX_LENGTH) return "text-red-500";
@@ -177,7 +184,7 @@ export default function AddTodo({
                 <Button
                     type="button"
                     onClick={handleAdd}
-                    disabled={!input.trim() || isSubmitting || !!displayError}
+                    disabled={!trimmed || isSubmitting || !!displayError}
                     aria-label="タスク追加"
                     className={clsx(
                         "flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white",
@@ -186,7 +193,11 @@ export default function AddTodo({
                         "disabled:opacity-50 disabled:cursor-not-allowed"
                     )}
                 >
-                    <Plus size={16} />
+                    {isSubmitting ? (
+                        <Loader2 className="animate-spin" size={16} />
+                    ) : (
+                        <Plus size={16} />
+                    )}
                     {isSubmitting ? "追加中..." : "追加"}
                 </Button>
             </div>
