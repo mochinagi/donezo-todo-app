@@ -28,11 +28,12 @@ export default function AddTodo({
 }: AddTodoProps) {
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const inputRef = useRef<HTMLInputElement>(null);
 
-    /* -----------------------------
-       校验（纯函数）
-    ----------------------------- */
+    const inputRef = useRef<HTMLInputElement>(null);
+    const isComposingRef = useRef(false);
+
+    /* ---------------- VALIDATION ---------------- */
+
     const validate = useCallback((value: string): string => {
         const trimmed = value.trim();
 
@@ -43,19 +44,13 @@ export default function AddTodo({
         return "";
     }, []);
 
-    /* -----------------------------
-       实时校验（更温和）
-    ----------------------------- */
-    const liveError = useMemo(() => {
+    const displayError = useMemo(() => {
         if (!input) return "";
-        return validate(input);
-    }, [input, validate]);
+        return error || validate(input);
+    }, [input, error, validate]);
 
-    const displayError = error || liveError;
+    /* ---------------- ADD ---------------- */
 
-    /* -----------------------------
-       提交（升级版🔥）
-    ----------------------------- */
     const handleAdd = useCallback(async () => {
         if (isSubmitting) return;
 
@@ -72,13 +67,14 @@ export default function AddTodo({
 
             await onAdd(trimmed);
 
-            toast.success("タスクを追加しました");
+            toast.success(`「${trimmed}」を追加しました`);
 
             setInput("");
             setError("");
 
-            // 🔥 保持输入流畅
+            // 🔥 focus + 选中（体验更好）
             inputRef.current?.focus();
+            inputRef.current?.select();
         } catch {
             toast.error("タスクの追加に失敗しました");
         } finally {
@@ -86,22 +82,39 @@ export default function AddTodo({
         }
     }, [input, onAdd, setInput, validate, isSubmitting]);
 
-    /* -----------------------------
-       输入变化
-    ----------------------------- */
-    const handleChange = (value: string) => {
-        setInput(value);
-        if (error) setError("");
-    };
+    /* ---------------- INPUT ---------------- */
+
+    const handleChange = useCallback(
+        (value: string) => {
+            setInput(value);
+            if (error) setError("");
+        },
+        [setInput, error]
+    );
 
     const trimmedLength = input.trim().length;
 
-    /* 字数颜色 */
     const lengthColor = useMemo(() => {
         if (trimmedLength > MAX_LENGTH) return "text-red-500";
         if (trimmedLength > MAX_LENGTH * 0.8) return "text-yellow-500";
         return "text-gray-400";
     }, [trimmedLength]);
+
+    /* ---------------- KEYBOARD ---------------- */
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (isComposingRef.current) return;
+
+        if (e.key === "Enter") {
+            e.preventDefault();
+            handleAdd();
+        }
+
+        if (e.key === "Escape") {
+            setInput("");
+            setError("");
+        }
+    };
 
     return (
         <div
@@ -121,7 +134,6 @@ export default function AddTodo({
                                 : "やることを入力して Enter..."
                         }
                         aria-label="タスク入力欄"
-                        aria-describedby={displayError ? "todo-error" : undefined}
                         aria-invalid={!!displayError}
                         maxLength={MAX_LENGTH}
                         disabled={isSubmitting}
@@ -132,17 +144,12 @@ export default function AddTodo({
                             isSubmitting && "cursor-not-allowed opacity-80",
                             displayError && "border-red-400 focus:ring-red-400"
                         )}
-                        onKeyDown={(e) => {
-                            if (
-                                e.key === "Enter" &&
-                                !e.nativeEvent.isComposing
-                            ) {
-                                handleAdd();
-                            }
-                            if (e.key === "Escape") {
-                                setInput("");
-                                setError("");
-                            }
+                        onKeyDown={handleKeyDown}
+                        onCompositionStart={() => {
+                            isComposingRef.current = true;
+                        }}
+                        onCompositionEnd={() => {
+                            isComposingRef.current = false;
                         }}
                         onBlur={() => {
                             if (!input) return;
@@ -152,13 +159,11 @@ export default function AddTodo({
                         autoFocus
                     />
 
-                    {/* icon */}
                     <Plus
                         size={16}
                         className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                     />
 
-                    {/* 字数 */}
                     <span
                         className={clsx(
                             "absolute right-3 top-1/2 -translate-y-1/2 text-xs transition",
@@ -169,11 +174,10 @@ export default function AddTodo({
                     </span>
                 </div>
 
-                {/* 按钮 */}
                 <Button
                     type="button"
                     onClick={handleAdd}
-                    disabled={!input.trim() || isSubmitting || !!liveError}
+                    disabled={!input.trim() || isSubmitting || !!displayError}
                     aria-label="タスク追加"
                     className={clsx(
                         "flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white",
@@ -187,13 +191,10 @@ export default function AddTodo({
                 </Button>
             </div>
 
-            {/* 错误 */}
             {displayError && (
                 <div
-                    id="todo-error"
-                    className="flex items-center gap-1 text-sm text-red-500 transition-opacity duration-200"
+                    className="flex items-center gap-1 text-sm text-red-500"
                     role="alert"
-                    aria-live="assertive"
                 >
                     <AlertCircle size={14} />
                     {displayError}
