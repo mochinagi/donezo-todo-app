@@ -11,9 +11,7 @@ import {
     useCallback,
 } from "react";
 
-/* -----------------------------
-   カテゴリ名
------------------------------ */
+/* ----------------------------- */
 const categoryMap = {
     myday: "マイデイ",
     important: "重要",
@@ -21,16 +19,14 @@ const categoryMap = {
     tasks: "すべてのタスク",
 } as const;
 
-/* -----------------------------
-   debounce hook（🔥面试加分点）
------------------------------ */
+/* ----------------------------- */
 function useDebouncedCallback<T extends (...args: any[]) => void>(
     callback: T,
     delay: number
 ) {
-    const timerRef = useRef<NodeJS.Timeout | null>(null);
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    return useCallback(
+    const debounced = useCallback(
         (...args: Parameters<T>) => {
             if (timerRef.current) clearTimeout(timerRef.current);
 
@@ -40,11 +36,18 @@ function useDebouncedCallback<T extends (...args: any[]) => void>(
         },
         [callback, delay]
     );
+
+    const cancel = useCallback(() => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+    }, []);
+
+    useEffect(() => cancel, [cancel]);
+
+    return { debounced, cancel };
 }
 
-/* -----------------------------
-   Header
------------------------------ */
+/* ----------------------------- */
+
 export default function Header({
     categoryId,
     search,
@@ -56,9 +59,7 @@ export default function Header({
     onSearchChange: (value: string) => void;
     total?: number;
 }) {
-    /* -----------------------------
-       category 名
-    ----------------------------- */
+    /* ----------------------------- */
     const categoryName = useMemo(
         () =>
             categoryMap[
@@ -67,18 +68,14 @@ export default function Header({
         [categoryId]
     );
 
-    /* -----------------------------
-       输入状态
-    ----------------------------- */
+    /* ----------------------------- */
     const [localValue, setLocalValue] = useState(search);
-    const [isComposing, setIsComposing] = useState(false);
 
     const inputRef = useRef<HTMLInputElement | null>(null);
+    const isComposingRef = useRef(false);
 
-    /* -----------------------------
-       debounce
-    ----------------------------- */
-    const debouncedSearch = useDebouncedCallback(
+    /* ----------------------------- */
+    const { debounced, cancel } = useDebouncedCallback(
         (value: string) => {
             onSearchChange(value);
         },
@@ -86,20 +83,18 @@ export default function Header({
     );
 
     useEffect(() => {
-        if (isComposing) return;
-        debouncedSearch(localValue);
-    }, [localValue, isComposing, debouncedSearch]);
+        if (isComposingRef.current) return;
+        debounced(localValue);
+    }, [localValue, debounced]);
 
-    /* -----------------------------
-       同步外部
-    ----------------------------- */
+    /* 同步（更安全） */
     useEffect(() => {
-        setLocalValue(search);
+        if (search !== localValue) {
+            setLocalValue(search);
+        }
     }, [search]);
 
-    /* -----------------------------
-       ⌘K / Ctrl+K（优化版🔥）
-    ----------------------------- */
+    /* ----------------------------- */
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -108,9 +103,10 @@ export default function Header({
                 const input = inputRef.current;
                 if (!input) return;
 
-                input.focus();
-
-                if (input.value) {
+                if (document.activeElement === input) {
+                    input.blur(); // 🔥 toggle
+                } else {
+                    input.focus();
                     input.select();
                 }
             }
@@ -120,9 +116,7 @@ export default function Header({
         return () => window.removeEventListener("keydown", handler);
     }, []);
 
-    /* -----------------------------
-       subtitle（结构更清晰）
-    ----------------------------- */
+    /* ----------------------------- */
     const subtitle = useMemo(() => {
         if (total === 0) {
             return search
@@ -137,15 +131,15 @@ export default function Header({
         return `${total}件のタスク`;
     }, [total, search]);
 
-    /* -----------------------------
-       clear
-    ----------------------------- */
+    /* ----------------------------- */
     const handleClear = useCallback(() => {
+        cancel();
         setLocalValue("");
         onSearchChange("");
         inputRef.current?.focus();
-    }, [onSearchChange]);
+    }, [onSearchChange, cancel]);
 
+    /* ----------------------------- */
     return (
         <header
             className="flex flex-col sm:flex-row items-start sm:items-center justify-between
@@ -175,9 +169,11 @@ export default function Header({
                     ref={inputRef}
                     value={localValue}
                     onChange={(e) => setLocalValue(e.target.value)}
-                    onCompositionStart={() => setIsComposing(true)}
+                    onCompositionStart={() => {
+                        isComposingRef.current = true;
+                    }}
                     onCompositionEnd={(e) => {
-                        setIsComposing(false);
+                        isComposingRef.current = false;
                         setLocalValue(e.currentTarget.value);
                     }}
                     placeholder={
@@ -188,8 +184,7 @@ export default function Header({
                     className={clsx(
                         "pl-10 pr-10 rounded-lg transition-all",
                         "focus:ring-2 focus:ring-blue-400 focus:outline-none",
-                        "hover:bg-gray-50 dark:hover:bg-gray-800",
-                        localValue && "text-gray-900 dark:text-gray-100"
+                        "hover:bg-gray-50 dark:hover:bg-gray-800"
                     )}
                     role="searchbox"
                     aria-label="タスク検索"
@@ -200,7 +195,6 @@ export default function Header({
                     }}
                 />
 
-                {/* 搜索图标 */}
                 <Search
                     className={clsx(
                         "absolute left-3 top-1/2 -translate-y-1/2 transition",
@@ -209,15 +203,14 @@ export default function Header({
                     size={16}
                 />
 
-                {/* clear */}
                 {localValue && (
                     <button
                         onClick={handleClear}
+                        aria-label="検索をクリア"
                         className="absolute right-3 top-1/2 -translate-y-1/2
                         text-gray-400 hover:text-gray-600 transition
                         p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700
                         focus:outline-none focus:ring-2 focus:ring-blue-300"
-                        aria-label="検索をクリア"
                     >
                         <X size={16} />
                     </button>
