@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Trash2, CheckCircle2, GripVertical } from "lucide-react";
 import { useTodoStore } from "@/store/todoStore";
@@ -62,6 +62,11 @@ const TodoItemUI = memo(function TodoItemUI({
 }: TodoItemUIProps) {
     const [editText, setEditText] = useState(text);
 
+    // ✅ 同步外部 text
+    useEffect(() => {
+        setEditText(text);
+    }, [text]);
+
     const handleSave = () => {
         const trimmed = editText.trim();
         if (trimmed) onEditSave(trimmed);
@@ -77,7 +82,7 @@ const TodoItemUI = memo(function TodoItemUI({
         >
             <CardContent className="flex items-center gap-4 w-full">
 
-                {/* ✅ 只允许这里拖 */}
+                {/* 拖拽 handle */}
                 <div
                     {...dragHandleProps}
                     className="cursor-grab active:cursor-grabbing text-gray-400"
@@ -86,6 +91,7 @@ const TodoItemUI = memo(function TodoItemUI({
                 </div>
 
                 <button
+                    aria-label="toggle todo"
                     onClick={onToggle}
                     disabled={dragging}
                     className={`p-2 rounded-full transition
@@ -124,6 +130,7 @@ const TodoItemUI = memo(function TodoItemUI({
 
                 <div className="opacity-0 group-hover:opacity-100 transition">
                     <button
+                        aria-label="delete todo"
                         onClick={onDelete}
                         disabled={dragging}
                         className="p-2 rounded-md text-gray-400 hover:text-red-500"
@@ -156,6 +163,14 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
         transition,
     };
 
+    const handleToggle = useCallback(() => {
+        toggleTodo(id);
+    }, [id, toggleTodo]);
+
+    const handleDelete = useCallback(() => {
+        deleteTodo(id);
+    }, [id, deleteTodo]);
+
     const handleSave = useCallback(
         (val: string) => {
             updateTodo(id, val);
@@ -171,8 +186,8 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
                 completed={completed}
                 dragging={isDragging}
                 isEditing={editing}
-                onToggle={() => toggleTodo(id)}
-                onDelete={() => deleteTodo(id)}
+                onToggle={handleToggle}
+                onDelete={handleDelete}
                 onEditStart={() => setEditing(true)}
                 onEditSave={handleSave}
                 onEditCancel={() => setEditing(false)}
@@ -184,7 +199,11 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
 
 /* ================= LIST ================= */
 
-export default function TodoList({ setIsDragging }: { setIsDragging?: (v: boolean) => void }) {
+export default function TodoList({
+    setIsDragging,
+}: {
+    setIsDragging?: (v: boolean) => void;
+}) {
     const todos = useTodoStore((s) => s.filteredTodos());
     const reorderTodos = useTodoStore((s) => s.reorderTodos);
 
@@ -241,7 +260,7 @@ export default function TodoList({ setIsDragging }: { setIsDragging?: (v: boolea
 
             <DragOverlay>
                 {activeTodo && (
-                    <div className="opacity-80 scale-105">
+                    <div className="opacity-80 scale-105 cursor-grabbing">
                         <TodoItemUI
                             {...activeTodo}
                             isEditing={false}
