@@ -33,19 +33,6 @@ type Todo = {
     completed: boolean;
 };
 
-type TodoItemUIProps = {
-    text: string;
-    completed: boolean;
-    dragging?: boolean;
-    isEditing: boolean;
-    onToggle: () => void;
-    onDelete: () => void;
-    onEditStart: () => void;
-    onEditSave: (val: string) => void;
-    onEditCancel: () => void;
-    dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
-};
-
 /* ================= UI ================= */
 
 const TodoItemUI = memo(function TodoItemUI({
@@ -59,18 +46,18 @@ const TodoItemUI = memo(function TodoItemUI({
     onEditSave,
     onEditCancel,
     dragHandleProps,
-}: TodoItemUIProps) {
+}: any) {
     const [editText, setEditText] = useState(text);
 
     useEffect(() => {
         setEditText(text);
     }, [text]);
 
-    const handleSave = () => {
+    const handleSave = useCallback(() => {
         const trimmed = editText.trim();
         if (trimmed) onEditSave(trimmed);
         else onEditCancel();
-    };
+    }, [editText, onEditSave, onEditCancel]);
 
     return (
         <Card
@@ -81,13 +68,16 @@ const TodoItemUI = memo(function TodoItemUI({
         >
             <CardContent className="flex items-center gap-4 w-full">
 
+                {/* drag handle */}
                 <div
                     {...dragHandleProps}
                     className="cursor-grab active:cursor-grabbing text-gray-400"
+                    aria-label="Drag todo"
                 >
                     <GripVertical size={20} />
                 </div>
 
+                {/* toggle */}
                 <button
                     aria-label="toggle todo"
                     onClick={onToggle}
@@ -95,17 +85,19 @@ const TodoItemUI = memo(function TodoItemUI({
                     className={`p-2 rounded-full transition
                         ${completed
                             ? "bg-blue-600 text-white"
-                            : "bg-gray-200 text-gray-400 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300"
+                            : "bg-gray-200 text-gray-400 hover:bg-gray-300"
                         }`}
                 >
                     <CheckCircle2 size={20} />
                 </button>
 
+                {/* text / input */}
                 {isEditing ? (
                     <input
                         autoFocus
                         value={editText}
                         onChange={(e) => setEditText(e.target.value)}
+                        onBlur={handleSave}
                         onKeyDown={(e) => {
                             if (e.key === "Enter") handleSave();
                             if (e.key === "Escape") onEditCancel();
@@ -125,6 +117,7 @@ const TodoItemUI = memo(function TodoItemUI({
                     </span>
                 )}
 
+                {/* delete */}
                 <div className="opacity-0 group-hover:opacity-100 transition">
                     <button
                         aria-label="delete todo"
@@ -160,6 +153,17 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
         transition,
     };
 
+    const handleToggle = useCallback(() => toggleTodo(id), [id, toggleTodo]);
+    const handleDelete = useCallback(() => deleteTodo(id), [id, deleteTodo]);
+
+    const handleSave = useCallback(
+        (val: string) => {
+            updateTodo(id, val);
+            setEditing(false);
+        },
+        [id, updateTodo]
+    );
+
     return (
         <div ref={setNodeRef} style={style}>
             <TodoItemUI
@@ -167,13 +171,10 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
                 completed={completed}
                 dragging={isDragging}
                 isEditing={editing}
-                onToggle={() => toggleTodo(id)}
-                onDelete={() => deleteTodo(id)}
+                onToggle={handleToggle}
+                onDelete={handleDelete}
                 onEditStart={() => setEditing(true)}
-                onEditSave={(val) => {
-                    updateTodo(id, val);
-                    setEditing(false);
-                }}
+                onEditSave={handleSave}
                 onEditCancel={() => setEditing(false)}
                 dragHandleProps={{ ...attributes, ...listeners }}
             />
@@ -183,11 +184,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
 
 /* ================= LIST ================= */
 
-export default function TodoList({
-    setIsDragging,
-}: {
-    setIsDragging?: (v: boolean) => void;
-}) {
+export default function TodoList({ setIsDragging }: any) {
     const todos = useTodoStore((s) => s.filteredTodos());
     const reorderTodos = useTodoStore((s) => s.reorderTodos);
 
@@ -203,12 +200,12 @@ export default function TodoList({
         [todos]
     );
 
-    const handleDragStart = (event: DragStartEvent) => {
+    const handleDragStart = useCallback((event: DragStartEvent) => {
         setActiveId(event.active.id as number);
         setIsDragging?.(true);
-    };
+    }, [setIsDragging]);
 
-    const handleDragEnd = (event: DragEndEvent) => {
+    const handleDragEnd = useCallback((event: DragEndEvent) => {
         const { active, over };
 
         setActiveId(null);
@@ -220,7 +217,7 @@ export default function TodoList({
         const newIndex = getIndex(over.id as number);
 
         reorderTodos(oldIndex, newIndex);
-    };
+    }, [getIndex, reorderTodos, setIsDragging]);
 
     const activeTodo = todos.find((t) => t.id === activeId);
 
@@ -237,8 +234,8 @@ export default function TodoList({
             >
                 <section className="flex-1 p-6 space-y-4 max-w-2xl mx-auto">
                     {todos.length === 0 && (
-                        <div className="text-center text-gray-400">
-                            No todos yet 👀
+                        <div className="text-center text-gray-400 text-lg">
+                            ✨ No todos yet — add something!
                         </div>
                     )}
 
@@ -250,7 +247,7 @@ export default function TodoList({
 
             <DragOverlay>
                 {activeTodo && (
-                    <div className="opacity-80 scale-105 cursor-grabbing">
+                    <div className="opacity-90 scale-105 cursor-grabbing">
                         <TodoItemUI
                             {...activeTodo}
                             isEditing={false}
