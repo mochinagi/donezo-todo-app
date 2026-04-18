@@ -38,10 +38,15 @@ function useDebouncedCallback<T extends (...args: any[]) => void>(
     );
 
     const cancel = useCallback(() => {
-        if (timerRef.current) clearTimeout(timerRef.current);
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
     }, []);
 
-    useEffect(() => cancel, [cancel]);
+    useEffect(() => {
+        return () => cancel();
+    }, [cancel]);
 
     return { debounced, cancel };
 }
@@ -70,6 +75,7 @@ export default function Header({
 
     /* ----------------------------- */
     const [localValue, setLocalValue] = useState(search);
+    const syncingRef = useRef(false);
 
     const inputRef = useRef<HTMLInputElement | null>(null);
     const isComposingRef = useRef(false);
@@ -77,6 +83,7 @@ export default function Header({
     /* ----------------------------- */
     const { debounced, cancel } = useDebouncedCallback(
         (value: string) => {
+            syncingRef.current = true;
             onSearchChange(value);
         },
         300
@@ -87,34 +94,46 @@ export default function Header({
         debounced(localValue);
     }, [localValue, debounced]);
 
-    /* 同步（更安全） */
+    /* 同步更安全 */
     useEffect(() => {
-        if (search !== localValue) {
-            setLocalValue(search);
+        if (syncingRef.current) {
+            syncingRef.current = false;
+            return;
         }
+        setLocalValue(search);
     }, [search]);
 
     /* ----------------------------- */
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
+            // ⌘K / Ctrl+K
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
                 e.preventDefault();
+                toggleFocus();
+            }
 
-                const input = inputRef.current;
-                if (!input) return;
-
-                if (document.activeElement === input) {
-                    input.blur(); // 🔥 toggle
-                } else {
-                    input.focus();
-                    input.select();
-                }
+            // "/" 快速搜索
+            if (e.key === "/" && document.activeElement !== inputRef.current) {
+                e.preventDefault();
+                inputRef.current?.focus();
             }
         };
 
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
     }, []);
+
+    const toggleFocus = () => {
+        const input = inputRef.current;
+        if (!input) return;
+
+        if (document.activeElement === input) {
+            input.blur();
+        } else {
+            input.focus();
+            input.select();
+        }
+    };
 
     /* ----------------------------- */
     const subtitle = useMemo(() => {
@@ -176,11 +195,7 @@ export default function Header({
                         isComposingRef.current = false;
                         setLocalValue(e.currentTarget.value);
                     }}
-                    placeholder={
-                        localValue
-                            ? "検索中..."
-                            : "タスクを検索... (⌘K)"
-                    }
+                    placeholder="タスクを検索... (⌘K / /)"
                     className={clsx(
                         "pl-10 pr-10 rounded-lg transition-all",
                         "focus:ring-2 focus:ring-blue-400 focus:outline-none",
@@ -188,10 +203,13 @@ export default function Header({
                     )}
                     role="searchbox"
                     aria-label="タスク検索"
-                    aria-controls="todo-list"
+                    aria-keyshortcuts="Ctrl+K Meta+K /"
                     autoComplete="off"
                     onKeyDown={(e) => {
-                        if (e.key === "Escape") handleClear();
+                        if (e.key === "Escape") {
+                            handleClear();
+                            inputRef.current?.blur();
+                        }
                     }}
                 />
 
