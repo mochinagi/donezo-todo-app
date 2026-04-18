@@ -1,28 +1,55 @@
+"use client";
+
+/* ================= TYPES ================= */
+
 export type Todo = {
     id: number;
     text: string;
     completed: boolean;
 };
 
+type ApiResponse<T> = {
+    data: T;
+    message?: string;
+};
+
+/* ================= CONFIG ================= */
+
 const USE_MOCK = true;
 const BASE_URL = "/api";
+const TIMEOUT = 5000;
+
+/* ================= ERROR ================= */
+
+class APIError extends Error {
+    status: number;
+
+    constructor(message: string, status: number) {
+        super(message);
+        this.status = status;
+    }
+}
+
+/* ================= UTILS ================= */
 
 const delay = (ms: number) =>
     new Promise((res) => setTimeout(res, ms));
 
-/* mock data（带状态） */
+/* ================= MOCK ================= */
+
 let mockTodos: Todo[] = [
     { id: 1, text: "Mock Task", completed: false },
     { id: 2, text: "Learn Zustand", completed: true },
 ];
 
-/* request 封装 */
+/* ================= REQUEST ================= */
+
 async function request<T>(
     url: string,
     options?: RequestInit
 ): Promise<T> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), TIMEOUT);
 
     try {
         const res = await fetch(url, {
@@ -34,21 +61,34 @@ async function request<T>(
             },
         });
 
-        if (!res.ok) {
-            const text = await res.text();
-            throw new Error(text || "Request failed");
+        let data: any = null;
+
+        try {
+            data = await res.json();
+        } catch {
+            // ignore JSON parse error
         }
 
-        return res.json();
+        if (!res.ok) {
+            throw new APIError(
+                data?.message || "Request failed",
+                res.status
+            );
+        }
+
+        return data?.data ?? data;
     } catch (err: any) {
         if (err.name === "AbortError") {
-            throw new Error("Request timeout");
+            throw new APIError("Request timeout", 408);
         }
+
         throw err;
     } finally {
         clearTimeout(timeout);
     }
 }
+
+/* ================= API ================= */
 
 /* GET */
 export const fetchTodos = async (): Promise<Todo[]> => {
@@ -93,8 +133,7 @@ export const updateTodo = async (
             t.id === id ? { ...t, ...updates } : t
         );
 
-        const updated = mockTodos.find((t) => t.id === id)!;
-        return updated;
+        return mockTodos.find((t) => t.id === id)!;
     }
 
     return request<Todo>(`${BASE_URL}/todos/${id}`, {
