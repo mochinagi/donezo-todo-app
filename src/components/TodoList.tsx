@@ -33,6 +33,19 @@ type Todo = {
     completed: boolean;
 };
 
+type TodoItemUIProps = {
+    text: string;
+    completed: boolean;
+    dragging: boolean;
+    isEditing: boolean;
+    onToggle: () => void;
+    onDelete: () => void;
+    onEditStart: () => void;
+    onEditSave: (val: string) => void;
+    onEditCancel: () => void;
+    dragHandleProps: any;
+};
+
 /* ================= UI ================= */
 
 const TodoItemUI = memo(function TodoItemUI({
@@ -46,7 +59,7 @@ const TodoItemUI = memo(function TodoItemUI({
     onEditSave,
     onEditCancel,
     dragHandleProps,
-}: any) {
+}: TodoItemUIProps) {
     const [editText, setEditText] = useState(text);
 
     useEffect(() => {
@@ -55,31 +68,37 @@ const TodoItemUI = memo(function TodoItemUI({
 
     const handleSave = useCallback(() => {
         const trimmed = editText.trim();
-        if (trimmed) onEditSave(trimmed);
-        else onEditCancel();
-    }, [editText, onEditSave, onEditCancel]);
+        if (!trimmed) {
+            setEditText(text);
+            onEditCancel();
+            return;
+        }
+        if (trimmed !== text) {
+            onEditSave(trimmed);
+        } else {
+            onEditCancel();
+        }
+    }, [editText, text, onEditSave, onEditCancel]);
 
     return (
         <Card
             className={`group flex items-center justify-between transition-all duration-200 select-none
             ${completed ? "opacity-60" : "hover:scale-[1.02]"}
-            ${dragging ? "shadow-xl scale-105 opacity-70" : ""}
+            ${dragging ? "shadow-xl scale-105 opacity-80" : ""}
         `}
         >
             <CardContent className="flex items-center gap-4 w-full">
 
-                {/* drag handle */}
+                {/* drag */}
                 <div
                     {...dragHandleProps}
                     className="cursor-grab active:cursor-grabbing text-gray-400"
-                    aria-label="Drag todo"
                 >
                     <GripVertical size={20} />
                 </div>
 
                 {/* toggle */}
                 <button
-                    aria-label="toggle todo"
                     onClick={onToggle}
                     disabled={dragging}
                     className={`p-2 rounded-full transition
@@ -91,13 +110,12 @@ const TodoItemUI = memo(function TodoItemUI({
                     <CheckCircle2 size={20} />
                 </button>
 
-                {/* text / input */}
+                {/* text */}
                 {isEditing ? (
                     <input
                         autoFocus
                         value={editText}
                         onChange={(e) => setEditText(e.target.value)}
-                        onBlur={handleSave}
                         onKeyDown={(e) => {
                             if (e.key === "Enter") handleSave();
                             if (e.key === "Escape") onEditCancel();
@@ -120,7 +138,6 @@ const TodoItemUI = memo(function TodoItemUI({
                 {/* delete */}
                 <div className="opacity-0 group-hover:opacity-100 transition">
                     <button
-                        aria-label="delete todo"
                         onClick={onDelete}
                         disabled={dragging}
                         className="p-2 rounded-md text-gray-400 hover:text-red-500"
@@ -184,14 +201,14 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
 
 /* ================= LIST ================= */
 
-export default function TodoList({ setIsDragging }: any) {
+export default function TodoList({ setIsDragging }: { setIsDragging?: (v: boolean) => void }) {
     const todos = useTodoStore((s) => s.filteredTodos());
     const reorderTodos = useTodoStore((s) => s.reorderTodos);
 
     const [activeId, setActiveId] = useState<number | null>(null);
 
     const sensors = useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+        useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
         useSensor(KeyboardSensor)
     );
 
@@ -235,7 +252,7 @@ export default function TodoList({ setIsDragging }: any) {
                 <section className="flex-1 p-6 space-y-4 max-w-2xl mx-auto">
                     {todos.length === 0 && (
                         <div className="text-center text-gray-400 text-lg">
-                            ✨ No todos yet — add something!
+                            ✨ Nothing here yet. Add your first task.
                         </div>
                     )}
 
@@ -247,7 +264,7 @@ export default function TodoList({ setIsDragging }: any) {
 
             <DragOverlay>
                 {activeTodo && (
-                    <div className="opacity-90 scale-105 cursor-grabbing">
+                    <div className="opacity-90 scale-105 pointer-events-none">
                         <TodoItemUI
                             {...activeTodo}
                             isEditing={false}
