@@ -30,10 +30,12 @@ export default function AddTodo({
 }: AddTodoProps) {
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [lastSubmitted, setLastSubmitted] = useState("");
 
     const inputRef = useRef<HTMLInputElement>(null);
     const isComposingRef = useRef(false);
+
+    // 最近提交缓存（防重复）
+    const recentSetRef = useRef<Set<string>>(new Set());
 
     /* ---------------- VALIDATION ---------------- */
 
@@ -47,13 +49,13 @@ export default function AddTodo({
         return "";
     }, []);
 
-    const displayError = useMemo(() => {
-        if (!input) return "";
-        return error || validate(input);
-    }, [input, error, validate]);
-
     const trimmed = input.trim();
     const trimmedLength = trimmed.length;
+
+    const displayError = useMemo(() => {
+        if (!input) return "";
+        return validate(input);
+    }, [input, validate]);
 
     /* ---------------- ADD ---------------- */
 
@@ -61,13 +63,12 @@ export default function AddTodo({
         if (isSubmitting) return;
 
         const err = validate(input);
-
         if (err) {
             setError(err);
             return;
         }
 
-        if (trimmed === lastSubmitted) {
+        if (recentSetRef.current.has(trimmed)) {
             toast.info("同じタスクは追加できません");
             return;
         }
@@ -79,17 +80,27 @@ export default function AddTodo({
 
             toast.success(`「${trimmed}」を追加しました`);
 
-            setLastSubmitted(trimmed);
+            // 记录最近提交
+            recentSetRef.current.add(trimmed);
+            if (recentSetRef.current.size > 5) {
+                const first = recentSetRef.current.values().next().value;
+                recentSetRef.current.delete(first);
+            }
+
             setInput("");
             setError("");
 
-            inputRef.current?.focus();
+            // focus 回输入框
+            requestAnimationFrame(() => {
+                inputRef.current?.focus();
+            });
+
         } catch {
             toast.error("タスクの追加に失敗しました");
         } finally {
             setIsSubmitting(false);
         }
-    }, [input, trimmed, lastSubmitted, onAdd, setInput, validate, isSubmitting]);
+    }, [input, trimmed, onAdd, setInput, validate, isSubmitting]);
 
     /* ---------------- INPUT ---------------- */
 
@@ -161,7 +172,7 @@ export default function AddTodo({
                         onBlur={() => {
                             if (!input) return;
                             const err = validate(input);
-                            if (err) setError(err);
+                            setError(err);
                         }}
                         autoFocus
                     />
@@ -173,7 +184,7 @@ export default function AddTodo({
 
                     <span
                         className={clsx(
-                            "absolute right-3 top-1/2 -translate-y-1/2 text-xs transition",
+                            "absolute right-3 top-1/2 -translate-y-1/2 text-xs",
                             lengthColor
                         )}
                     >
@@ -185,7 +196,6 @@ export default function AddTodo({
                     type="button"
                     onClick={handleAdd}
                     disabled={!trimmed || isSubmitting || !!displayError}
-                    aria-label="タスク追加"
                     className={clsx(
                         "flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white",
                         "px-5 py-2 rounded-lg shadow-sm transition-all",
@@ -206,6 +216,7 @@ export default function AddTodo({
                 <div
                     className="flex items-center gap-1 text-sm text-red-500"
                     role="alert"
+                    aria-live="assertive"
                 >
                     <AlertCircle size={14} />
                     {displayError}
