@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 
+/* ================= TYPES ================= */
+
 export interface Todo {
     id: string;
     text: string;
@@ -23,6 +25,8 @@ type UndoAction =
     | { type: "reorder"; payload: { from: number; to: number } }
     | { type: "clear"; payload: { removed: Todo[] } };
 
+/* ================= CONST ================= */
+
 const STORAGE_KEY = "donezo-todos";
 const MAX_UNDO = 50;
 
@@ -31,6 +35,8 @@ const filterMap: Record<FilterType, (t: Todo) => boolean> = {
     completed: (t) => t.completed,
     active: (t) => !t.completed,
 };
+
+/* ================= UTILS ================= */
 
 function safeParseTodos(value: string | null): Todo[] {
     try {
@@ -53,27 +59,38 @@ function saveTodos(todos: Todo[]) {
     } catch { }
 }
 
-function pushUndo(stack: React.MutableRefObject<UndoAction[]>, action: UndoAction) {
-    stack.current.push(action);
-    if (stack.current.length > MAX_UNDO) {
-        stack.current.shift();
+function generateId() {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+        return crypto.randomUUID();
     }
+    return Math.random().toString(36).slice(2);
 }
+
+/* ================= HOOK ================= */
 
 export function useTodoState(initialTodos: Todo[] = []) {
     const [todos, setTodos] = useState<Todo[]>(() => {
         if (typeof window === "undefined") return initialTodos;
-
         const stored = safeParseTodos(localStorage.getItem(STORAGE_KEY));
         return stored.length ? stored : initialTodos;
     });
 
     const [filter, setFilter] = useState<FilterType>("all");
+    const [undoCount, setUndoCount] = useState(0);
 
     const undoStack = useRef<UndoAction[]>([]);
-
     const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    /* ---------------- undo helper ---------------- */
+    const record = useCallback((action: UndoAction) => {
+        undoStack.current.push(action);
+        if (undoStack.current.length > MAX_UNDO) {
+            undoStack.current.shift();
+        }
+        setUndoCount(undoStack.current.length);
+    }, []);
+
+    /* ---------------- persist ---------------- */
     useEffect(() => {
         if (saveTimeout.current) clearTimeout(saveTimeout.current);
 
@@ -82,53 +99,56 @@ export function useTodoState(initialTodos: Todo[] = []) {
         }, 300);
 
         return () => {
-            if (saveTimeout.current) clearTimeout(saveTimeout.current);
+            if (saveTimeout.current) {
+                clearTimeout(saveTimeout.current);
+                saveTodos(todos); // flush
+            }
         };
     }, [todos]);
+
+    /* ---------------- actions ---------------- */
 
     const addTodo = useCallback((text: string) => {
         const trimmed = text.trim();
         if (!trimmed) return;
 
-        const id = crypto.randomUUID();
-
         setTodos((prev) => {
-            if (prev.some((t) => t.text === trimmed)) return prev;
+            if (prev.some((t) => t.text.toLowerCase() === trimmed.toLowerCase()))
+                return prev;
 
-            pushUndo(undoStack, { type: "add", payload: { id } });
+            const id = generateId();
+
+            record({ type: "add", payload: { id } });
 
             return [{ id, text: trimmed, completed: false }, ...prev];
         });
-    }, []);
+    }, [record]);
 
     const deleteTodo = useCallback((id: string) => {
         setTodos((prev) => {
             const index = prev.findIndex((t) => t.id === id);
             if (index === -1) return prev;
 
-            pushUndo(undoStack, {
+            record({
                 type: "delete",
                 payload: { todo: prev[index], index },
             });
 
             return prev.filter((t) => t.id !== id);
         });
-    }, []);
+    }, [record]);
 
     const toggleTodo = useCallback((id: string) => {
         setTodos((prev) =>
             prev.map((t) => {
                 if (t.id !== id) return t;
 
-                pushUndo(undoStack, {
-                    type: "toggle",
-                    payload: { prev: t },
-                });
+                record({ type: "toggle", payload: { prev: t } });
 
                 return { ...t, completed: !t.completed };
             })
         );
-    }, []);
+    }, [record]);
 
     const editTodo = useCallback((id: string, text: string) => {
         const trimmed = text.trim();
@@ -136,27 +156,20 @@ export function useTodoState(initialTodos: Todo[] = []) {
 
         setTodos((prev) =>
             prev.map((t) => {
-                if (t.id !== id) return t;
-                if (t.text === trimmed) return t;
+                if (t.id !== id || t.text === trimmed) return t;
 
-                pushUndo(undoStack, {
-                    type: "edit",
-                    payload: { prev: t },
-                });
+                record({ type: "edit", payload: { prev: t } });
 
                 return { ...t, text: trimmed };
             })
         );
-    }, []);
+    }, [record]);
 
     const reorderTodos = useCallback((from: number, to: number) => {
         setTodos((prev) => {
             if (from === to || from < 0 || to < 0) return prev;
 
-            pushUndo(undoStack, {
-                type: "reorder",
-                payload: { from, to },
-            });
+            record({ type: "reorder", payload: { from, to } });
 
             const updated = [...prev];
             const [moved] = updated.splice(from, 1);
@@ -164,25 +177,24 @@ export function useTodoState(initialTodos: Todo[] = []) {
 
             return updated;
         });
-    }, []);
+    }, [record]);
 
     const clearCompleted = useCallback(() => {
         setTodos((prev) => {
             const removed = prev.filter((t) => t.completed);
             if (!removed.length) return prev;
 
-            pushUndo(undoStack, {
-                type: "clear",
-                payload: { removed },
-            });
+            record({ type: "clear", payload: { removed } });
 
             return prev.filter((t) => !t.completed);
         });
-    }, []);
+    }, [record]);
 
     const undo = useCallback(() => {
         const action = undoStack.current.pop();
         if (!action) return;
+
+        setUndoCount(undoStack.current.length);
 
         setTodos((prev) => {
             switch (action.type) {
@@ -216,26 +228,37 @@ export function useTodoState(initialTodos: Todo[] = []) {
         });
     }, []);
 
+    /* ---------------- derived ---------------- */
+
     const filteredTodos = useMemo(
         () => todos.filter(filterMap[filter]),
         [todos, filter]
     );
 
     const stats = useMemo(() => {
-        const total = todos.length;
-        const completed = todos.filter((t) => t.completed).length;
-
-        return {
-            total,
-            completed,
-            active: total - completed,
-            completionRate: total ? Math.round((completed / total) * 100) : 0,
-            hasCompleted: completed > 0,
-            hasActive: total - completed > 0,
-        };
+        return todos.reduce(
+            (acc, t) => {
+                acc.total++;
+                if (t.completed) acc.completed++;
+                return acc;
+            },
+            {
+                total: 0,
+                completed: 0,
+                active: 0,
+                completionRate: 0,
+                hasCompleted: false,
+                hasActive: false,
+            }
+        );
     }, [todos]);
 
-    const canUndo = undoStack.current.length > 0;
+    stats.active = stats.total - stats.completed;
+    stats.completionRate = stats.total
+        ? Math.round((stats.completed / stats.total) * 100)
+        : 0;
+    stats.hasCompleted = stats.completed > 0;
+    stats.hasActive = stats.active > 0;
 
     return {
         todos,
@@ -248,7 +271,7 @@ export function useTodoState(initialTodos: Todo[] = []) {
         reorderTodos,
         clearCompleted,
         undo,
-        canUndo,
+        canUndo: undoCount > 0,
         filteredTodos,
         stats,
     };
