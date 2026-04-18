@@ -1,12 +1,13 @@
 "use client";
 
-import { memo, useMemo, useCallback, useRef, useEffect } from "react";
+import { memo, useMemo, useCallback, useRef } from "react";
 import { CheckCircle2, List } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTodoStore } from "@/store/todoStore";
+import { shallow } from "zustand/shallow";
 
 /* ----------------------------- */
-/* 类型（🔥统一 store 类型） */
+/* TYPES */
 type CategoryId = "tasks" | "active" | "completed";
 
 interface Category {
@@ -16,7 +17,7 @@ interface Category {
 }
 
 /* ----------------------------- */
-/* 配置（🔥可扩展） */
+/* CONFIG */
 const categories: Category[] = [
     { id: "tasks", name: "すべてのタスク", icon: List },
     { id: "active", name: "未完了", icon: CheckCircle2 },
@@ -24,28 +25,31 @@ const categories: Category[] = [
 ];
 
 /* ----------------------------- */
-/* Sidebar Item */
+/* ITEM */
 interface SidebarItemProps {
     category: Category;
     active: boolean;
     count: number;
-    onClick: (id: CategoryId) => void;
+    onSelect: (id: CategoryId) => void;
+    buttonRef?: (el: HTMLButtonElement | null) => void;
 }
 
 const SidebarItem = memo(function SidebarItem({
     category,
     active,
     count,
-    onClick,
+    onSelect,
+    buttonRef,
 }: SidebarItemProps) {
     const { name, icon: Icon, id } = category;
 
     const handleClick = useCallback(() => {
-        onClick(id);
-    }, [id, onClick]);
+        onSelect(id);
+    }, [id, onSelect]);
 
     return (
         <button
+            ref={buttonRef}
             onClick={handleClick}
             role="tab"
             aria-selected={active}
@@ -57,7 +61,6 @@ const SidebarItem = memo(function SidebarItem({
                     : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
         >
-            {/* 激活条 */}
             <span
                 className={`absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-r
                 transition-all duration-200
@@ -65,16 +68,12 @@ const SidebarItem = memo(function SidebarItem({
             />
 
             <div className="flex items-center gap-3">
-                <Icon
-                    size={18}
-                    className={`transition-transform duration-200
-                        ${!active && "group-hover:scale-110"}`}
-                />
+                <Icon size={18} />
                 <span className="text-sm">{name}</span>
             </div>
 
             <span
-                className={`text-xs px-2 py-0.5 rounded-full font-medium transition
+                className={`text-xs px-2 py-0.5 rounded-full font-medium
                     ${active
                         ? "bg-white/20 text-white"
                         : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"}
@@ -88,13 +87,18 @@ const SidebarItem = memo(function SidebarItem({
 });
 
 /* ----------------------------- */
-/* Sidebar */
+/* SIDEBAR */
 export default function Sidebar() {
-    const todos = useTodoStore((s) => s.todos);
-    const activeCategory = useTodoStore((s) => s.activeCategory);
-    const setActiveCategory = useTodoStore((s) => s.setActiveCategory);
+    const { todos, activeCategory, setActiveCategory } = useTodoStore(
+        (s) => ({
+            todos: s.todos,
+            activeCategory: s.activeCategory,
+            setActiveCategory: s.setActiveCategory,
+        }),
+        shallow
+    );
 
-    const itemRefs = useRef<HTMLButtonElement[]>([]);
+    const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
     /* ---------------- counts ---------------- */
     const counts = useMemo(() => {
@@ -113,7 +117,7 @@ export default function Sidebar() {
         };
     }, [todos]);
 
-    /* ---------------- click ---------------- */
+    /* ---------------- select ---------------- */
     const handleSelect = useCallback(
         (id: CategoryId) => {
             setActiveCategory(id);
@@ -121,10 +125,12 @@ export default function Sidebar() {
         [setActiveCategory]
     );
 
-    /* ---------------- keyboard nav（🔥加分点） ---------------- */
-    useEffect(() => {
-        const handler = (e: KeyboardEvent) => {
+    /* ---------------- keyboard nav ---------------- */
+    const handleKeyDown = useCallback(
+        (e: React.KeyboardEvent) => {
             if (!["ArrowUp", "ArrowDown"].includes(e.key)) return;
+
+            e.preventDefault();
 
             const index = categories.findIndex(
                 (c) => c.id === activeCategory
@@ -134,9 +140,7 @@ export default function Sidebar() {
 
             if (e.key === "ArrowDown") {
                 nextIndex = (index + 1) % categories.length;
-            }
-
-            if (e.key === "ArrowUp") {
+            } else {
                 nextIndex =
                     (index - 1 + categories.length) % categories.length;
             }
@@ -145,11 +149,9 @@ export default function Sidebar() {
             setActiveCategory(next.id);
 
             itemRefs.current[nextIndex]?.focus();
-        };
-
-        window.addEventListener("keydown", handler);
-        return () => window.removeEventListener("keydown", handler);
-    }, [activeCategory, setActiveCategory]);
+        },
+        [activeCategory, setActiveCategory]
+    );
 
     return (
         <aside className="w-64 bg-white/80 dark:bg-gray-900/80 backdrop-blur border-r border-gray-200 dark:border-gray-700 flex flex-col">
@@ -159,18 +161,20 @@ export default function Sidebar() {
             </div>
 
             {/* Navigation */}
-            <nav role="tablist" className="flex-1 p-4 space-y-2">
+            <nav
+                role="tablist"
+                onKeyDown={handleKeyDown}
+                className="flex-1 p-4 space-y-2"
+            >
                 {categories.map((cat, index) => (
-                    <div key={cat.id} ref={(el) => {
-                        if (el) itemRefs.current[index] = el.querySelector("button")!;
-                    }}>
-                        <SidebarItem
-                            category={cat}
-                            active={activeCategory === cat.id}
-                            count={counts[cat.id]}
-                            onClick={handleSelect}
-                        />
-                    </div>
+                    <SidebarItem
+                        key={cat.id}
+                        category={cat}
+                        active={activeCategory === cat.id}
+                        count={counts[cat.id]}
+                        onSelect={handleSelect}
+                        buttonRef={(el) => (itemRefs.current[index] = el)}
+                    />
                 ))}
             </nav>
         </aside>
