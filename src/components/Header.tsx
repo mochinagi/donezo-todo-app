@@ -6,7 +6,6 @@ import clsx from "clsx";
 import {
     useState,
     useEffect,
-    useMemo,
     useRef,
     useCallback,
 } from "react";
@@ -19,8 +18,10 @@ const categoryMap = {
     tasks: "すべてのタスク",
 } as const;
 
+type CategoryId = keyof typeof categoryMap;
+
 /* ----------------------------- */
-function useDebouncedCallback<T extends (...args: any[]) => void>(
+function useDebouncedCallback<T extends (...args: unknown[]) => void>(
     callback: T,
     delay: number
 ) {
@@ -59,19 +60,13 @@ export default function Header({
     onSearchChange,
     total = 0,
 }: {
-    categoryId: string;
+    categoryId: CategoryId;
     search: string;
     onSearchChange: (value: string) => void;
     total?: number;
 }) {
     /* ----------------------------- */
-    const categoryName = useMemo(
-        () =>
-            categoryMap[
-            categoryId as keyof typeof categoryMap
-            ] ?? "タスク",
-        [categoryId]
-    );
+    const categoryName = categoryMap[categoryId] ?? "タスク";
 
     /* ----------------------------- */
     const [localValue, setLocalValue] = useState(search);
@@ -94,7 +89,6 @@ export default function Header({
         debounced(localValue);
     }, [localValue, debounced]);
 
-    /* 同步更安全 */
     useEffect(() => {
         if (syncingRef.current) {
             syncingRef.current = false;
@@ -104,26 +98,7 @@ export default function Header({
     }, [search]);
 
     /* ----------------------------- */
-    useEffect(() => {
-        const handler = (e: KeyboardEvent) => {
-            // ⌘K / Ctrl+K
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-                e.preventDefault();
-                toggleFocus();
-            }
-
-            // "/" 快速搜索
-            if (e.key === "/" && document.activeElement !== inputRef.current) {
-                e.preventDefault();
-                inputRef.current?.focus();
-            }
-        };
-
-        window.addEventListener("keydown", handler);
-        return () => window.removeEventListener("keydown", handler);
-    }, []);
-
-    const toggleFocus = () => {
+    const toggleFocus = useCallback(() => {
         const input = inputRef.current;
         if (!input) return;
 
@@ -133,13 +108,34 @@ export default function Header({
             input.focus();
             input.select();
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            const isTyping =
+                document.activeElement instanceof HTMLInputElement ||
+                document.activeElement instanceof HTMLTextAreaElement;
+
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+                e.preventDefault();
+                toggleFocus();
+            }
+
+            if (e.key === "/" && !isTyping) {
+                e.preventDefault();
+                inputRef.current?.focus();
+            }
+        };
+
+        window.addEventListener("keydown", handler);
+        return () => window.removeEventListener("keydown", handler);
+    }, [toggleFocus]);
 
     /* ----------------------------- */
-    const subtitle = useMemo(() => {
+    const subtitle = (() => {
         if (total === 0) {
             return search
-                ? "該当するタスクがありません"
+                ? "条件に一致するタスクはありません"
                 : "タスクがありません";
         }
 
@@ -148,7 +144,7 @@ export default function Header({
         }
 
         return `${total}件のタスク`;
-    }, [total, search]);
+    })();
 
     /* ----------------------------- */
     const handleClear = useCallback(() => {
@@ -214,6 +210,7 @@ export default function Header({
                 />
 
                 <Search
+                    aria-hidden="true"
                     className={clsx(
                         "absolute left-3 top-1/2 -translate-y-1/2 transition",
                         localValue ? "text-gray-600" : "text-gray-400"
