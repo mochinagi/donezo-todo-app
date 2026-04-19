@@ -54,8 +54,11 @@ const SidebarItem = memo(function SidebarItem({
     return (
         <button
             ref={setRef}
+            type="button"
             onClick={handleClick}
             role="tab"
+            id={`tab-${id}`}
+            aria-controls={`panel-${id}`}
             aria-selected={active}
             tabIndex={active ? 0 : -1}
             className={`group relative flex items-center justify-between w-full px-4 py-2.5 rounded-lg text-left
@@ -65,7 +68,6 @@ const SidebarItem = memo(function SidebarItem({
                     : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
         >
-            {/* 左侧 indicator */}
             <span
                 className={`absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-r
                 transition-all duration-200
@@ -80,16 +82,17 @@ const SidebarItem = memo(function SidebarItem({
                 <span className="text-sm">{name}</span>
             </div>
 
-            <span
-                className={`text-xs px-2 py-0.5 rounded-full font-medium
-                    ${active
-                        ? "bg-white/20 text-white"
-                        : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"}
-                    ${count === 0 && "opacity-40"}
-                `}
-            >
-                {count}
-            </span>
+            {count > 0 && (
+                <span
+                    className={`text-xs px-2 py-0.5 rounded-full font-medium
+                        ${active
+                            ? "bg-white/20 text-white"
+                            : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                        }`}
+                >
+                    {count}
+                </span>
+            )}
         </button>
     );
 });
@@ -111,20 +114,19 @@ export default function Sidebar() {
     /* ---------------- counts ---------------- */
     const counts = useMemo(() => {
         return todos.reduce(
-            (acc, t) => {
-                acc.tasks++;
-                if (t.completed) acc.completed++;
-                return acc;
-            },
+            (acc, t) => ({
+                tasks: acc.tasks + 1,
+                completed: acc.completed + (t.completed ? 1 : 0),
+            }),
             { tasks: 0, completed: 0 }
         );
     }, [todos]);
 
-    const derivedCounts = {
+    const derivedCounts = useMemo(() => ({
         tasks: counts.tasks,
         active: counts.tasks - counts.completed,
         completed: counts.completed,
-    };
+    }), [counts]);
 
     /* ---------------- select ---------------- */
     const handleSelect = useCallback(
@@ -171,17 +173,19 @@ export default function Sidebar() {
         [activeCategory, setActiveCategory]
     );
 
-    /* ---------------- ref setter ---------------- */
-    const setItemRef = (index: number) => (el: HTMLButtonElement | null) => {
-        itemRefs.current[index] = el;
-    };
+    const setItemRef = useCallback(
+        (index: number) => (el: HTMLButtonElement | null) => {
+            itemRefs.current[index] = el;
+        },
+        []
+    );
 
     return (
         <aside className="w-64 bg-white/80 dark:bg-gray-900/80 backdrop-blur border-r border-gray-200 dark:border-gray-700 flex flex-col">
             {/* Logo */}
-            <div className="p-6 text-2xl font-extrabold tracking-tight border-b border-gray-200 dark:border-gray-700">
+            <h1 className="p-6 text-2xl font-extrabold tracking-tight border-b border-gray-200 dark:border-gray-700">
                 <span className="text-blue-500">Done</span>zo
-            </div>
+            </h1>
 
             {/* Navigation */}
             <nav
