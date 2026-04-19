@@ -4,6 +4,7 @@ import { memo, useCallback, useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Trash2, CheckCircle2, GripVertical } from "lucide-react";
 import { useTodoStore } from "@/store/todoStore";
+import { shallow } from "zustand/shallow";
 
 import {
     DndContext,
@@ -15,7 +16,10 @@ import {
     DragEndEvent,
     DragStartEvent,
     DragOverlay,
+    type DraggableAttributes,
 } from "@dnd-kit/core";
+
+import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 
 import {
     SortableContext,
@@ -33,6 +37,8 @@ type Todo = {
     completed: boolean;
 };
 
+type DragHandleProps = DraggableAttributes & SyntheticListenerMap;
+
 type TodoItemUIProps = {
     text: string;
     completed: boolean;
@@ -43,7 +49,7 @@ type TodoItemUIProps = {
     onEditStart: () => void;
     onEditSave: (val: string) => void;
     onEditCancel: () => void;
-    dragHandleProps: any;
+    dragHandleProps: DragHandleProps;
 };
 
 /* ================= UI ================= */
@@ -116,11 +122,12 @@ const TodoItemUI = memo(function TodoItemUI({
                         autoFocus
                         value={editText}
                         onChange={(e) => setEditText(e.target.value)}
+                        onBlur={handleSave}
                         onKeyDown={(e) => {
                             if (e.key === "Enter") handleSave();
                             if (e.key === "Escape") onEditCancel();
                         }}
-                        className="flex-1 bg-transparent border-b outline-none"
+                        className="flex-1 bg-transparent border-b outline-none focus:border-blue-500"
                     />
                 ) : (
                     <span
@@ -202,7 +209,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
 /* ================= LIST ================= */
 
 export default function TodoList({ setIsDragging }: { setIsDragging?: (v: boolean) => void }) {
-    const todos = useTodoStore((s) => s.filteredTodos());
+    const todos = useTodoStore((s) => s.filteredTodos, shallow)();
     const reorderTodos = useTodoStore((s) => s.reorderTodos);
 
     const [activeId, setActiveId] = useState<number | null>(null);
@@ -233,6 +240,8 @@ export default function TodoList({ setIsDragging }: { setIsDragging?: (v: boolea
         const oldIndex = getIndex(active.id as number);
         const newIndex = getIndex(over.id as number);
 
+        if (oldIndex === -1 || newIndex === -1) return;
+
         reorderTodos(oldIndex, newIndex);
     }, [getIndex, reorderTodos, setIsDragging]);
 
@@ -252,7 +261,7 @@ export default function TodoList({ setIsDragging }: { setIsDragging?: (v: boolea
                 <section className="flex-1 p-6 space-y-4 max-w-2xl mx-auto">
                     {todos.length === 0 && (
                         <div className="text-center text-gray-400 text-lg">
-                            ✨ Nothing here yet. Add your first task.
+                            ✨ No tasks yet — start by adding one!
                         </div>
                     )}
 
@@ -274,6 +283,7 @@ export default function TodoList({ setIsDragging }: { setIsDragging?: (v: boolea
                             onEditSave={() => { }}
                             onEditCancel={() => { }}
                             dragging
+                            dragHandleProps={{}}
                         />
                     </div>
                 )}
