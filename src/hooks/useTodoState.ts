@@ -63,7 +63,7 @@ function generateId() {
     if (typeof crypto !== "undefined" && crypto.randomUUID) {
         return crypto.randomUUID();
     }
-    return Math.random().toString(36).slice(2);
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 /* ================= HOOK ================= */
@@ -101,7 +101,6 @@ export function useTodoState(initialTodos: Todo[] = []) {
         return () => {
             if (saveTimeout.current) {
                 clearTimeout(saveTimeout.current);
-                saveTodos(todos); // flush
             }
         };
     }, [todos]);
@@ -112,13 +111,13 @@ export function useTodoState(initialTodos: Todo[] = []) {
         const trimmed = text.trim();
         if (!trimmed) return;
 
+        const id = generateId();
+
+        record({ type: "add", payload: { id } });
+
         setTodos((prev) => {
             if (prev.some((t) => t.text.toLowerCase() === trimmed.toLowerCase()))
                 return prev;
-
-            const id = generateId();
-
-            record({ type: "add", payload: { id } });
 
             return [{ id, text: trimmed, completed: false }, ...prev];
         });
@@ -167,7 +166,13 @@ export function useTodoState(initialTodos: Todo[] = []) {
 
     const reorderTodos = useCallback((from: number, to: number) => {
         setTodos((prev) => {
-            if (from === to || from < 0 || to < 0) return prev;
+            if (
+                from === to ||
+                from < 0 ||
+                to < 0 ||
+                from >= prev.length ||
+                to >= prev.length
+            ) return prev;
 
             record({ type: "reorder", payload: { from, to } });
 
@@ -190,6 +195,8 @@ export function useTodoState(initialTodos: Todo[] = []) {
         });
     }, [record]);
 
+    /* ---------------- undo ---------------- */
+    // 注意：undo 本身不会记录 undo（否则会形成循环）
     const undo = useCallback(() => {
         const action = undoStack.current.pop();
         if (!action) return;
@@ -236,29 +243,26 @@ export function useTodoState(initialTodos: Todo[] = []) {
     );
 
     const stats = useMemo(() => {
-        return todos.reduce(
-            (acc, t) => {
-                acc.total++;
-                if (t.completed) acc.completed++;
-                return acc;
-            },
-            {
-                total: 0,
-                completed: 0,
-                active: 0,
-                completionRate: 0,
-                hasCompleted: false,
-                hasActive: false,
-            }
+        const base = todos.reduce(
+            (acc, t) => ({
+                total: acc.total + 1,
+                completed: acc.completed + (t.completed ? 1 : 0),
+            }),
+            { total: 0, completed: 0 }
         );
-    }, [todos]);
 
-    stats.active = stats.total - stats.completed;
-    stats.completionRate = stats.total
-        ? Math.round((stats.completed / stats.total) * 100)
-        : 0;
-    stats.hasCompleted = stats.completed > 0;
-    stats.hasActive = stats.active > 0;
+        const active = base.total - base.completed;
+
+        return {
+            ...base,
+            active,
+            completionRate: base.total
+                ? Math.round((base.completed / base.total) * 100)
+                : 0,
+            hasCompleted: base.completed > 0,
+            hasActive: active > 0,
+        };
+    }, [todos]);
 
     return {
         todos,
