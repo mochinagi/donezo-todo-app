@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import AddTodo from "@/components/AddTodo";
@@ -10,22 +10,47 @@ import { useTodoStore } from "@/store/todoStore";
 import { shallow } from "zustand/shallow";
 
 export default function Home() {
-  // 只取必要状态（避免多余 render）
-  const { todos } = useTodoStore(
+  /* ---------------- store ---------------- */
+  const { todos, addTodo } = useTodoStore(
     (s) => ({
       todos: s.todos,
+      addTodo: s.addTodo,
     }),
     shallow
   );
 
-  // 派生状态
-  const completedCount = useMemo(
-    () => todos.filter((t) => t.completed).length,
-    [todos]
+  /* ---------------- local state ---------------- */
+  const [search, setSearch] = useState("");
+  const [input, setInput] = useState("");
+
+  /* ---------------- derived ---------------- */
+  const completedCount = useMemo(() => {
+    let count = 0;
+    for (const t of todos) {
+      if (t.completed) count++;
+    }
+    return count;
+  }, [todos]);
+
+  const filteredTodos = useMemo(() => {
+    if (!search.trim()) return todos;
+
+    const lower = search.toLowerCase();
+    return todos.filter((t) =>
+      t.text.toLowerCase().includes(lower)
+    );
+  }, [todos, search]);
+
+  /* ---------------- handlers ---------------- */
+  const handleAdd = useCallback(
+    async (text: string) => {
+      addTodo(text);
+    },
+    [addTodo]
   );
 
   return (
-    <div className="flex h-screen bg-gray-100 font-sans text-gray-900">
+    <div className="flex min-h-screen bg-gray-100 font-sans text-gray-900">
 
       {/* Sidebar */}
       <Sidebar />
@@ -33,12 +58,27 @@ export default function Home() {
       {/* Main */}
       <main className="flex-1 flex flex-col">
 
-        <Header />
+        {/* Header */}
+        <Header
+          categoryId="tasks"
+          search={search}
+          onSearchChange={setSearch}
+          total={filteredTodos.length}
+        />
 
-        <AddTodo />
+        {/* Add */}
+        <AddTodo
+          input={input}
+          setInput={setInput}
+          onAdd={handleAdd}
+        />
 
-        <TodoList />
+        {/* List */}
+        <section className="flex-1 overflow-y-auto">
+          <TodoList />
+        </section>
 
+        {/* Footer */}
         <Footer
           total={todos.length}
           completed={completedCount}
