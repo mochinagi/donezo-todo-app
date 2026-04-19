@@ -3,7 +3,7 @@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Plus, AlertCircle, Loader2 } from "lucide-react";
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback } from "react";
 import clsx from "clsx";
 import { toast } from "sonner";
 
@@ -28,14 +28,13 @@ export default function AddTodo({
     setInput,
     onAdd,
 }: AddTodoProps) {
-    const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const inputRef = useRef<HTMLInputElement>(null);
     const isComposingRef = useRef(false);
 
-    // 最近提交缓存（防重复）
-    const recentSetRef = useRef<Set<string>>(new Set());
+    // 用数组替代 Set（顺序更安全）
+    const recentListRef = useRef<string[]>([]);
 
     /* ---------------- VALIDATION ---------------- */
 
@@ -52,23 +51,21 @@ export default function AddTodo({
     const trimmed = input.trim();
     const trimmedLength = trimmed.length;
 
-    const displayError = useMemo(() => {
-        if (!input) return "";
-        return validate(input);
-    }, [input, validate]);
+    const error = input ? validate(input) : "";
 
     /* ---------------- ADD ---------------- */
 
     const handleAdd = useCallback(async () => {
         if (isSubmitting) return;
 
+        const value = input.trim();
         const err = validate(input);
+
         if (err) {
-            setError(err);
             return;
         }
 
-        if (recentSetRef.current.has(trimmed)) {
+        if (recentListRef.current.includes(value)) {
             toast.info("同じタスクは追加できません");
             return;
         }
@@ -76,23 +73,21 @@ export default function AddTodo({
         try {
             setIsSubmitting(true);
 
-            await onAdd(trimmed);
+            await onAdd(value);
 
-            toast.success(`「${trimmed}」を追加しました`);
+            toast.success(`「${value}」を追加しました`);
 
-            // 记录最近提交
-            recentSetRef.current.add(trimmed);
-            if (recentSetRef.current.size > 5) {
-                const first = recentSetRef.current.values().next().value;
-                recentSetRef.current.delete(first);
-            }
+            // 更新最近提交
+            recentListRef.current = [
+                value,
+                ...recentListRef.current.filter((t) => t !== value),
+            ].slice(0, 5);
 
             setInput("");
-            setError("");
 
-            // focus 回输入框
             requestAnimationFrame(() => {
                 inputRef.current?.focus();
+                inputRef.current?.select();
             });
 
         } catch {
@@ -100,37 +95,36 @@ export default function AddTodo({
         } finally {
             setIsSubmitting(false);
         }
-    }, [input, trimmed, onAdd, setInput, validate, isSubmitting]);
+    }, [input, onAdd, setInput, validate, isSubmitting]);
 
     /* ---------------- INPUT ---------------- */
 
     const handleChange = useCallback(
         (value: string) => {
             setInput(value);
-            if (error) setError("");
         },
-        [setInput, error]
+        [setInput]
     );
 
-    const lengthColor = useMemo(() => {
-        if (trimmedLength > MAX_LENGTH) return "text-red-500";
-        if (trimmedLength > MAX_LENGTH * 0.8) return "text-yellow-500";
-        return "text-gray-400";
-    }, [trimmedLength]);
+    const lengthColor =
+        trimmedLength > MAX_LENGTH
+            ? "text-red-500"
+            : trimmedLength > MAX_LENGTH * 0.8
+                ? "text-yellow-500"
+                : "text-gray-400";
 
     /* ---------------- KEYBOARD ---------------- */
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (isComposingRef.current) return;
 
-        if (e.key === "Enter") {
+        if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             handleAdd();
         }
 
         if (e.key === "Escape") {
             setInput("");
-            setError("");
         }
     };
 
@@ -152,7 +146,8 @@ export default function AddTodo({
                                 : "やることを入力して Enter..."
                         }
                         aria-label="タスク入力欄"
-                        aria-invalid={!!displayError}
+                        aria-invalid={!!error}
+                        aria-describedby="todo-error"
                         maxLength={MAX_LENGTH}
                         disabled={isSubmitting}
                         className={clsx(
@@ -160,7 +155,7 @@ export default function AddTodo({
                             "focus:ring-2 focus:ring-blue-400 focus:outline-none",
                             "hover:bg-gray-50 dark:hover:bg-gray-800",
                             isSubmitting && "cursor-not-allowed opacity-80",
-                            displayError && "border-red-400 focus:ring-red-400"
+                            error && "border-red-400 focus:ring-red-400"
                         )}
                         onKeyDown={handleKeyDown}
                         onCompositionStart={() => {
@@ -168,11 +163,6 @@ export default function AddTodo({
                         }}
                         onCompositionEnd={() => {
                             isComposingRef.current = false;
-                        }}
-                        onBlur={() => {
-                            if (!input) return;
-                            const err = validate(input);
-                            setError(err);
                         }}
                         autoFocus
                     />
@@ -195,7 +185,7 @@ export default function AddTodo({
                 <Button
                     type="button"
                     onClick={handleAdd}
-                    disabled={!trimmed || isSubmitting || !!displayError}
+                    disabled={!trimmed || isSubmitting || !!error}
                     className={clsx(
                         "flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white",
                         "px-5 py-2 rounded-lg shadow-sm transition-all",
@@ -212,14 +202,15 @@ export default function AddTodo({
                 </Button>
             </div>
 
-            {displayError && (
+            {error && (
                 <div
+                    id="todo-error"
                     className="flex items-center gap-1 text-sm text-red-500"
                     role="alert"
                     aria-live="assertive"
                 >
                     <AlertCircle size={14} />
-                    {displayError}
+                    {error}
                 </div>
             )}
         </div>
