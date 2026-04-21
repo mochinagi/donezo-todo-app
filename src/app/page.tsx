@@ -1,49 +1,38 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useCallback } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import AddTodo from "@/components/AddTodo";
 import TodoList from "@/components/TodoList";
 import Footer from "@/components/Footer";
-import { useTodoStore } from "@/store/todoStore";
+
+import {
+  useTodoStore,
+  useFilteredTodos,
+  useTodoStats,
+} from "@/store/todoStore";
 import { shallow } from "zustand/shallow";
 
 export default function Home() {
   /* ---------------- store ---------------- */
-  const { todos, addTodo } = useTodoStore(
+
+  const { addTodo, search, setSearch } = useTodoStore(
     (s) => ({
-      todos: s.todos,
       addTodo: s.addTodo,
+      search: s.search,
+      setSearch: s.setSearch,
     }),
     shallow
   );
 
-  /* ---------------- local state ---------------- */
-  const [search, setSearch] = useState("");
-  const [input, setInput] = useState("");
-
-  /* ---------------- derived ---------------- */
-  const completedCount = useMemo(() => {
-    let count = 0;
-    for (const t of todos) {
-      if (t.completed) count++;
-    }
-    return count;
-  }, [todos]);
-
-  const filteredTodos = useMemo(() => {
-    if (!search.trim()) return todos;
-
-    const lower = search.toLowerCase();
-    return todos.filter((t) =>
-      t.text.toLowerCase().includes(lower)
-    );
-  }, [todos, search]);
+  const filteredTodos = useFilteredTodos();
+  const stats = useTodoStats();
 
   /* ---------------- handlers ---------------- */
+
   const handleAdd = useCallback(
-    async (text: string) => {
+    (text: string) => {
       addTodo(text);
     },
     [addTodo]
@@ -67,11 +56,7 @@ export default function Home() {
         />
 
         {/* Add */}
-        <AddTodo
-          input={input}
-          setInput={setInput}
-          onAdd={handleAdd}
-        />
+        <AddTodo onAdd={handleAdd} />
 
         {/* List */}
         <section className="flex-1 overflow-y-auto">
@@ -80,8 +65,8 @@ export default function Home() {
 
         {/* Footer */}
         <Footer
-          total={todos.length}
-          completed={completedCount}
+          total={stats.total}
+          completed={stats.completed}
         />
 
       </main>
