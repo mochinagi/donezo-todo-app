@@ -6,6 +6,7 @@ import { Plus, AlertCircle, Loader2 } from "lucide-react";
 import { useState, useRef, useCallback } from "react";
 import clsx from "clsx";
 import { toast } from "sonner";
+import { useTodoStore } from "@/store/todoStore";
 
 /* ================= CONST ================= */
 
@@ -33,24 +34,36 @@ export default function AddTodo({
     const inputRef = useRef<HTMLInputElement>(null);
     const isComposingRef = useRef(false);
 
-    // 用数组替代 Set（顺序更安全）
-    const recentListRef = useRef<string[]>([]);
+    // 🔥 从 store 读，做真正去重
+    const todos = useTodoStore((s) => s.todos);
 
     /* ---------------- VALIDATION ---------------- */
 
-    const validate = useCallback((value: string): string => {
-        const trimmed = value.trim();
+    const validate = useCallback(
+        (value: string): string => {
+            const trimmed = value.trim();
 
-        if (!trimmed) return "タスク内容を入力してください";
-        if (trimmed.length > MAX_LENGTH)
-            return `タスクは${MAX_LENGTH}文字以内で入力してください`;
+            if (!trimmed) return "タスク内容を入力してください";
 
-        return "";
-    }, []);
+            if (trimmed.length > MAX_LENGTH) {
+                return `タスクは${MAX_LENGTH}文字以内で入力してください`;
+            }
+
+            const exists = todos.some(
+                (t) => t.text.toLowerCase() === trimmed.toLowerCase()
+            );
+
+            if (exists) {
+                return "同じタスクはすでに存在します";
+            }
+
+            return "";
+        },
+        [todos]
+    );
 
     const trimmed = input.trim();
     const trimmedLength = trimmed.length;
-
     const error = input ? validate(input) : "";
 
     /* ---------------- ADD ---------------- */
@@ -61,14 +74,7 @@ export default function AddTodo({
         const value = input.trim();
         const err = validate(input);
 
-        if (err) {
-            return;
-        }
-
-        if (recentListRef.current.includes(value)) {
-            toast.info("同じタスクは追加できません");
-            return;
-        }
+        if (err) return;
 
         try {
             setIsSubmitting(true);
@@ -77,17 +83,10 @@ export default function AddTodo({
 
             toast.success(`「${value}」を追加しました`);
 
-            // 更新最近提交
-            recentListRef.current = [
-                value,
-                ...recentListRef.current.filter((t) => t !== value),
-            ].slice(0, 5);
-
             setInput("");
 
             requestAnimationFrame(() => {
                 inputRef.current?.focus();
-                inputRef.current?.select();
             });
 
         } catch {
@@ -106,6 +105,12 @@ export default function AddTodo({
         [setInput]
     );
 
+    const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+        e.preventDefault();
+        const text = e.clipboardData.getData("text").trim();
+        setInput(text);
+    };
+
     const lengthColor =
         trimmedLength > MAX_LENGTH
             ? "text-red-500"
@@ -118,7 +123,7 @@ export default function AddTodo({
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (isComposingRef.current) return;
 
-        if (e.key === "Enter" && !e.shiftKey) {
+        if (e.key === "Enter") {
             e.preventDefault();
             handleAdd();
         }
@@ -140,6 +145,7 @@ export default function AddTodo({
                         ref={inputRef}
                         value={input}
                         onChange={(e) => handleChange(e.target.value)}
+                        onPaste={handlePaste}
                         placeholder={
                             isSubmitting
                                 ? "追加中..."
@@ -207,7 +213,6 @@ export default function AddTodo({
                     id="todo-error"
                     className="flex items-center gap-1 text-sm text-red-500"
                     role="alert"
-                    aria-live="assertive"
                 >
                     <AlertCircle size={14} />
                     {error}
