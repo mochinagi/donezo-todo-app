@@ -20,7 +20,7 @@ type Action =
     | { type: "add"; todo: Todo }
     | { type: "delete"; todo: Todo; index: number }
     | { type: "toggle"; prev: Todo }
-    | { type: "edit"; prev: Todo }
+    | { type: "edit"; prev: Todo; next: Todo }
     | { type: "reorder"; from: number; to: number }
     | { type: "clear"; removed: Todo[] };
 
@@ -101,15 +101,20 @@ export const useTodoStore = create<TodoStore>()(
                     const prev = state.todos.find((t) => t.id === id);
                     if (!prev || prev.text === value) return state;
 
+                    const next = {
+                        ...prev,
+                        text: value,
+                        updatedAt: Date.now(),
+                    };
+
                     return {
                         todos: state.todos.map((t) =>
-                            t.id === id
-                                ? { ...t, text: value, updatedAt: Date.now() }
-                                : t
+                            t.id === id ? next : t
                         ),
                         undoStack: pushStack(state.undoStack, {
                             type: "edit",
                             prev,
+                            next,
                         }),
                         redoStack: [],
                     };
@@ -163,7 +168,7 @@ export const useTodoStore = create<TodoStore>()(
             clearCompleted: () =>
                 set((state) => {
                     const removed = state.todos.filter((t) => t.completed);
-                    if (removed.length === 0) return state;
+                    if (!removed.length) return state;
 
                     return {
                         todos: state.todos.filter((t) => !t.completed),
@@ -183,57 +188,12 @@ export const useTodoStore = create<TodoStore>()(
                 set((state) => {
                     const undoStack = state.undoStack.slice(0, -1);
 
-                    switch (action.type) {
-                        case "add":
-                            return {
-                                todos: state.todos.filter(
-                                    (t) => t.id !== action.todo.id
-                                ),
-                                undoStack,
-                                redoStack: pushStack(state.redoStack, action),
-                            };
-
-                        case "delete": {
-                            const next = [...state.todos];
-                            next.splice(action.index, 0, action.todo);
-                            return {
-                                todos: next,
-                                undoStack,
-                                redoStack: pushStack(state.redoStack, action),
-                            };
-                        }
-
-                        case "toggle":
-                        case "edit":
-                            return {
-                                todos: state.todos.map((t) =>
-                                    t.id === action.prev.id ? action.prev : t
-                                ),
-                                undoStack,
-                                redoStack: pushStack(state.redoStack, action),
-                            };
-
-                        case "reorder": {
-                            const arr = [...state.todos];
-                            const [moved] = arr.splice(action.to, 1);
-                            arr.splice(action.from, 0, moved);
-                            return {
-                                todos: arr,
-                                undoStack,
-                                redoStack: pushStack(state.redoStack, action),
-                            };
-                        }
-
-                        case "clear":
-                            return {
-                                todos: [...action.removed, ...state.todos],
-                                undoStack,
-                                redoStack: pushStack(state.redoStack, action),
-                            };
-
-                        default:
-                            return state;
-                    }
+                    return {
+                        ...state,
+                        undoStack,
+                        redoStack: pushStack(state.redoStack, action),
+                        todos: applyUndo(state.todos, action),
+                    };
                 });
             },
 
@@ -245,75 +205,26 @@ export const useTodoStore = create<TodoStore>()(
                 set((state) => {
                     const redoStack = state.redoStack.slice(0, -1);
 
-                    switch (action.type) {
-                        case "add":
-                            return {
-                                todos: [action.todo, ...state.todos],
-                                redoStack,
-                            };
-
-                        case "delete":
-                            return {
-                                todos: state.todos.filter(
-                                    (t) => t.id !== action.todo.id
-                                ),
-                                redoStack,
-                            };
-
-                        case "toggle":
-                            return {
-                                todos: state.todos.map((t) =>
-                                    t.id === action.prev.id
-                                        ? {
-                                            ...t,
-                                            completed: !t.completed,
-                                        }
-                                        : t
-                                ),
-                                redoStack,
-                            };
-
-                        case "edit":
-                            return {
-                                todos: state.todos.map((t) =>
-                                    t.id === action.prev.id
-                                        ? {
-                                            ...t,
-                                            text: t.text,
-                                        }
-                                        : t
-                                ),
-                                redoStack,
-                            };
-
-                        case "reorder": {
-                            const arr = [...state.todos];
-                            const [moved] = arr.splice(action.from, 1);
-                            arr.splice(action.to, 0, moved);
-                            return { todos: arr, redoStack };
-                        }
-
-                        case "clear":
-                            return {
-                                todos: state.todos.filter(
-                                    (t) =>
-                                        !action.removed.find(
-                                            (r) => r.id === t.id
-                                        )
-                                ),
-                                redoStack,
-                            };
-
-                        default:
-                            return state;
-                    }
+                    return {
+                        ...state,
+                        redoStack,
+                        undoStack: pushStack(state.undoStack, action),
+                        todos: applyRedo(state.todos, action),
+                    };
                 });
             },
 
             /* ---------------- REORDER ---------------- */
             reorderTodos: (from, to) =>
                 set((state) => {
-                    if (from === to) return state;
+                    if (
+                        from === to ||
+                        from < 0 ||
+                        to < 0 ||
+                        from >= state.todos.length ||
+                        to >= state.todos.length
+                    )
+                        return state;
 
                     const arr = [...state.todos];
                     const [moved] = arr.splice(from, 1);
@@ -335,7 +246,7 @@ export const useTodoStore = create<TodoStore>()(
         }),
         {
             name: "todo-storage",
-            version: 9,
+            version: 10,
             storage: createJSONStorage(() => localStorage),
 
             partialize: (s) => ({
@@ -346,6 +257,77 @@ export const useTodoStore = create<TodoStore>()(
         }
     )
 );
+
+/* ================= UNDO/REDO LOGIC ================= */
+
+const applyUndo = (todos: Todo[], action: Action): Todo[] => {
+    switch (action.type) {
+        case "add":
+            return todos.filter((t) => t.id !== action.todo.id);
+
+        case "delete": {
+            const arr = [...todos];
+            arr.splice(action.index, 0, action.todo);
+            return arr;
+        }
+
+        case "toggle":
+        case "edit":
+            return todos.map((t) =>
+                t.id === action.prev.id ? action.prev : t
+            );
+
+        case "reorder": {
+            const arr = [...todos];
+            const [moved] = arr.splice(action.to, 1);
+            arr.splice(action.from, 0, moved);
+            return arr;
+        }
+
+        case "clear":
+            return [...action.removed, ...todos];
+
+        default:
+            return todos;
+    }
+};
+
+const applyRedo = (todos: Todo[], action: Action): Todo[] => {
+    switch (action.type) {
+        case "add":
+            return [action.todo, ...todos];
+
+        case "delete":
+            return todos.filter((t) => t.id !== action.todo.id);
+
+        case "toggle":
+            return todos.map((t) =>
+                t.id === action.prev.id
+                    ? { ...t, completed: !t.completed }
+                    : t
+            );
+
+        case "edit":
+            return todos.map((t) =>
+                t.id === action.next.id ? action.next : t
+            );
+
+        case "reorder": {
+            const arr = [...todos];
+            const [moved] = arr.splice(action.from, 1);
+            arr.splice(action.to, 0, moved);
+            return arr;
+        }
+
+        case "clear": {
+            const removedSet = new Set(action.removed.map((r) => r.id));
+            return todos.filter((t) => !removedSet.has(t.id));
+        }
+
+        default:
+            return todos;
+    }
+};
 
 /* ================= SELECTORS ================= */
 
@@ -369,7 +351,12 @@ export const useFilteredTodos = () =>
 export const useTodoStats = () =>
     useTodoStore(
         (s) => {
-            const completed = s.todos.filter((t) => t.completed).length;
+            let completed = 0;
+
+            for (const t of s.todos) {
+                if (t.completed) completed++;
+            }
+
             const total = s.todos.length;
 
             return {
