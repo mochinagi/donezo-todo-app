@@ -9,7 +9,7 @@ export function cn(...inputs: ClassValue[]) {
 
 /* ================= DEBOUNCE ================= */
 
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: unknown[]) => void>(
   fn: T,
   delay = 300,
   options: { leading?: boolean; trailing?: boolean } = {}
@@ -20,21 +20,23 @@ export function debounce<T extends (...args: any[]) => any>(
   const { leading = false, trailing = true } = options;
 
   const debounced = (...args: Parameters<T>) => {
+    const callNow = leading && !timer;
+
     lastArgs = args;
 
     if (timer) clearTimeout(timer);
 
-    if (leading && !timer) {
-      fn(...args);
-    }
-
     timer = setTimeout(() => {
-      if (trailing && lastArgs) {
+      if (trailing && !callNow && lastArgs) {
         fn(...lastArgs);
       }
       timer = null;
       lastArgs = null;
     }, delay);
+
+    if (callNow) {
+      fn(...args);
+    }
   };
 
   debounced.cancel = () => {
@@ -58,25 +60,30 @@ export function debounce<T extends (...args: any[]) => any>(
 
 /* ================= THROTTLE ================= */
 
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: unknown[]) => void>(
   fn: T,
   delay = 300
 ) {
-  let last = 0;
+  let lastCall = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   const throttled = (...args: Parameters<T>) => {
     const now = Date.now();
+    const remaining = delay - (now - lastCall);
 
-    if (now - last >= delay) {
-      last = now;
+    if (remaining <= 0) {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      lastCall = now;
       fn(...args);
     } else if (!timer) {
       timer = setTimeout(() => {
-        last = Date.now();
+        lastCall = Date.now();
         fn(...args);
         timer = null;
-      }, delay - (now - last));
+      }, remaining);
     }
   };
 
@@ -127,10 +134,19 @@ export function isDefined<T>(
 
 export function isEmpty(value: unknown) {
   if (value == null) return true;
+
   if (typeof value === "string") return value.trim().length === 0;
+
   if (Array.isArray(value)) return value.length === 0;
+
+  if (value instanceof Map || value instanceof Set)
+    return value.size === 0;
+
+  if (value instanceof Date) return isNaN(value.getTime());
+
   if (typeof value === "object")
-    return Object.keys(value).length === 0;
+    return Object.keys(value as object).length === 0;
+
   return false;
 }
 
@@ -150,11 +166,38 @@ export function uniqueBy<T>(
   arr: T[],
   key: (item: T) => string | number
 ) {
-  const map = new Map();
+  const map = new Map<string | number, T>();
   for (const item of arr) {
     map.set(key(item), item);
   }
   return Array.from(map.values());
+}
+
+/* ================= OBJECT ================= */
+
+export function deepClone<T>(obj: T): T {
+  return structuredClone(obj);
+}
+
+/* ================= FUNCTION ================= */
+
+export function once<T extends (...args: unknown[]) => unknown>(fn: T): T {
+  let called = false;
+  let result: unknown;
+
+  return ((...args: Parameters<T>) => {
+    if (!called) {
+      called = true;
+      result = fn(...args);
+    }
+    return result;
+  }) as T;
+}
+
+/* ================= ID ================= */
+
+export function uid() {
+  return crypto.randomUUID();
 }
 
 /* ================= DATE ================= */
@@ -164,6 +207,8 @@ export function formatDate(
   format: "YYYY-MM-DD" | "YYYY/MM/DD" = "YYYY-MM-DD"
 ) {
   const d = new Date(date);
+
+  if (isNaN(d.getTime())) return "";
 
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
