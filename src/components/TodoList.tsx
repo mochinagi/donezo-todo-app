@@ -75,7 +75,6 @@ const TodoItemUI = memo(function TodoItemUI({
     const handleSave = useCallback(() => {
         const trimmed = editText.trim();
         if (!trimmed) {
-            setEditText(text);
             onEditCancel();
             return;
         }
@@ -90,7 +89,7 @@ const TodoItemUI = memo(function TodoItemUI({
         <Card
             className={`group flex items-center justify-between transition-all duration-200 select-none
             ${completed ? "opacity-60" : "hover:scale-[1.02]"}
-            ${dragging ? "shadow-xl scale-105 opacity-80" : ""}
+            ${dragging ? "shadow-xl scale-105 opacity-80 cursor-grabbing" : ""}
         `}
         >
             <CardContent className="flex items-center gap-4 w-full">
@@ -105,6 +104,7 @@ const TodoItemUI = memo(function TodoItemUI({
 
                 {/* toggle */}
                 <button
+                    aria-label="toggle todo"
                     onClick={onToggle}
                     disabled={dragging}
                     className={`p-2 rounded-full transition
@@ -145,6 +145,7 @@ const TodoItemUI = memo(function TodoItemUI({
                 {/* delete */}
                 <div className="opacity-0 group-hover:opacity-100 transition">
                     <button
+                        aria-label="delete todo"
                         onClick={onDelete}
                         disabled={dragging}
                         className="p-2 rounded-md text-gray-400 hover:text-red-500"
@@ -177,17 +178,6 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
         transition,
     };
 
-    const handleToggle = useCallback(() => toggleTodo(id), [id, toggleTodo]);
-    const handleDelete = useCallback(() => deleteTodo(id), [id, deleteTodo]);
-
-    const handleSave = useCallback(
-        (val: string) => {
-            updateTodo(id, val);
-            setEditing(false);
-        },
-        [id, updateTodo]
-    );
-
     return (
         <div ref={setNodeRef} style={style}>
             <TodoItemUI
@@ -195,10 +185,13 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
                 completed={completed}
                 dragging={isDragging}
                 isEditing={editing}
-                onToggle={handleToggle}
-                onDelete={handleDelete}
+                onToggle={() => toggleTodo(id)}
+                onDelete={() => deleteTodo(id)}
                 onEditStart={() => setEditing(true)}
-                onEditSave={handleSave}
+                onEditSave={(val) => {
+                    updateTodo(id, val);
+                    setEditing(false);
+                }}
                 onEditCancel={() => setEditing(false)}
                 dragHandleProps={{ ...attributes, ...listeners }}
             />
@@ -208,8 +201,12 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
 
 /* ================= LIST ================= */
 
-export default function TodoList({ setIsDragging }: { setIsDragging?: (v: boolean) => void }) {
-    const todos = useTodoStore((s) => s.filteredTodos, shallow)();
+export default function TodoList({
+    setIsDragging,
+}: {
+    setIsDragging?: (v: boolean) => void;
+}) {
+    const todos = useTodoStore((s) => s.filteredTodos, shallow);
     const reorderTodos = useTodoStore((s) => s.reorderTodos);
 
     const [activeId, setActiveId] = useState<number | null>(null);
@@ -219,31 +216,32 @@ export default function TodoList({ setIsDragging }: { setIsDragging?: (v: boolea
         useSensor(KeyboardSensor)
     );
 
-    const getIndex = useCallback(
-        (id: number) => todos.findIndex((t) => t.id === id),
-        [todos]
+    const handleDragStart = useCallback(
+        (event: DragStartEvent) => {
+            setActiveId(event.active.id as number);
+            setIsDragging?.(true);
+        },
+        [setIsDragging]
     );
 
-    const handleDragStart = useCallback((event: DragStartEvent) => {
-        setActiveId(event.active.id as number);
-        setIsDragging?.(true);
-    }, [setIsDragging]);
+    const handleDragEnd = useCallback(
+        (event: DragEndEvent) => {
+            const { active, over };
 
-    const handleDragEnd = useCallback((event: DragEndEvent) => {
-        const { active, over };
+            setActiveId(null);
+            setIsDragging?.(false);
 
-        setActiveId(null);
-        setIsDragging?.(false);
+            if (!over || active.id === over.id) return;
 
-        if (!over || active.id === over.id) return;
+            const oldIndex = todos.findIndex((t) => t.id === active.id);
+            const newIndex = todos.findIndex((t) => t.id === over.id);
 
-        const oldIndex = getIndex(active.id as number);
-        const newIndex = getIndex(over.id as number);
-
-        if (oldIndex === -1 || newIndex === -1) return;
-
-        reorderTodos(oldIndex, newIndex);
-    }, [getIndex, reorderTodos, setIsDragging]);
+            if (oldIndex !== -1 && newIndex !== -1) {
+                reorderTodos(oldIndex, newIndex);
+            }
+        },
+        [todos, reorderTodos, setIsDragging]
+    );
 
     const activeTodo = todos.find((t) => t.id === activeId);
 
@@ -259,15 +257,15 @@ export default function TodoList({ setIsDragging }: { setIsDragging?: (v: boolea
                 strategy={verticalListSortingStrategy}
             >
                 <section className="flex-1 p-6 space-y-4 max-w-2xl mx-auto">
-                    {todos.length === 0 && (
+                    {todos.length === 0 ? (
                         <div className="text-center text-gray-400 text-lg">
-                            ✨ No tasks yet — start by adding one!
+                            ✨ Start small. Add your first task.
                         </div>
+                    ) : (
+                        todos.map((todo) => (
+                            <TodoItem key={todo.id} {...todo} />
+                        ))
                     )}
-
-                    {todos.map((todo) => (
-                        <TodoItem key={todo.id} {...todo} />
-                    ))}
                 </section>
             </SortableContext>
 
