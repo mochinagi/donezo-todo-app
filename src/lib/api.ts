@@ -3,7 +3,7 @@
 /* ================= TYPES ================= */
 
 export type Todo = {
-    id: number;
+    id: string;
     text: string;
     completed: boolean;
 };
@@ -15,13 +15,13 @@ type ApiResponse<T> = {
 
 /* ================= CONFIG ================= */
 
-const USE_MOCK = true;
+const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true";
 const BASE_URL = "/api";
 const TIMEOUT = 5000;
 
 /* ================= ERROR ================= */
 
-class APIError extends Error {
+export class APIError extends Error {
     status: number;
 
     constructor(message: string, status: number) {
@@ -35,14 +35,22 @@ class APIError extends Error {
 const delay = (ms: number) =>
     new Promise((res) => setTimeout(res, ms));
 
+const safeJson = async (res: Response) => {
+    try {
+        return await res.json();
+    } catch {
+        return null;
+    }
+};
+
 /* ================= MOCK ================= */
 
 let mockTodos: Todo[] = [
-    { id: 1, text: "Mock Task", completed: false },
-    { id: 2, text: "Learn Zustand", completed: true },
+    { id: crypto.randomUUID(), text: "Mock Task", completed: false },
+    { id: crypto.randomUUID(), text: "Learn Zustand", completed: true },
 ];
 
-/* ================= REQUEST ================= */
+/* ================= CORE REQUEST ================= */
 
 async function request<T>(
     url: string,
@@ -61,28 +69,24 @@ async function request<T>(
             },
         });
 
-        let data: any = null;
-
-        try {
-            data = await res.json();
-        } catch {
-            // ignore JSON parse error
-        }
+        const json: ApiResponse<T> | null = await safeJson(res);
 
         if (!res.ok) {
             throw new APIError(
-                data?.message || "Request failed",
+                json?.message || "Request failed",
                 res.status
             );
         }
 
-        return data?.data ?? data;
+        return json?.data as T;
     } catch (err: any) {
         if (err.name === "AbortError") {
             throw new APIError("Request timeout", 408);
         }
 
-        throw err;
+        throw err instanceof APIError
+            ? err
+            : new APIError("Network error", 500);
     } finally {
         clearTimeout(timeout);
     }
@@ -106,7 +110,7 @@ export const addTodo = async (text: string): Promise<Todo> => {
         await delay(200);
 
         const newTodo: Todo = {
-            id: Date.now(),
+            id: crypto.randomUUID(),
             text,
             completed: false,
         };
@@ -123,7 +127,7 @@ export const addTodo = async (text: string): Promise<Todo> => {
 
 /* PATCH */
 export const updateTodo = async (
-    id: number,
+    id: string,
     updates: Partial<Omit<Todo, "id">>
 ): Promise<Todo> => {
     if (USE_MOCK) {
@@ -143,7 +147,7 @@ export const updateTodo = async (
 };
 
 /* DELETE */
-export const deleteTodo = async (id: number): Promise<void> => {
+export const deleteTodo = async (id: string): Promise<void> => {
     if (USE_MOCK) {
         await delay(200);
 
@@ -151,7 +155,7 @@ export const deleteTodo = async (id: number): Promise<void> => {
         return;
     }
 
-    await request(`${BASE_URL}/todos/${id}`, {
+    await request<void>(`${BASE_URL}/todos/${id}`, {
         method: "DELETE",
     });
 };
