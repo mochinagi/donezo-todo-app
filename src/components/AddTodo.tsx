@@ -3,7 +3,7 @@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Plus, AlertCircle, Loader2 } from "lucide-react";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import clsx from "clsx";
 import { toast } from "sonner";
 import { useTodoStore } from "@/store/todoStore";
@@ -30,12 +30,19 @@ export default function AddTodo({
     onAdd,
 }: AddTodoProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [touched, setTouched] = useState(false);
 
     const inputRef = useRef<HTMLInputElement>(null);
     const isComposingRef = useRef(false);
+    const submittingRef = useRef(false);
 
-    // 🔥 从 store 读，做真正去重
     const todos = useTodoStore((s) => s.todos);
+
+    /* ---------------- FAST LOOKUP ---------------- */
+
+    const todoSet = useMemo(() => {
+        return new Set(todos.map((t) => t.text.toLowerCase()));
+    }, [todos]);
 
     /* ---------------- VALIDATION ---------------- */
 
@@ -49,34 +56,38 @@ export default function AddTodo({
                 return `タスクは${MAX_LENGTH}文字以内で入力してください`;
             }
 
-            const exists = todos.some(
-                (t) => t.text.toLowerCase() === trimmed.toLowerCase()
-            );
-
-            if (exists) {
+            if (todoSet.has(trimmed.toLowerCase())) {
                 return "同じタスクはすでに存在します";
             }
 
             return "";
         },
-        [todos]
+        [todoSet]
     );
 
     const trimmed = input.trim();
     const trimmedLength = trimmed.length;
-    const error = input ? validate(input) : "";
+
+    const error = useMemo(() => {
+        if (!touched) return "";
+        return validate(input);
+    }, [input, touched, validate]);
 
     /* ---------------- ADD ---------------- */
 
     const handleAdd = useCallback(async () => {
-        if (isSubmitting) return;
+        if (submittingRef.current) return;
 
         const value = input.trim();
         const err = validate(input);
 
-        if (err) return;
+        if (err) {
+            setTouched(true);
+            return;
+        }
 
         try {
+            submittingRef.current = true;
             setIsSubmitting(true);
 
             await onAdd(value);
@@ -84,6 +95,7 @@ export default function AddTodo({
             toast.success(`「${value}」を追加しました`);
 
             setInput("");
+            setTouched(false);
 
             requestAnimationFrame(() => {
                 inputRef.current?.focus();
@@ -92,9 +104,10 @@ export default function AddTodo({
         } catch {
             toast.error("タスクの追加に失敗しました");
         } finally {
+            submittingRef.current = false;
             setIsSubmitting(false);
         }
-    }, [input, onAdd, setInput, validate, isSubmitting]);
+    }, [input, onAdd, setInput, validate]);
 
     /* ---------------- INPUT ---------------- */
 
@@ -130,14 +143,12 @@ export default function AddTodo({
 
         if (e.key === "Escape") {
             setInput("");
+            setTouched(false);
         }
     };
 
     return (
-        <div
-            className="p-6 bg-white/80 dark:bg-gray-900/80 backdrop-blur
-            border-b border-gray-200 dark:border-gray-700 space-y-2"
-        >
+        <div className="p-6 border-b space-y-2">
             <div className="flex gap-3">
                 <div className="relative flex-1">
 
@@ -145,23 +156,20 @@ export default function AddTodo({
                         ref={inputRef}
                         value={input}
                         onChange={(e) => handleChange(e.target.value)}
+                        onBlur={() => setTouched(true)}
                         onPaste={handlePaste}
                         placeholder={
                             isSubmitting
                                 ? "追加中..."
                                 : "やることを入力して Enter..."
                         }
-                        aria-label="タスク入力欄"
                         aria-invalid={!!error}
                         aria-describedby="todo-error"
                         maxLength={MAX_LENGTH}
                         disabled={isSubmitting}
                         className={clsx(
-                            "pl-10 pr-12 rounded-lg transition-all",
-                            "focus:ring-2 focus:ring-blue-400 focus:outline-none",
-                            "hover:bg-gray-50 dark:hover:bg-gray-800",
-                            isSubmitting && "cursor-not-allowed opacity-80",
-                            error && "border-red-400 focus:ring-red-400"
+                            "pl-10 pr-12 rounded-lg",
+                            error && "border-red-400"
                         )}
                         onKeyDown={handleKeyDown}
                         onCompositionStart={() => {
@@ -192,12 +200,7 @@ export default function AddTodo({
                     type="button"
                     onClick={handleAdd}
                     disabled={!trimmed || isSubmitting || !!error}
-                    className={clsx(
-                        "flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white",
-                        "px-5 py-2 rounded-lg shadow-sm transition-all",
-                        "hover:scale-105 active:scale-95",
-                        "disabled:opacity-50 disabled:cursor-not-allowed"
-                    )}
+                    className="flex items-center gap-2"
                 >
                     {isSubmitting ? (
                         <Loader2 className="animate-spin" size={16} />
