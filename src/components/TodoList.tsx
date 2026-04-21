@@ -34,6 +34,19 @@ type Todo = {
     completed: boolean;
 };
 
+type TodoItemUIProps = {
+    text: string;
+    completed: boolean;
+    dragging: boolean;
+    isEditing: boolean;
+    onToggle: () => void;
+    onDelete: () => void;
+    onEditStart: () => void;
+    onEditSave: (val: string) => void;
+    onEditCancel: () => void;
+    dragHandleProps?: any;
+};
+
 /* ================= UI ================= */
 
 const TodoItemUI = memo(function TodoItemUI({
@@ -47,7 +60,7 @@ const TodoItemUI = memo(function TodoItemUI({
     onEditSave,
     onEditCancel,
     dragHandleProps,
-}: any) {
+}: TodoItemUIProps) {
     const [editText, setEditText] = useState(text);
 
     useEffect(() => {
@@ -58,7 +71,7 @@ const TodoItemUI = memo(function TodoItemUI({
         const trimmed = editText.trim();
         if (!trimmed) return onEditCancel();
         trimmed !== text ? onEditSave(trimmed) : onEditCancel();
-    }, [editText, text]);
+    }, [editText, text, onEditSave, onEditCancel]);
 
     return (
         <Card
@@ -69,7 +82,6 @@ const TodoItemUI = memo(function TodoItemUI({
         >
             <CardContent className="flex items-center gap-4 w-full">
 
-                {/* drag */}
                 {!isEditing && (
                     <div
                         {...dragHandleProps}
@@ -79,10 +91,9 @@ const TodoItemUI = memo(function TodoItemUI({
                     </div>
                 )}
 
-                {/* toggle */}
                 <button
                     onClick={onToggle}
-                    disabled={dragging}
+                    disabled={dragging || isEditing}
                     className={`p-2 rounded-full
                         ${completed
                             ? "bg-blue-600 text-white"
@@ -92,7 +103,6 @@ const TodoItemUI = memo(function TodoItemUI({
                     <CheckCircle2 size={20} />
                 </button>
 
-                {/* text */}
                 {isEditing ? (
                     <input
                         autoFocus
@@ -117,7 +127,6 @@ const TodoItemUI = memo(function TodoItemUI({
                     </span>
                 )}
 
-                {/* delete */}
                 <div className="opacity-0 group-hover:opacity-100">
                     <button onClick={onDelete}>
                         <Trash2 size={20} />
@@ -131,9 +140,14 @@ const TodoItemUI = memo(function TodoItemUI({
 /* ================= ITEM ================= */
 
 const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
-    const toggleTodo = useTodoStore((s) => s.toggleTodo);
-    const deleteTodo = useTodoStore((s) => s.deleteTodo);
-    const updateTodo = useTodoStore((s) => s.updateTodo);
+    const { toggleTodo, deleteTodo, updateTodo } = useTodoStore(
+        (s) => ({
+            toggleTodo: s.toggleTodo,
+            deleteTodo: s.deleteTodo,
+            updateTodo: s.updateTodo,
+        }),
+        shallow
+    );
 
     const [editing, setEditing] = useState(false);
 
@@ -161,7 +175,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
                 onToggle={() => toggleTodo(id)}
                 onDelete={() => deleteTodo(id)}
                 onEditStart={() => setEditing(true)}
-                onEditSave={(val: string) => {
+                onEditSave={(val) => {
                     updateTodo(id, val);
                     setEditing(false);
                 }}
@@ -175,10 +189,12 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
 /* ================= LIST ================= */
 
 export default function TodoList({ setIsDragging }: any) {
-    const todos = useTodoStore((s) => s.todos, shallow); // ⚠️ 改这里
+    const todos = useTodoStore((s) => s.todos, shallow);
     const reorderTodos = useTodoStore((s) => s.reorderTodos);
 
     const [activeId, setActiveId] = useState<number | null>(null);
+
+    const todoIds = useMemo(() => todos.map((t) => t.id), [todos]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -188,7 +204,7 @@ export default function TodoList({ setIsDragging }: any) {
     const handleDragStart = useCallback((event: DragStartEvent) => {
         setActiveId(event.active.id as number);
         setIsDragging?.(true);
-    }, []);
+    }, [setIsDragging]);
 
     const handleDragEnd = useCallback((event: DragEndEvent) => {
         const { active, over };
@@ -201,10 +217,10 @@ export default function TodoList({ setIsDragging }: any) {
         const oldIndex = todos.findIndex((t) => t.id === active.id);
         const newIndex = todos.findIndex((t) => t.id === over.id);
 
-        if (oldIndex !== -1 && newIndex !== -1) {
-            reorderTodos(oldIndex, newIndex);
-        }
-    }, [todos]);
+        if (oldIndex < 0 || newIndex < 0) return;
+
+        reorderTodos(oldIndex, newIndex);
+    }, [todos, reorderTodos, setIsDragging]);
 
     const activeTodo = useMemo(
         () => todos.find((t) => t.id === activeId),
@@ -219,7 +235,7 @@ export default function TodoList({ setIsDragging }: any) {
             onDragEnd={handleDragEnd}
         >
             <SortableContext
-                items={todos.map((t) => t.id)}
+                items={todoIds}
                 strategy={verticalListSortingStrategy}
             >
                 <section className="p-6 space-y-4 max-w-2xl mx-auto">

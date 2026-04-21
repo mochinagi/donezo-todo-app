@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 
 /* ================= TYPES ================= */
 
@@ -15,8 +15,8 @@ export type FilterType = "all" | "completed" | "active";
 type Action =
     | { type: "add"; todo: Todo }
     | { type: "delete"; todo: Todo; index: number }
-    | { type: "edit"; prev: Todo }
-    | { type: "toggle"; prev: Todo }
+    | { type: "edit"; before: Todo; after: Todo }
+    | { type: "toggle"; before: Todo }
     | { type: "reorder"; from: number; to: number }
     | { type: "clear"; removed: Todo[] };
 
@@ -24,12 +24,6 @@ type Action =
 
 const STORAGE_KEY = "donezo-todos";
 const MAX_STACK = 50;
-
-const filterMap: Record<FilterType, (t: Todo) => boolean> = {
-    all: () => true,
-    completed: (t) => t.completed,
-    active: (t) => !t.completed,
-};
 
 /* ================= STORAGE ================= */
 
@@ -42,12 +36,6 @@ const loadTodos = (): Todo[] => {
     } catch {
         return [];
     }
-};
-
-const persistTodos = (todos: Todo[]) => {
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
-    } catch { }
 };
 
 /* ================= HOOK ================= */
@@ -64,6 +52,8 @@ export function useTodoState(initialTodos: Todo[] = []) {
     const [undoStack, setUndoStack] = useState<Action[]>([]);
     const [redoStack, setRedoStack] = useState<Action[]>([]);
 
+    const persistTimer = useRef<NodeJS.Timeout | null>(null);
+
     /* ---------------- helpers ---------------- */
 
     const pushUndo = useCallback((action: Action) => {
@@ -75,10 +65,20 @@ export function useTodoState(initialTodos: Todo[] = []) {
         setRedoStack([]);
     }, []);
 
-    /* ---------------- persist ---------------- */
+    /* ---------------- persist (debounced) ---------------- */
 
     useEffect(() => {
-        persistTodos(todos);
+        if (persistTimer.current) clearTimeout(persistTimer.current);
+
+        persistTimer.current = setTimeout(() => {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+            } catch { }
+        }, 300);
+
+        return () => {
+            if (persistTimer.current) clearTimeout(persistTimer.current);
+        };
     }, [todos]);
 
     /* ---------------- actions ---------------- */
@@ -94,7 +94,6 @@ export function useTodoState(initialTodos: Todo[] = []) {
         };
 
         pushUndo({ type: "add", todo });
-
         setTodos((prev) => [todo, ...prev]);
     }, [pushUndo]);
 
@@ -114,7 +113,8 @@ export function useTodoState(initialTodos: Todo[] = []) {
         setTodos((prev) =>
             prev.map((t) => {
                 if (t.id !== id) return t;
-                pushUndo({ type: "toggle", prev: t });
+
+                pushUndo({ type: "toggle", before: t });
                 return { ...t, completed: !t.completed };
             })
         );
@@ -127,8 +127,11 @@ export function useTodoState(initialTodos: Todo[] = []) {
         setTodos((prev) =>
             prev.map((t) => {
                 if (t.id !== id || t.text === trimmed) return t;
-                pushUndo({ type: "edit", prev: t });
-                return { ...t, text: trimmed };
+
+                const after = { ...t, text: trimmed };
+                pushUndo({ type: "edit", before: t, after });
+
+                return after;
             })
         );
     }, [pushUndo]);
@@ -179,9 +182,13 @@ export function useTodoState(initialTodos: Todo[] = []) {
                 }
 
                 case "edit":
+                    return prev.map((t) =>
+                        t.id === action.before.id ? action.before : t
+                    );
+
                 case "toggle":
                     return prev.map((t) =>
-                        t.id === action.prev.id ? action.prev : t
+                        t.id === action.before.id ? action.before : t
                     );
 
                 case "reorder": {
@@ -217,15 +224,17 @@ export function useTodoState(initialTodos: Todo[] = []) {
                 case "delete":
                     return prev.filter((t) => t.id !== action.todo.id);
 
+                case "edit":
+                    return prev.map((t) =>
+                        t.id === action.after.id ? action.after : t
+                    );
+
                 case "toggle":
                     return prev.map((t) =>
-                        t.id === action.prev.id
+                        t.id === action.before.id
                             ? { ...t, completed: !t.completed }
                             : t
                     );
-
-                case "edit":
-                    return prev;
 
                 case "reorder": {
                     const arr = [...prev];
@@ -247,22 +256,26 @@ export function useTodoState(initialTodos: Todo[] = []) {
 
     /* ---------------- derived ---------------- */
 
-    const filteredTodos = useMemo(
-        () => todos.filter(filterMap[filter]),
-        [todos, filter]
-    );
+    const filteredTodos = useMemo(() => {
+        switch (filter) {
+            case "completed":
+                return todos.filter((t) => t.completed);
+            case "active":
+                return todos.filter((t) => !t.completed);
+            default:
+                return todos;
+        }
+    }, [todos, filter]);
 
     const stats = useMemo(() => {
         const total = todos.length;
         const completed = todos.filter((t) => t.completed).length;
-        const active = total - completed;
 
         return {
             total,
             completed,
-            active,
-            completionRate:
-                total === 0 ? 0 : Math.round((completed / total) * 100),
+            active: total - completed,
+            completionRate: total === 0 ? 0 : Math.round((completed / total) * 100),
         };
     }, [todos]);
 
