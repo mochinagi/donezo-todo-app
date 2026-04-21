@@ -1,22 +1,24 @@
 "use client";
 
 import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, type ReactNode } from "react";
 
 /* -----------------------------
    Theme 型定義
 ----------------------------- */
+
 export type AppTheme = "light" | "dark" | "system";
 type ResolvedTheme = "light" | "dark";
 
 /* -----------------------------
    Provider
 ----------------------------- */
-export function ThemeProvider({
-    children,
-}: {
-    children: React.ReactNode;
-}) {
+
+type ThemeProviderProps = {
+    children: ReactNode;
+};
+
+export function ThemeProvider({ children }: ThemeProviderProps) {
     return (
         <NextThemesProvider
             attribute="class"
@@ -30,8 +32,9 @@ export function ThemeProvider({
 }
 
 /* -----------------------------
-   Custom Hook（增强版）
+   Custom Hook（进化版）
 ----------------------------- */
+
 export function useAppTheme() {
     const { theme, setTheme, resolvedTheme, systemTheme } = useTheme();
 
@@ -41,37 +44,51 @@ export function useAppTheme() {
         setMounted(true);
     }, []);
 
-    /* ---------- 当前主题 ---------- */
+    /* ---------- 当前主题（安全处理） ---------- */
+
     const currentTheme = (theme ?? "system") as AppTheme;
-    const currentResolved = (resolvedTheme ?? "light") as ResolvedTheme;
-    const currentSystem = (systemTheme ?? "light") as ResolvedTheme;
+
+    const safeResolvedTheme: ResolvedTheme = mounted
+        ? (resolvedTheme as ResolvedTheme) ?? "light"
+        : "light";
+
+    const safeSystemTheme: ResolvedTheme = mounted
+        ? (systemTheme as ResolvedTheme) ?? "light"
+        : "light";
 
     /* ---------- 状态 ---------- */
-    const isDark = currentResolved === "dark";
-    const isLight = currentResolved === "light";
+
+    const isDark = safeResolvedTheme === "dark";
+    const isLight = safeResolvedTheme === "light";
     const isSystem = currentTheme === "system";
 
-    /* ---------- toggle ---------- */
-    const toggleTheme = useCallback(() => {
-        if (currentTheme === "system") {
-            setTheme(currentResolved === "dark" ? "light" : "dark");
-        } else {
-            setTheme(currentTheme === "dark" ? "light" : "dark");
-        }
-    }, [currentTheme, currentResolved, setTheme]);
+    const isReady = mounted && !!resolvedTheme;
 
-    /* ---------- cycle ---------- */
+    /* ---------- actions ---------- */
+
+    // 只在 light / dark 之间切换（更符合用户预期）
+    const toggleTheme = useCallback(() => {
+        setTheme(isDark ? "light" : "dark");
+    }, [isDark, setTheme]);
+
+    // light → dark → system
     const cycleTheme = useCallback(() => {
         if (currentTheme === "light") return setTheme("dark");
         if (currentTheme === "dark") return setTheme("system");
         return setTheme("light");
     }, [currentTheme, setTheme]);
 
+    const setLight = useCallback(() => setTheme("light"), [setTheme]);
+    const setDark = useCallback(() => setTheme("dark"), [setTheme]);
+    const setSystem = useCallback(() => setTheme("system"), [setTheme]);
+
+    /* ---------- return ---------- */
+
     return {
         /* core */
         theme: currentTheme,
-        resolvedTheme: currentResolved,
-        systemTheme: currentSystem,
+        resolvedTheme: safeResolvedTheme,
+        systemTheme: safeSystemTheme,
 
         /* state */
         state: {
@@ -79,6 +96,7 @@ export function useAppTheme() {
             isLight,
             isSystem,
             isMounted: mounted,
+            isReady,
         },
 
         /* actions */
@@ -86,9 +104,9 @@ export function useAppTheme() {
             setTheme,
             toggleTheme,
             cycleTheme,
-            setLight: () => setTheme("light"),
-            setDark: () => setTheme("dark"),
-            setSystem: () => setTheme("system"),
+            setLight,
+            setDark,
+            setSystem,
         },
     };
 }
