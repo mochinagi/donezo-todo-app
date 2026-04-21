@@ -10,24 +10,25 @@ export interface Todo {
     id: string;
     text: string;
     completed: boolean;
+    createdAt: number;
+    updatedAt: number;
 }
 
 export type FilterType = "tasks" | "completed" | "active";
 
-type UndoAction =
-    | { type: "delete"; payload: { todo: Todo; index: number } }
-    | { type: "add"; payload: { id: string } }
-    | { type: "toggle"; payload: { prev: Todo } }
-    | { type: "edit"; payload: { prev: Todo } }
-    | { type: "reorder"; payload: { from: number; to: number } };
+type Action =
+    | { type: "add"; todo: Todo }
+    | { type: "delete"; todo: Todo; index: number }
+    | { type: "toggle"; prev: Todo }
+    | { type: "edit"; prev: Todo }
+    | { type: "reorder"; from: number; to: number }
+    | { type: "clear"; removed: Todo[] };
 
-const MAX_UNDO = 50;
+const MAX_STACK = 50;
 
-/* ================= UTILS ================= */
-
-const pushUndo = (stack: UndoAction[], action: UndoAction) => {
+const pushStack = (stack: Action[], action: Action) => {
     const next = [...stack, action];
-    if (next.length > MAX_UNDO) next.shift();
+    if (next.length > MAX_STACK) next.shift();
     return next;
 };
 
@@ -38,8 +39,8 @@ type TodoStore = {
     search: string;
     activeCategory: FilterType;
 
-    undoStack: UndoAction[];
-    redoStack: UndoAction[];
+    undoStack: Action[];
+    redoStack: Action[];
 
     addTodo: (text: string) => void;
     updateTodo: (id: string, text: string) => void;
@@ -52,8 +53,8 @@ type TodoStore = {
 
     reorderTodos: (from: number, to: number) => void;
 
-    setSearch: (value: string) => void;
-    setActiveCategory: (id: FilterType) => void;
+    setSearch: (v: string) => void;
+    setActiveCategory: (v: FilterType) => void;
 };
 
 export const useTodoStore = create<TodoStore>()(
@@ -71,28 +72,24 @@ export const useTodoStore = create<TodoStore>()(
                 const value = text.trim();
                 if (!value) return;
 
-                const id = crypto.randomUUID();
+                const now = Date.now();
 
-                set((state) => {
-                    if (
-                        state.todos.some(
-                            (t) =>
-                                t.text.toLowerCase() === value.toLowerCase()
-                        )
-                    ) return state;
+                const todo: Todo = {
+                    id: crypto.randomUUID(),
+                    text: value,
+                    completed: false,
+                    createdAt: now,
+                    updatedAt: now,
+                };
 
-                    return {
-                        todos: [
-                            { id, text: value, completed: false },
-                            ...state.todos,
-                        ],
-                        undoStack: pushUndo(state.undoStack, {
-                            type: "add",
-                            payload: { id },
-                        }),
-                        redoStack: [],
-                    };
-                });
+                set((state) => ({
+                    todos: [todo, ...state.todos],
+                    undoStack: pushStack(state.undoStack, {
+                        type: "add",
+                        todo,
+                    }),
+                    redoStack: [],
+                }));
             },
 
             /* ---------------- EDIT ---------------- */
@@ -106,11 +103,13 @@ export const useTodoStore = create<TodoStore>()(
 
                     return {
                         todos: state.todos.map((t) =>
-                            t.id === id ? { ...t, text: value } : t
+                            t.id === id
+                                ? { ...t, text: value, updatedAt: Date.now() }
+                                : t
                         ),
-                        undoStack: pushUndo(state.undoStack, {
+                        undoStack: pushStack(state.undoStack, {
                             type: "edit",
-                            payload: { prev },
+                            prev,
                         }),
                         redoStack: [],
                     };
@@ -118,7 +117,7 @@ export const useTodoStore = create<TodoStore>()(
             },
 
             /* ---------------- TOGGLE ---------------- */
-            toggleTodo: (id) => {
+            toggleTodo: (id) =>
                 set((state) => {
                     const prev = state.todos.find((t) => t.id === id);
                     if (!prev) return state;
@@ -126,44 +125,55 @@ export const useTodoStore = create<TodoStore>()(
                     return {
                         todos: state.todos.map((t) =>
                             t.id === id
-                                ? { ...t, completed: !t.completed }
+                                ? {
+                                    ...t,
+                                    completed: !t.completed,
+                                    updatedAt: Date.now(),
+                                }
                                 : t
                         ),
-                        undoStack: pushUndo(state.undoStack, {
+                        undoStack: pushStack(state.undoStack, {
                             type: "toggle",
-                            payload: { prev },
+                            prev,
                         }),
                         redoStack: [],
                     };
-                });
-            },
+                }),
 
             /* ---------------- DELETE ---------------- */
-            deleteTodo: (id) => {
+            deleteTodo: (id) =>
                 set((state) => {
                     const index = state.todos.findIndex((t) => t.id === id);
                     if (index === -1) return state;
 
+                    const todo = state.todos[index];
+
                     return {
                         todos: state.todos.filter((t) => t.id !== id),
-                        undoStack: pushUndo(state.undoStack, {
+                        undoStack: pushStack(state.undoStack, {
                             type: "delete",
-                            payload: {
-                                todo: state.todos[index],
-                                index,
-                            },
+                            todo,
+                            index,
                         }),
                         redoStack: [],
                     };
-                });
-            },
+                }),
 
             /* ---------------- CLEAR ---------------- */
             clearCompleted: () =>
-                set((state) => ({
-                    todos: state.todos.filter((t) => !t.completed),
-                    redoStack: [],
-                })),
+                set((state) => {
+                    const removed = state.todos.filter((t) => t.completed);
+                    if (removed.length === 0) return state;
+
+                    return {
+                        todos: state.todos.filter((t) => !t.completed),
+                        undoStack: pushStack(state.undoStack, {
+                            type: "clear",
+                            removed,
+                        }),
+                        redoStack: [],
+                    };
+                }),
 
             /* ---------------- UNDO ---------------- */
             undo: () => {
@@ -177,23 +187,19 @@ export const useTodoStore = create<TodoStore>()(
                         case "add":
                             return {
                                 todos: state.todos.filter(
-                                    (t) => t.id !== action.payload.id
+                                    (t) => t.id !== action.todo.id
                                 ),
                                 undoStack,
-                                redoStack: pushUndo(state.redoStack, action),
+                                redoStack: pushStack(state.redoStack, action),
                             };
 
                         case "delete": {
-                            const updated = [...state.todos];
-                            updated.splice(
-                                action.payload.index,
-                                0,
-                                action.payload.todo
-                            );
+                            const next = [...state.todos];
+                            next.splice(action.index, 0, action.todo);
                             return {
-                                todos: updated,
+                                todos: next,
                                 undoStack,
-                                redoStack: pushUndo(state.redoStack, action),
+                                redoStack: pushStack(state.redoStack, action),
                             };
                         }
 
@@ -201,25 +207,29 @@ export const useTodoStore = create<TodoStore>()(
                         case "edit":
                             return {
                                 todos: state.todos.map((t) =>
-                                    t.id === action.payload.prev.id
-                                        ? action.payload.prev
-                                        : t
+                                    t.id === action.prev.id ? action.prev : t
                                 ),
                                 undoStack,
-                                redoStack: pushUndo(state.redoStack, action),
+                                redoStack: pushStack(state.redoStack, action),
                             };
 
                         case "reorder": {
-                            const updated = [...state.todos];
-                            const [moved] = updated.splice(action.payload.to, 1);
-                            updated.splice(action.payload.from, 0, moved);
-
+                            const arr = [...state.todos];
+                            const [moved] = arr.splice(action.to, 1);
+                            arr.splice(action.from, 0, moved);
                             return {
-                                todos: updated,
+                                todos: arr,
                                 undoStack,
-                                redoStack: pushUndo(state.redoStack, action),
+                                redoStack: pushStack(state.redoStack, action),
                             };
                         }
+
+                        case "clear":
+                            return {
+                                todos: [...action.removed, ...state.todos],
+                                undoStack,
+                                redoStack: pushStack(state.redoStack, action),
+                            };
 
                         default:
                             return state;
@@ -238,14 +248,59 @@ export const useTodoStore = create<TodoStore>()(
                     switch (action.type) {
                         case "add":
                             return {
-                                todos: [
-                                    {
-                                        id: action.payload.id,
-                                        text: "",
-                                        completed: false,
-                                    },
-                                    ...state.todos,
-                                ],
+                                todos: [action.todo, ...state.todos],
+                                redoStack,
+                            };
+
+                        case "delete":
+                            return {
+                                todos: state.todos.filter(
+                                    (t) => t.id !== action.todo.id
+                                ),
+                                redoStack,
+                            };
+
+                        case "toggle":
+                            return {
+                                todos: state.todos.map((t) =>
+                                    t.id === action.prev.id
+                                        ? {
+                                            ...t,
+                                            completed: !t.completed,
+                                        }
+                                        : t
+                                ),
+                                redoStack,
+                            };
+
+                        case "edit":
+                            return {
+                                todos: state.todos.map((t) =>
+                                    t.id === action.prev.id
+                                        ? {
+                                            ...t,
+                                            text: t.text,
+                                        }
+                                        : t
+                                ),
+                                redoStack,
+                            };
+
+                        case "reorder": {
+                            const arr = [...state.todos];
+                            const [moved] = arr.splice(action.from, 1);
+                            arr.splice(action.to, 0, moved);
+                            return { todos: arr, redoStack };
+                        }
+
+                        case "clear":
+                            return {
+                                todos: state.todos.filter(
+                                    (t) =>
+                                        !action.removed.find(
+                                            (r) => r.id === t.id
+                                        )
+                                ),
                                 redoStack,
                             };
 
@@ -260,33 +315,33 @@ export const useTodoStore = create<TodoStore>()(
                 set((state) => {
                     if (from === to) return state;
 
-                    const todos = [...state.todos];
-                    const [moved] = todos.splice(from, 1);
-                    todos.splice(to, 0, moved);
+                    const arr = [...state.todos];
+                    const [moved] = arr.splice(from, 1);
+                    arr.splice(to, 0, moved);
 
                     return {
-                        todos,
-                        undoStack: pushUndo(state.undoStack, {
+                        todos: arr,
+                        undoStack: pushStack(state.undoStack, {
                             type: "reorder",
-                            payload: { from, to },
+                            from,
+                            to,
                         }),
                         redoStack: [],
                     };
                 }),
 
-            setSearch: (value) => set({ search: value }),
-            setActiveCategory: (id) =>
-                set({ activeCategory: id }),
+            setSearch: (v) => set({ search: v }),
+            setActiveCategory: (v) => set({ activeCategory: v }),
         }),
         {
             name: "todo-storage",
-            version: 8,
+            version: 9,
             storage: createJSONStorage(() => localStorage),
 
-            partialize: (state) => ({
-                todos: state.todos,
-                search: state.search,
-                activeCategory: state.activeCategory,
+            partialize: (s) => ({
+                todos: s.todos,
+                search: s.search,
+                activeCategory: s.activeCategory,
             }),
         }
     )
@@ -296,14 +351,14 @@ export const useTodoStore = create<TodoStore>()(
 
 export const useFilteredTodos = () =>
     useTodoStore(
-        (state) => {
-            const keyword = state.search.toLowerCase();
+        (s) => {
+            const keyword = s.search.toLowerCase();
 
-            return state.todos.filter((t) => {
+            return s.todos.filter((t) => {
                 if (!t.text.toLowerCase().includes(keyword)) return false;
 
-                if (state.activeCategory === "active") return !t.completed;
-                if (state.activeCategory === "completed") return t.completed;
+                if (s.activeCategory === "active") return !t.completed;
+                if (s.activeCategory === "completed") return t.completed;
 
                 return true;
             });
@@ -313,9 +368,9 @@ export const useFilteredTodos = () =>
 
 export const useTodoStats = () =>
     useTodoStore(
-        (state) => {
-            const completed = state.todos.filter((t) => t.completed).length;
-            const total = state.todos.length;
+        (s) => {
+            const completed = s.todos.filter((t) => t.completed).length;
+            const total = s.todos.length;
 
             return {
                 total,
