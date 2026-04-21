@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Trash2, CheckCircle2, GripVertical } from "lucide-react";
 import { useTodoStore } from "@/store/todoStore";
@@ -16,10 +16,7 @@ import {
     DragEndEvent,
     DragStartEvent,
     DragOverlay,
-    type DraggableAttributes,
 } from "@dnd-kit/core";
-
-import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 
 import {
     SortableContext,
@@ -37,21 +34,6 @@ type Todo = {
     completed: boolean;
 };
 
-type DragHandleProps = DraggableAttributes & SyntheticListenerMap;
-
-type TodoItemUIProps = {
-    text: string;
-    completed: boolean;
-    dragging: boolean;
-    isEditing: boolean;
-    onToggle: () => void;
-    onDelete: () => void;
-    onEditStart: () => void;
-    onEditSave: (val: string) => void;
-    onEditCancel: () => void;
-    dragHandleProps: DragHandleProps;
-};
-
 /* ================= UI ================= */
 
 const TodoItemUI = memo(function TodoItemUI({
@@ -65,7 +47,7 @@ const TodoItemUI = memo(function TodoItemUI({
     onEditSave,
     onEditCancel,
     dragHandleProps,
-}: TodoItemUIProps) {
+}: any) {
     const [editText, setEditText] = useState(text);
 
     useEffect(() => {
@@ -74,43 +56,37 @@ const TodoItemUI = memo(function TodoItemUI({
 
     const handleSave = useCallback(() => {
         const trimmed = editText.trim();
-        if (!trimmed) {
-            onEditCancel();
-            return;
-        }
-        if (trimmed !== text) {
-            onEditSave(trimmed);
-        } else {
-            onEditCancel();
-        }
-    }, [editText, text, onEditSave, onEditCancel]);
+        if (!trimmed) return onEditCancel();
+        trimmed !== text ? onEditSave(trimmed) : onEditCancel();
+    }, [editText, text]);
 
     return (
         <Card
-            className={`group flex items-center justify-between transition-all duration-200 select-none
+            className={`group flex items-center justify-between transition-all duration-200
             ${completed ? "opacity-60" : "hover:scale-[1.02]"}
-            ${dragging ? "shadow-xl scale-105 opacity-80 cursor-grabbing" : ""}
+            ${dragging ? "shadow-xl scale-105 opacity-80" : ""}
         `}
         >
             <CardContent className="flex items-center gap-4 w-full">
 
                 {/* drag */}
-                <div
-                    {...dragHandleProps}
-                    className="cursor-grab active:cursor-grabbing text-gray-400"
-                >
-                    <GripVertical size={20} />
-                </div>
+                {!isEditing && (
+                    <div
+                        {...dragHandleProps}
+                        className="cursor-grab text-gray-400 opacity-0 group-hover:opacity-100"
+                    >
+                        <GripVertical size={20} />
+                    </div>
+                )}
 
                 {/* toggle */}
                 <button
-                    aria-label="toggle todo"
                     onClick={onToggle}
                     disabled={dragging}
-                    className={`p-2 rounded-full transition
+                    className={`p-2 rounded-full
                         ${completed
                             ? "bg-blue-600 text-white"
-                            : "bg-gray-200 text-gray-400 hover:bg-gray-300"
+                            : "bg-gray-200 text-gray-400"
                         }`}
                 >
                     <CheckCircle2 size={20} />
@@ -123,33 +99,27 @@ const TodoItemUI = memo(function TodoItemUI({
                         value={editText}
                         onChange={(e) => setEditText(e.target.value)}
                         onBlur={handleSave}
+                        onFocus={(e) => e.target.select()}
                         onKeyDown={(e) => {
                             if (e.key === "Enter") handleSave();
                             if (e.key === "Escape") onEditCancel();
                         }}
-                        className="flex-1 bg-transparent border-b outline-none focus:border-blue-500"
+                        className="flex-1 border-b outline-none"
                     />
                 ) : (
                     <span
                         onDoubleClick={onEditStart}
                         className={`flex-1 cursor-pointer text-lg
-                            ${completed
-                                ? "line-through text-gray-400"
-                                : "hover:text-blue-500"
-                            }`}
+                            ${completed ? "line-through text-gray-400" : ""}
+                        `}
                     >
                         {text}
                     </span>
                 )}
 
                 {/* delete */}
-                <div className="opacity-0 group-hover:opacity-100 transition">
-                    <button
-                        aria-label="delete todo"
-                        onClick={onDelete}
-                        disabled={dragging}
-                        className="p-2 rounded-md text-gray-400 hover:text-red-500"
-                    >
+                <div className="opacity-0 group-hover:opacity-100">
+                    <button onClick={onDelete}>
                         <Trash2 size={20} />
                     </button>
                 </div>
@@ -161,7 +131,10 @@ const TodoItemUI = memo(function TodoItemUI({
 /* ================= ITEM ================= */
 
 const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
-    const { toggleTodo, deleteTodo, updateTodo } = useTodoStore();
+    const toggleTodo = useTodoStore((s) => s.toggleTodo);
+    const deleteTodo = useTodoStore((s) => s.deleteTodo);
+    const updateTodo = useTodoStore((s) => s.updateTodo);
+
     const [editing, setEditing] = useState(false);
 
     const {
@@ -188,7 +161,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
                 onToggle={() => toggleTodo(id)}
                 onDelete={() => deleteTodo(id)}
                 onEditStart={() => setEditing(true)}
-                onEditSave={(val) => {
+                onEditSave={(val: string) => {
                     updateTodo(id, val);
                     setEditing(false);
                 }}
@@ -201,12 +174,8 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
 
 /* ================= LIST ================= */
 
-export default function TodoList({
-    setIsDragging,
-}: {
-    setIsDragging?: (v: boolean) => void;
-}) {
-    const todos = useTodoStore((s) => s.filteredTodos, shallow);
+export default function TodoList({ setIsDragging }: any) {
+    const todos = useTodoStore((s) => s.todos, shallow); // ⚠️ 改这里
     const reorderTodos = useTodoStore((s) => s.reorderTodos);
 
     const [activeId, setActiveId] = useState<number | null>(null);
@@ -216,34 +185,31 @@ export default function TodoList({
         useSensor(KeyboardSensor)
     );
 
-    const handleDragStart = useCallback(
-        (event: DragStartEvent) => {
-            setActiveId(event.active.id as number);
-            setIsDragging?.(true);
-        },
-        [setIsDragging]
+    const handleDragStart = useCallback((event: DragStartEvent) => {
+        setActiveId(event.active.id as number);
+        setIsDragging?.(true);
+    }, []);
+
+    const handleDragEnd = useCallback((event: DragEndEvent) => {
+        const { active, over };
+
+        setActiveId(null);
+        setIsDragging?.(false);
+
+        if (!over || active.id === over.id) return;
+
+        const oldIndex = todos.findIndex((t) => t.id === active.id);
+        const newIndex = todos.findIndex((t) => t.id === over.id);
+
+        if (oldIndex !== -1 && newIndex !== -1) {
+            reorderTodos(oldIndex, newIndex);
+        }
+    }, [todos]);
+
+    const activeTodo = useMemo(
+        () => todos.find((t) => t.id === activeId),
+        [activeId, todos]
     );
-
-    const handleDragEnd = useCallback(
-        (event: DragEndEvent) => {
-            const { active, over };
-
-            setActiveId(null);
-            setIsDragging?.(false);
-
-            if (!over || active.id === over.id) return;
-
-            const oldIndex = todos.findIndex((t) => t.id === active.id);
-            const newIndex = todos.findIndex((t) => t.id === over.id);
-
-            if (oldIndex !== -1 && newIndex !== -1) {
-                reorderTodos(oldIndex, newIndex);
-            }
-        },
-        [todos, reorderTodos, setIsDragging]
-    );
-
-    const activeTodo = todos.find((t) => t.id === activeId);
 
     return (
         <DndContext
@@ -256,9 +222,9 @@ export default function TodoList({
                 items={todos.map((t) => t.id)}
                 strategy={verticalListSortingStrategy}
             >
-                <section className="flex-1 p-6 space-y-4 max-w-2xl mx-auto">
+                <section className="p-6 space-y-4 max-w-2xl mx-auto">
                     {todos.length === 0 ? (
-                        <div className="text-center text-gray-400 text-lg">
+                        <div className="text-center text-gray-400">
                             ✨ Start small. Add your first task.
                         </div>
                     ) : (
@@ -271,19 +237,17 @@ export default function TodoList({
 
             <DragOverlay>
                 {activeTodo && (
-                    <div className="opacity-90 scale-105 pointer-events-none">
-                        <TodoItemUI
-                            {...activeTodo}
-                            isEditing={false}
-                            onToggle={() => { }}
-                            onDelete={() => { }}
-                            onEditStart={() => { }}
-                            onEditSave={() => { }}
-                            onEditCancel={() => { }}
-                            dragging
-                            dragHandleProps={{}}
-                        />
-                    </div>
+                    <TodoItemUI
+                        {...activeTodo}
+                        isEditing={false}
+                        dragging
+                        onToggle={() => { }}
+                        onDelete={() => { }}
+                        onEditStart={() => { }}
+                        onEditSave={() => { }}
+                        onEditCancel={() => { }}
+                        dragHandleProps={{}}
+                    />
                 )}
             </DragOverlay>
         </DndContext>
