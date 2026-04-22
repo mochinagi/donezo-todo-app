@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useCallback, useRef } from "react";
+import { memo, useMemo, useCallback, useRef, useEffect } from "react";
 import {
     CheckCircle2,
     Circle,
@@ -10,8 +10,8 @@ import type { LucideIcon } from "lucide-react";
 import { useTodoStore } from "@/store/todoStore";
 import { shallow } from "zustand/shallow";
 
-/* ----------------------------- */
-/* TYPES */
+/* ================= TYPES ================= */
+
 type CategoryId = "tasks" | "active" | "completed";
 
 interface Category {
@@ -20,22 +20,22 @@ interface Category {
     icon: LucideIcon;
 }
 
-/* ----------------------------- */
-/* CONFIG */
-const categories: Category[] = [
+/* ================= CONFIG ================= */
+
+const categories = [
     { id: "tasks", name: "すべてのタスク", icon: List },
     { id: "active", name: "未完了", icon: Circle },
     { id: "completed", name: "完了済み", icon: CheckCircle2 },
-];
+] as const;
 
-/* ----------------------------- */
-/* ITEM */
+/* ================= ITEM ================= */
+
 interface SidebarItemProps {
     category: Category;
     active: boolean;
     count: number;
     onSelect: (id: CategoryId) => void;
-    setRef: (el: HTMLButtonElement | null) => void;
+    refCallback: (el: HTMLButtonElement | null) => void;
 }
 
 const SidebarItem = memo(function SidebarItem({
@@ -43,7 +43,7 @@ const SidebarItem = memo(function SidebarItem({
     active,
     count,
     onSelect,
-    setRef,
+    refCallback,
 }: SidebarItemProps) {
     const { name, icon: Icon, id } = category;
 
@@ -53,7 +53,7 @@ const SidebarItem = memo(function SidebarItem({
 
     return (
         <button
-            ref={setRef}
+            ref={refCallback}
             type="button"
             onClick={handleClick}
             role="tab"
@@ -68,6 +68,7 @@ const SidebarItem = memo(function SidebarItem({
                     : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
         >
+            {/* active indicator */}
             <span
                 className={`absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-r
                 transition-all duration-200
@@ -82,23 +83,22 @@ const SidebarItem = memo(function SidebarItem({
                 <span className="text-sm">{name}</span>
             </div>
 
-            {count > 0 && (
-                <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-medium
-                        ${active
-                            ? "bg-white/20 text-white"
-                            : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
-                        }`}
-                >
-                    {count}
-                </span>
-            )}
+            {/* count */}
+            <span
+                className={`text-xs px-2 py-0.5 rounded-full font-medium min-w-[24px] text-center
+                    ${active
+                        ? "bg-white/20 text-white"
+                        : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                    }`}
+            >
+                {count}
+            </span>
         </button>
     );
 });
 
-/* ----------------------------- */
-/* SIDEBAR */
+/* ================= SIDEBAR ================= */
+
 export default function Sidebar() {
     const { todos, activeCategory, setActiveCategory } = useTodoStore(
         (s) => ({
@@ -111,24 +111,24 @@ export default function Sidebar() {
 
     const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-    /* ---------------- counts ---------------- */
+    /* ===== counts（优化版）===== */
     const counts = useMemo(() => {
-        return todos.reduce(
-            (acc, t) => ({
-                tasks: acc.tasks + 1,
-                completed: acc.completed + (t.completed ? 1 : 0),
-            }),
-            { tasks: 0, completed: 0 }
-        );
+        let total = 0;
+        let completed = 0;
+
+        for (const t of todos) {
+            total++;
+            if (t.completed) completed++;
+        }
+
+        return {
+            tasks: total,
+            active: total - completed,
+            completed,
+        };
     }, [todos]);
 
-    const derivedCounts = useMemo(() => ({
-        tasks: counts.tasks,
-        active: counts.tasks - counts.completed,
-        completed: counts.completed,
-    }), [counts]);
-
-    /* ---------------- select ---------------- */
+    /* ===== select ===== */
     const handleSelect = useCallback(
         (id: CategoryId) => {
             setActiveCategory(id);
@@ -136,7 +136,7 @@ export default function Sidebar() {
         [setActiveCategory]
     );
 
-    /* ---------------- keyboard nav ---------------- */
+    /* ===== keyboard nav ===== */
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent) => {
             const index = categories.findIndex(
@@ -168,7 +168,10 @@ export default function Sidebar() {
 
             const next = categories[nextIndex];
             setActiveCategory(next.id);
-            itemRefs.current[nextIndex]?.focus();
+
+            const el = itemRefs.current[nextIndex];
+            el?.focus();
+            el?.scrollIntoView({ block: "nearest" }); // ⭐ 加分点
         },
         [activeCategory, setActiveCategory]
     );
@@ -180,27 +183,38 @@ export default function Sidebar() {
         []
     );
 
+    /* ===== auto scroll on active change ===== */
+    useEffect(() => {
+        const index = categories.findIndex(
+            (c) => c.id === activeCategory
+        );
+        const el = itemRefs.current[index];
+        el?.scrollIntoView({ block: "nearest" });
+    }, [activeCategory]);
+
     return (
         <aside className="w-64 bg-white/80 dark:bg-gray-900/80 backdrop-blur border-r border-gray-200 dark:border-gray-700 flex flex-col">
-            {/* Logo */}
+            {/* logo */}
             <h1 className="p-6 text-2xl font-extrabold tracking-tight border-b border-gray-200 dark:border-gray-700">
                 <span className="text-blue-500">Done</span>zo
             </h1>
 
-            {/* Navigation */}
+            {/* nav */}
             <nav
                 role="tablist"
+                aria-label="タスクカテゴリー"
+                aria-orientation="vertical"
                 onKeyDown={handleKeyDown}
-                className="flex-1 p-4 space-y-2"
+                className="flex-1 p-4 space-y-2 overflow-y-auto"
             >
                 {categories.map((cat, index) => (
                     <SidebarItem
                         key={cat.id}
                         category={cat}
                         active={activeCategory === cat.id}
-                        count={derivedCounts[cat.id]}
+                        count={counts[cat.id]}
                         onSelect={handleSelect}
-                        setRef={setItemRef(index)}
+                        refCallback={setItemRef(index)}
                     />
                 ))}
             </nav>
