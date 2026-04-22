@@ -8,11 +8,7 @@ import clsx from "clsx";
 import { toast } from "sonner";
 import { useTodoStore } from "@/store/todoStore";
 
-/* ================= CONST ================= */
-
 const MAX_LENGTH = 100;
-
-/* ================= TYPES ================= */
 
 type OnAdd = (text: string) => Promise<void> | void;
 
@@ -21,8 +17,6 @@ interface AddTodoProps {
     setInput: (val: string) => void;
     onAdd: OnAdd;
 }
-
-/* ================= COMPONENT ================= */
 
 export default function AddTodo({
     input,
@@ -38,27 +32,19 @@ export default function AddTodo({
 
     const todos = useTodoStore((s) => s.todos);
 
-    /* ---------------- FAST LOOKUP ---------------- */
-
+    /* ===== fast lookup ===== */
     const todoSet = useMemo(() => {
         return new Set(todos.map((t) => t.text.toLowerCase()));
     }, [todos]);
 
-    /* ---------------- VALIDATION ---------------- */
-
+    /* ===== validation ===== */
     const validate = useCallback(
-        (value: string): string => {
-            const trimmed = value.trim();
+        (value: string) => {
+            const v = value.trim();
 
-            if (!trimmed) return "タスク内容を入力してください";
-
-            if (trimmed.length > MAX_LENGTH) {
-                return `タスクは${MAX_LENGTH}文字以内で入力してください`;
-            }
-
-            if (todoSet.has(trimmed.toLowerCase())) {
-                return "同じタスクはすでに存在します";
-            }
+            if (!v) return "入力してください";
+            if (v.length > MAX_LENGTH) return `最大${MAX_LENGTH}文字`;
+            if (todoSet.has(v.toLowerCase())) return "既に存在します";
 
             return "";
         },
@@ -66,19 +52,18 @@ export default function AddTodo({
     );
 
     const trimmed = input.trim();
-    const trimmedLength = trimmed.length;
+    const length = trimmed.length;
 
     const error = useMemo(() => {
         if (!touched) return "";
         return validate(input);
     }, [input, touched, validate]);
 
-    /* ---------------- ADD ---------------- */
-
+    /* ===== add ===== */
     const handleAdd = useCallback(async () => {
         if (submittingRef.current) return;
 
-        const value = input.trim();
+        const v = input.trim();
         const err = validate(input);
 
         if (err) {
@@ -90,9 +75,9 @@ export default function AddTodo({
             submittingRef.current = true;
             setIsSubmitting(true);
 
-            await onAdd(value);
+            await onAdd(v);
 
-            toast.success(`「${value}」を追加しました`);
+            toast.success("追加しました");
 
             setInput("");
             setTouched(false);
@@ -100,17 +85,15 @@ export default function AddTodo({
             requestAnimationFrame(() => {
                 inputRef.current?.focus();
             });
-
         } catch {
-            toast.error("タスクの追加に失敗しました");
+            toast.error("失敗しました");
         } finally {
             submittingRef.current = false;
             setIsSubmitting(false);
         }
     }, [input, onAdd, setInput, validate]);
 
-    /* ---------------- INPUT ---------------- */
-
+    /* ===== input ===== */
     const handleChange = useCallback(
         (value: string) => {
             setInput(value);
@@ -120,19 +103,15 @@ export default function AddTodo({
 
     const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
         e.preventDefault();
-        const text = e.clipboardData.getData("text").trim();
+        const text = e.clipboardData
+            .getData("text")
+            .trim()
+            .slice(0, MAX_LENGTH);
+
         setInput(text);
     };
 
-    const lengthColor =
-        trimmedLength > MAX_LENGTH
-            ? "text-red-500"
-            : trimmedLength > MAX_LENGTH * 0.8
-                ? "text-yellow-500"
-                : "text-gray-400";
-
-    /* ---------------- KEYBOARD ---------------- */
-
+    /* ===== keyboard ===== */
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (isComposingRef.current) return;
 
@@ -147,11 +126,20 @@ export default function AddTodo({
         }
     };
 
+    const lengthColor =
+        length > MAX_LENGTH
+            ? "text-red-500"
+            : length > MAX_LENGTH * 0.8
+                ? "text-yellow-500"
+                : "text-gray-400";
+
+    const disabled =
+        !trimmed || isSubmitting || !!validate(input);
+
     return (
         <div className="p-6 border-b space-y-2">
             <div className="flex gap-3">
                 <div className="relative flex-1">
-
                     <Input
                         ref={inputRef}
                         value={input}
@@ -161,12 +149,11 @@ export default function AddTodo({
                         placeholder={
                             isSubmitting
                                 ? "追加中..."
-                                : "やることを入力して Enter..."
+                                : "タスクを入力"
                         }
-                        aria-invalid={!!error}
-                        aria-describedby="todo-error"
                         maxLength={MAX_LENGTH}
                         disabled={isSubmitting}
+                        aria-invalid={!!error}
                         className={clsx(
                             "pl-10 pr-12 rounded-lg",
                             error && "border-red-400"
@@ -192,14 +179,14 @@ export default function AddTodo({
                             lengthColor
                         )}
                     >
-                        {trimmedLength}/{MAX_LENGTH}
+                        {length}/{MAX_LENGTH}
                     </span>
                 </div>
 
                 <Button
                     type="button"
                     onClick={handleAdd}
-                    disabled={!trimmed || isSubmitting || !!error}
+                    disabled={disabled}
                     className="flex items-center gap-2"
                 >
                     {isSubmitting ? (
@@ -207,16 +194,12 @@ export default function AddTodo({
                     ) : (
                         <Plus size={16} />
                     )}
-                    {isSubmitting ? "追加中..." : "追加"}
+                    {isSubmitting ? "追加中" : "追加"}
                 </Button>
             </div>
 
             {error && (
-                <div
-                    id="todo-error"
-                    className="flex items-center gap-1 text-sm text-red-500"
-                    role="alert"
-                >
+                <div className="flex items-center gap-1 text-sm text-red-500">
                     <AlertCircle size={14} />
                     {error}
                 </div>
