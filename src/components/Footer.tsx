@@ -1,15 +1,8 @@
 "use client";
 
-/**
- * Footer Component
- * タスク統計と完了操作
- */
-
-import { useMemo, useCallback, useState } from "react";
+import { useMemo, useCallback, useState, useRef } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-
-/* ================= TYPES ================= */
 
 type Todo = {
     id: number;
@@ -25,7 +18,14 @@ interface FooterProps {
     showPercentage?: boolean;
 }
 
-/* ================= COMPONENT ================= */
+const TEXT = {
+    empty: "タスクがありません",
+    done: "すべて完了",
+    almost: "もう少し",
+    good: "進行中",
+    started: "開始済み",
+    notStarted: "未開始",
+};
 
 export default function Footer({
     total,
@@ -35,8 +35,7 @@ export default function Footer({
     showPercentage = true,
 }: FooterProps) {
     const [loading, setLoading] = useState(false);
-
-    /* ---------------- DERIVED ---------------- */
+    const loadingRef = useRef(false);
 
     const remaining = total - completed;
 
@@ -46,126 +45,83 @@ export default function Footer({
     }, [total, completed]);
 
     const status = useMemo(() => {
-        if (total === 0)
-            return {
-                text: "タスクを追加してみましょう ✨",
-                color: "bg-gray-400",
-            };
-
-        if (completed === total)
-            return {
-                text: "🎉 すべて完了！素晴らしい！",
-                color: "bg-green-500",
-            };
-
-        if (progress >= 80)
-            return {
-                text: "あと少しで完了！🔥",
-                color: "bg-purple-500",
-            };
-
-        if (progress >= 50)
-            return {
-                text: "順調に進んでいます 👍",
-                color: "bg-blue-500",
-            };
-
-        if (progress > 0)
-            return {
-                text: "スタートしました 💡",
-                color: "bg-blue-400",
-            };
-
-        return {
-            text: "まだ始まっていません",
-            color: "bg-gray-400",
-        };
+        if (total === 0) return { text: TEXT.empty, color: "bg-gray-400" };
+        if (completed === total) return { text: TEXT.done, color: "bg-green-500" };
+        if (progress >= 80) return { text: TEXT.almost, color: "bg-purple-500" };
+        if (progress >= 50) return { text: TEXT.good, color: "bg-blue-500" };
+        if (progress > 0) return { text: TEXT.started, color: "bg-blue-400" };
+        return { text: TEXT.notStarted, color: "bg-gray-400" };
     }, [total, completed, progress]);
-
-    /* ---------------- CLEAR ---------------- */
 
     const handleClear = useCallback(async () => {
         if (completed === 0) {
-            toast.info("削除できる完了タスクがありません");
+            toast.info("削除対象なし");
             return;
         }
 
-        if (loading) return;
+        if (loadingRef.current) return;
+
+        const confirmed = confirm("完了済みタスクを削除しますか？");
+        if (!confirmed) return;
 
         try {
+            loadingRef.current = true;
             setLoading(true);
 
             const removedTodos = await onClearCompleted();
 
-            toast.success("完了済みタスクを削除しました", {
-                description: `${removedTodos.length}件削除されました`,
+            toast.success("削除しました", {
+                description: `${removedTodos.length}件`,
                 action: onRestore
                     ? {
-                        label: "元に戻す",
+                        label: "戻す",
                         onClick: () => {
-                            onRestore?.(removedTodos);
-                            toast.success("復元しました");
+                            onRestore(removedTodos);
                         },
                     }
                     : undefined,
             });
         } catch {
-            toast.error("削除に失敗しました");
+            toast.error("失敗しました");
         } finally {
+            loadingRef.current = false;
             setLoading(false);
         }
-    }, [completed, loading, onClearCompleted, onRestore]);
+    }, [completed, onClearCompleted, onRestore]);
 
     return (
-        <footer
-            className="bg-white/80 dark:bg-gray-900/80 backdrop-blur
-            border-t border-gray-200 dark:border-gray-700
-            px-6 py-4 space-y-4 max-w-2xl mx-auto"
-        >
-            {/* 統計 */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm text-gray-600 dark:text-gray-300 gap-2">
+        <footer className="bg-white/80 dark:bg-gray-900/80 backdrop-blur border-t border-gray-200 dark:border-gray-700 px-6 py-4 space-y-4 max-w-2xl mx-auto">
+            <div className="flex justify-between items-center text-sm text-gray-600 dark:text-gray-300">
                 <span aria-live="polite">
-                    {total}件中 {completed}件完了（残り {remaining}件）
+                    {total}件中 {completed}件（残り {remaining}件）
                 </span>
 
                 <button
                     onClick={handleClear}
                     disabled={completed === 0 || loading}
-                    aria-label="完了済みタスクを削除"
-                    className="flex items-center gap-1 px-3 py-1 rounded-md text-red-500
-                    hover:bg-red-50 dark:hover:bg-red-900/30
-                    transition-all duration-200
-                    hover:scale-105 active:scale-95
-                    focus:outline-none focus:ring-2 focus:ring-red-300
-                    disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="flex items-center gap-1 px-3 py-1 rounded-md text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition disabled:opacity-40"
                 >
                     {loading && <Loader2 size={14} className="animate-spin" />}
-                    {loading ? "削除中..." : "完了済みをクリア"}
+                    {loading ? "削除中" : "完了を削除"}
                 </button>
             </div>
 
-            {/* 進捗バー */}
             <div
                 className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden"
                 role="progressbar"
-                aria-label="タスク進捗"
                 aria-valuenow={progress}
                 aria-valuemin={0}
                 aria-valuemax={100}
             >
                 <div
-                    className={`h-full ${status.color} transition-all duration-500 ease-out`}
-                    style={{
-                        width: `${progress}%`,
-                        opacity: total === 0 ? 0.3 : 1,
-                    }}
+                    className={`${status.color} h-full transition-all duration-500`}
+                    style={{ width: `${progress}%` }}
                 />
             </div>
 
-            {/* 状态 */}
             <div className="flex justify-between text-xs text-gray-400">
                 <span>{status.text}</span>
-                {showPercentage && <span>進捗: {progress}%</span>}
+                {showPercentage && <span>{progress}%</span>}
             </div>
         </footer>
     );
