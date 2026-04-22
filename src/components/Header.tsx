@@ -8,9 +8,11 @@ import {
     useEffect,
     useRef,
     useCallback,
+    useMemo,
 } from "react";
 
-/* ----------------------------- */
+/* ================= TYPES ================= */
+
 const categoryMap = {
     myday: "マイデイ",
     important: "重要",
@@ -20,7 +22,15 @@ const categoryMap = {
 
 type CategoryId = keyof typeof categoryMap;
 
-/* ----------------------------- */
+type HeaderProps = {
+    categoryId: CategoryId;
+    search: string;
+    onSearchChange: (value: string) => void;
+    total?: number;
+};
+
+/* ================= HOOK ================= */
+
 function useDebouncedCallback<T extends (...args: unknown[]) => void>(
     callback: T,
     delay: number
@@ -45,37 +55,28 @@ function useDebouncedCallback<T extends (...args: unknown[]) => void>(
         }
     }, []);
 
-    useEffect(() => {
-        return () => cancel();
-    }, [cancel]);
+    useEffect(() => cancel, [cancel]);
 
     return { debounced, cancel };
 }
 
-/* ----------------------------- */
+/* ================= COMPONENT ================= */
 
 export default function Header({
     categoryId,
     search,
     onSearchChange,
     total = 0,
-}: {
-    categoryId: CategoryId;
-    search: string;
-    onSearchChange: (value: string) => void;
-    total?: number;
-}) {
-    /* ----------------------------- */
+}: HeaderProps) {
     const categoryName = categoryMap[categoryId] ?? "タスク";
 
-    /* ----------------------------- */
     const [localValue, setLocalValue] = useState(search);
-    const syncingRef = useRef(false);
 
+    const syncingRef = useRef(false);
     const inputRef = useRef<HTMLInputElement | null>(null);
     const isComposingRef = useRef(false);
 
-    /* ----------------------------- */
+    /* ===== debounce ===== */
     const { debounced, cancel } = useDebouncedCallback(
         (value: string) => {
             syncingRef.current = true;
@@ -97,7 +98,7 @@ export default function Header({
         setLocalValue(search);
     }, [search]);
 
-    /* ----------------------------- */
+    /* ===== keyboard ===== */
     const toggleFocus = useCallback(() => {
         const input = inputRef.current;
         if (!input) return;
@@ -131,8 +132,8 @@ export default function Header({
         return () => window.removeEventListener("keydown", handler);
     }, [toggleFocus]);
 
-    /* ----------------------------- */
-    const subtitle = (() => {
+    /* ===== subtitle ===== */
+    const subtitle = useMemo(() => {
         if (total === 0) {
             return search
                 ? "条件に一致するタスクはありません"
@@ -144,9 +145,9 @@ export default function Header({
         }
 
         return `${total}件のタスク`;
-    })();
+    }, [search, total]);
 
-    /* ----------------------------- */
+    /* ===== clear ===== */
     const handleClear = useCallback(() => {
         cancel();
         setLocalValue("");
@@ -154,31 +155,29 @@ export default function Header({
         inputRef.current?.focus();
     }, [onSearchChange, cancel]);
 
-    /* ----------------------------- */
+    /* ================= UI ================= */
+
     return (
         <header
             className="flex flex-col sm:flex-row items-start sm:items-center justify-between
             bg-white/80 dark:bg-gray-900/80 backdrop-blur
             px-6 py-4 border-b border-gray-200 dark:border-gray-700"
         >
-            {/* 标题 */}
+            {/* title */}
             <div className="flex flex-col mb-3 sm:mb-0">
                 <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
                     {categoryName}
                 </h2>
 
-                <p
-                    className="text-sm text-gray-400"
-                    aria-live="polite"
-                >
+                <p className="text-sm text-gray-400" aria-live="polite">
                     {subtitle}
                 </p>
             </div>
 
-            {/* 搜索 */}
+            {/* search */}
             <div
                 role="search"
-                className="relative w-full max-w-xs sm:w-72"
+                className="relative w-full max-w-xs sm:w-72 group"
             >
                 <Input
                     ref={inputRef}
@@ -191,10 +190,11 @@ export default function Header({
                         isComposingRef.current = false;
                         setLocalValue(e.currentTarget.value);
                     }}
-                    placeholder="タスクを検索... (⌘K / /)"
+                    placeholder="検索 (Ctrl/Cmd + K / /)"
                     className={clsx(
                         "pl-10 pr-10 rounded-lg transition-all",
                         "focus:ring-2 focus:ring-blue-400 focus:outline-none",
+                        "group-focus-within:ring-2 group-focus-within:ring-blue-400",
                         "hover:bg-gray-50 dark:hover:bg-gray-800"
                     )}
                     role="searchbox"
@@ -203,8 +203,11 @@ export default function Header({
                     autoComplete="off"
                     onKeyDown={(e) => {
                         if (e.key === "Escape") {
-                            handleClear();
-                            inputRef.current?.blur();
+                            if (localValue) {
+                                handleClear();
+                            } else {
+                                inputRef.current?.blur();
+                            }
                         }
                     }}
                 />
