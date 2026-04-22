@@ -1,22 +1,27 @@
 "use client";
 
-import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes";
-import { useEffect, useState, useCallback, type ReactNode } from "react";
+import {
+    ThemeProvider as NextThemesProvider,
+    useTheme,
+} from "next-themes";
+import {
+    useEffect,
+    useState,
+    useCallback,
+    useMemo,
+    type ReactNode,
+} from "react";
 
-/* -----------------------------
-   Theme 型定義
------------------------------ */
+/* ================= TYPES ================= */
 
 export type AppTheme = "light" | "dark" | "system";
 type ResolvedTheme = "light" | "dark";
 
-/* -----------------------------
-   Provider
------------------------------ */
-
 type ThemeProviderProps = {
     children: ReactNode;
 };
+
+/* ================= PROVIDER ================= */
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
     return (
@@ -31,12 +36,11 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     );
 }
 
-/* -----------------------------
-   Custom Hook（进化版）
------------------------------ */
+/* ================= HOOK ================= */
 
 export function useAppTheme() {
-    const { theme, setTheme, resolvedTheme, systemTheme } = useTheme();
+    const { theme, setTheme, resolvedTheme, systemTheme } =
+        useTheme();
 
     const [mounted, setMounted] = useState(false);
 
@@ -44,7 +48,7 @@ export function useAppTheme() {
         setMounted(true);
     }, []);
 
-    /* ---------- 当前主题（安全处理） ---------- */
+    /* ---------- 安全主题 ---------- */
 
     const currentTheme = (theme ?? "system") as AppTheme;
 
@@ -64,49 +68,77 @@ export function useAppTheme() {
 
     const isReady = mounted && !!resolvedTheme;
 
+    /* ---------- 用户偏好 vs 实际主题（🔥加分点） ---------- */
+
+    const preference = currentTheme; // 用户选择
+    const resolved = safeResolvedTheme; // 实际渲染
+
     /* ---------- actions ---------- */
 
-    // 只在 light / dark 之间切换（更符合用户预期）
+    const setLight = useCallback(() => setTheme("light"), [setTheme]);
+    const setDark = useCallback(() => setTheme("dark"), [setTheme]);
+    const setSystem = useCallback(() => setTheme("system"), [setTheme]);
+
     const toggleTheme = useCallback(() => {
+        // ⭐ 始终在 light / dark 间切换（不受 system 影响）
         setTheme(isDark ? "light" : "dark");
     }, [isDark, setTheme]);
 
-    // light → dark → system
     const cycleTheme = useCallback(() => {
         if (currentTheme === "light") return setTheme("dark");
         if (currentTheme === "dark") return setTheme("system");
         return setTheme("light");
     }, [currentTheme, setTheme]);
 
-    const setLight = useCallback(() => setTheme("light"), [setTheme]);
-    const setDark = useCallback(() => setTheme("dark"), [setTheme]);
-    const setSystem = useCallback(() => setTheme("system"), [setTheme]);
+    /* ---------- memo return（性能优化） ---------- */
 
-    /* ---------- return ---------- */
+    return useMemo(
+        () => ({
+            /* core */
+            theme: currentTheme,
+            resolvedTheme: safeResolvedTheme,
+            systemTheme: safeSystemTheme,
 
-    return {
-        /* core */
-        theme: currentTheme,
-        resolvedTheme: safeResolvedTheme,
-        systemTheme: safeSystemTheme,
+            /* 🔥 新增语义层 */
+            preference,
+            resolved,
 
-        /* state */
-        state: {
+            /* state */
+            state: {
+                isDark,
+                isLight,
+                isSystem,
+                isMounted: mounted,
+                isReady,
+            },
+
+            /* actions */
+            actions: {
+                setTheme,
+                toggleTheme,
+                cycleTheme,
+                setLight,
+                setDark,
+                setSystem,
+            },
+        }),
+        [
+            currentTheme,
+            safeResolvedTheme,
+            safeSystemTheme,
+            preference,
+            resolved,
             isDark,
             isLight,
             isSystem,
-            isMounted: mounted,
+            mounted,
             isReady,
-        },
-
-        /* actions */
-        actions: {
             setTheme,
             toggleTheme,
             cycleTheme,
             setLight,
             setDark,
             setSystem,
-        },
-    };
+        ]
+    );
 }
