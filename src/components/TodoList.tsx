@@ -34,6 +34,10 @@ type Todo = {
     completed: boolean;
 };
 
+type TodoListProps = {
+    setIsDragging?: (dragging: boolean) => void;
+};
+
 type TodoItemUIProps = {
     text: string;
     completed: boolean;
@@ -44,7 +48,7 @@ type TodoItemUIProps = {
     onEditStart: () => void;
     onEditSave: (val: string) => void;
     onEditCancel: () => void;
-    dragHandleProps?: any;
+    dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
 };
 
 /* ================= UI ================= */
@@ -70,7 +74,8 @@ const TodoItemUI = memo(function TodoItemUI({
     const handleSave = useCallback(() => {
         const trimmed = editText.trim();
         if (!trimmed) return onEditCancel();
-        trimmed !== text ? onEditSave(trimmed) : onEditCancel();
+        if (trimmed !== text) onEditSave(trimmed);
+        else onEditCancel();
     }, [editText, text, onEditSave, onEditCancel]);
 
     return (
@@ -94,7 +99,7 @@ const TodoItemUI = memo(function TodoItemUI({
                 <button
                     onClick={onToggle}
                     disabled={dragging || isEditing}
-                    className={`p-2 rounded-full
+                    className={`p-2 rounded-full transition
                         ${completed
                             ? "bg-blue-600 text-white"
                             : "bg-gray-200 text-gray-400"
@@ -109,7 +114,6 @@ const TodoItemUI = memo(function TodoItemUI({
                         value={editText}
                         onChange={(e) => setEditText(e.target.value)}
                         onBlur={handleSave}
-                        onFocus={(e) => e.target.select()}
                         onKeyDown={(e) => {
                             if (e.key === "Enter") handleSave();
                             if (e.key === "Escape") onEditCancel();
@@ -127,11 +131,12 @@ const TodoItemUI = memo(function TodoItemUI({
                     </span>
                 )}
 
-                <div className="opacity-0 group-hover:opacity-100">
-                    <button onClick={onDelete}>
-                        <Trash2 size={20} />
-                    </button>
-                </div>
+                <button
+                    onClick={onDelete}
+                    className="opacity-0 group-hover:opacity-100 transition text-gray-400 hover:text-red-500"
+                >
+                    <Trash2 size={20} />
+                </button>
             </CardContent>
         </Card>
     );
@@ -158,12 +163,23 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
         transform,
         transition,
         isDragging,
-    } = useSortable({ id });
+    } = useSortable({
+        id,
+        disabled: editing, // ⭐ 编辑时禁止拖拽
+    });
 
     const style = {
         transform: CSS.Transform.toString(transform),
         transition,
     };
+
+    const handleSave = useCallback(
+        (val: string) => {
+            updateTodo(id, val);
+            setEditing(false);
+        },
+        [id, updateTodo]
+    );
 
     return (
         <div ref={setNodeRef} style={style}>
@@ -175,10 +191,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
                 onToggle={() => toggleTodo(id)}
                 onDelete={() => deleteTodo(id)}
                 onEditStart={() => setEditing(true)}
-                onEditSave={(val) => {
-                    updateTodo(id, val);
-                    setEditing(false);
-                }}
+                onEditSave={handleSave}
                 onEditCancel={() => setEditing(false)}
                 dragHandleProps={{ ...attributes, ...listeners }}
             />
@@ -188,7 +201,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
 
 /* ================= LIST ================= */
 
-export default function TodoList({ setIsDragging }: any) {
+export default function TodoList({ setIsDragging }: TodoListProps) {
     const todos = useTodoStore((s) => s.todos, shallow);
     const reorderTodos = useTodoStore((s) => s.reorderTodos);
 
@@ -217,9 +230,9 @@ export default function TodoList({ setIsDragging }: any) {
         const oldIndex = todos.findIndex((t) => t.id === active.id);
         const newIndex = todos.findIndex((t) => t.id === over.id);
 
-        if (oldIndex < 0 || newIndex < 0) return;
-
-        reorderTodos(oldIndex, newIndex);
+        if (oldIndex !== -1 && newIndex !== -1) {
+            reorderTodos(oldIndex, newIndex);
+        }
     }, [todos, reorderTodos, setIsDragging]);
 
     const activeTodo = useMemo(
@@ -241,7 +254,7 @@ export default function TodoList({ setIsDragging }: any) {
                 <section className="p-6 space-y-4 max-w-2xl mx-auto">
                     {todos.length === 0 ? (
                         <div className="text-center text-gray-400">
-                            ✨ Start small. Add your first task.
+                            🚀 Start small. Your first task matters.
                         </div>
                     ) : (
                         todos.map((todo) => (
