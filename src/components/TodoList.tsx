@@ -73,9 +73,17 @@ const TodoItemUI = memo(function TodoItemUI({
 
     const handleSave = useCallback(() => {
         const trimmed = editText.trim();
-        if (!trimmed) return onEditCancel();
-        if (trimmed !== text) onEditSave(trimmed);
-        else onEditCancel();
+
+        if (!trimmed) {
+            onEditCancel();
+            return;
+        }
+
+        if (trimmed !== text) {
+            onEditSave(trimmed);
+        } else {
+            onEditCancel();
+        }
     }, [editText, text, onEditSave, onEditCancel]);
 
     return (
@@ -97,6 +105,7 @@ const TodoItemUI = memo(function TodoItemUI({
                 )}
 
                 <button
+                    aria-label="toggle todo"
                     onClick={onToggle}
                     disabled={dragging || isEditing}
                     className={`p-2 rounded-full transition
@@ -113,7 +122,6 @@ const TodoItemUI = memo(function TodoItemUI({
                         autoFocus
                         value={editText}
                         onChange={(e) => setEditText(e.target.value)}
-                        onBlur={handleSave}
                         onKeyDown={(e) => {
                             if (e.key === "Enter") handleSave();
                             if (e.key === "Escape") onEditCancel();
@@ -132,6 +140,7 @@ const TodoItemUI = memo(function TodoItemUI({
                 )}
 
                 <button
+                    aria-label="delete todo"
                     onClick={onDelete}
                     className="opacity-0 group-hover:opacity-100 transition text-gray-400 hover:text-red-500"
                 >
@@ -165,7 +174,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
         isDragging,
     } = useSortable({
         id,
-        disabled: editing, // ⭐ 编辑时禁止拖拽
+        disabled: editing,
     });
 
     const style = {
@@ -209,6 +218,12 @@ export default function TodoList({ setIsDragging }: TodoListProps) {
 
     const todoIds = useMemo(() => todos.map((t) => t.id), [todos]);
 
+    const indexMap = useMemo(() => {
+        const map = new Map<number, number>();
+        todos.forEach((t, i) => map.set(t.id, i));
+        return map;
+    }, [todos]);
+
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
         useSensor(KeyboardSensor)
@@ -227,13 +242,13 @@ export default function TodoList({ setIsDragging }: TodoListProps) {
 
         if (!over || active.id === over.id) return;
 
-        const oldIndex = todos.findIndex((t) => t.id === active.id);
-        const newIndex = todos.findIndex((t) => t.id === over.id);
+        const oldIndex = indexMap.get(active.id as number);
+        const newIndex = indexMap.get(over.id as number);
 
-        if (oldIndex !== -1 && newIndex !== -1) {
+        if (oldIndex !== undefined && newIndex !== undefined) {
             reorderTodos(oldIndex, newIndex);
         }
-    }, [todos, reorderTodos, setIsDragging]);
+    }, [indexMap, reorderTodos, setIsDragging]);
 
     const activeTodo = useMemo(
         () => todos.find((t) => t.id === activeId),
@@ -254,7 +269,7 @@ export default function TodoList({ setIsDragging }: TodoListProps) {
                 <section className="p-6 space-y-4 max-w-2xl mx-auto">
                     {todos.length === 0 ? (
                         <div className="text-center text-gray-400">
-                            🚀 Start small. Your first task matters.
+                            Start small. Your first task matters.
                         </div>
                     ) : (
                         todos.map((todo) => (
@@ -266,17 +281,19 @@ export default function TodoList({ setIsDragging }: TodoListProps) {
 
             <DragOverlay>
                 {activeTodo && (
-                    <TodoItemUI
-                        {...activeTodo}
-                        isEditing={false}
-                        dragging
-                        onToggle={() => { }}
-                        onDelete={() => { }}
-                        onEditStart={() => { }}
-                        onEditSave={() => { }}
-                        onEditCancel={() => { }}
-                        dragHandleProps={{}}
-                    />
+                    <div className="scale-105 opacity-90">
+                        <TodoItemUI
+                            {...activeTodo}
+                            isEditing={false}
+                            dragging
+                            onToggle={() => { }}
+                            onDelete={() => { }}
+                            onEditStart={() => { }}
+                            onEditSave={() => { }}
+                            onEditCancel={() => { }}
+                            dragHandleProps={{}}
+                        />
+                    </div>
                 )}
             </DragOverlay>
         </DndContext>
