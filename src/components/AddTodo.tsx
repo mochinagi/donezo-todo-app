@@ -51,13 +51,13 @@ export default function AddTodo({
         [todoSet]
     );
 
-    const trimmed = input.trim();
-    const length = trimmed.length;
-
     const error = useMemo(() => {
         if (!touched) return "";
         return validate(input);
     }, [input, touched, validate]);
+
+    const hasError = !!error;
+    const length = input.length;
 
     /* ===== add ===== */
     const handleAdd = useCallback(async () => {
@@ -71,13 +71,15 @@ export default function AddTodo({
             return;
         }
 
+        if (!v) return;
+
         try {
             submittingRef.current = true;
             setIsSubmitting(true);
 
             await onAdd(v);
 
-            toast.success("追加しました");
+            toast.success("タスクを追加しました");
 
             setInput("");
             setTouched(false);
@@ -86,7 +88,7 @@ export default function AddTodo({
                 inputRef.current?.focus();
             });
         } catch {
-            toast.error("失敗しました");
+            toast.error("追加に失敗しました");
         } finally {
             submittingRef.current = false;
             setIsSubmitting(false);
@@ -103,12 +105,9 @@ export default function AddTodo({
 
     const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
         e.preventDefault();
-        const text = e.clipboardData
-            .getData("text")
-            .trim()
-            .slice(0, MAX_LENGTH);
-
-        setInput(text);
+        const text = e.clipboardData.getData("text");
+        const next = (input + text).slice(0, MAX_LENGTH);
+        setInput(next);
     };
 
     /* ===== keyboard ===== */
@@ -134,7 +133,7 @@ export default function AddTodo({
                 : "text-gray-400";
 
     const disabled =
-        !trimmed || isSubmitting || !!validate(input);
+        !input.trim() || isSubmitting || hasError;
 
     return (
         <div className="p-6 border-b space-y-2">
@@ -153,10 +152,11 @@ export default function AddTodo({
                         }
                         maxLength={MAX_LENGTH}
                         disabled={isSubmitting}
-                        aria-invalid={!!error}
+                        aria-invalid={hasError}
+                        aria-describedby="todo-error"
                         className={clsx(
                             "pl-10 pr-12 rounded-lg",
-                            error && "border-red-400"
+                            hasError && "border-red-400"
                         )}
                         onKeyDown={handleKeyDown}
                         onCompositionStart={() => {
@@ -198,8 +198,12 @@ export default function AddTodo({
                 </Button>
             </div>
 
-            {error && (
-                <div className="flex items-center gap-1 text-sm text-red-500">
+            {hasError && (
+                <div
+                    id="todo-error"
+                    role="alert"
+                    className="flex items-center gap-1 text-sm text-red-500"
+                >
                     <AlertCircle size={14} />
                     {error}
                 </div>
