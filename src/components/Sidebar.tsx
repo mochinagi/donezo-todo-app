@@ -10,16 +10,6 @@ import type { LucideIcon } from "lucide-react";
 import { useTodoStore } from "@/store/todoStore";
 import { shallow } from "zustand/shallow";
 
-/* ================= TYPES ================= */
-
-type CategoryId = "tasks" | "active" | "completed";
-
-interface Category {
-    id: CategoryId;
-    name: string;
-    icon: LucideIcon;
-}
-
 /* ================= CONFIG ================= */
 
 const categories = [
@@ -27,6 +17,14 @@ const categories = [
     { id: "active", name: "未完了", icon: Circle },
     { id: "completed", name: "完了済み", icon: CheckCircle2 },
 ] as const;
+
+type CategoryId = typeof categories[number]["id"];
+
+interface Category {
+    id: CategoryId;
+    name: string;
+    icon: LucideIcon;
+}
 
 /* ================= ITEM ================= */
 
@@ -51,27 +49,28 @@ const SidebarItem = memo(function SidebarItem({
         onSelect(id);
     }, [id, onSelect]);
 
+    const baseStyle =
+        "group relative flex items-center justify-between w-full px-4 py-2.5 rounded-lg text-left transition-all duration-200 focus:outline-none";
+
+    const activeStyle =
+        "bg-blue-500 text-white shadow-md scale-[1.02]";
+
+    const inactiveStyle =
+        "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800";
+
     return (
         <button
             ref={refCallback}
             type="button"
             onClick={handleClick}
             role="tab"
-            id={`tab-${id}`}
-            aria-controls={`panel-${id}`}
+            aria-current={active}
             aria-selected={active}
             tabIndex={active ? 0 : -1}
-            className={`group relative flex items-center justify-between w-full px-4 py-2.5 rounded-lg text-left
-                transition-all duration-200 focus:outline-none
-                ${active
-                    ? "bg-blue-500 text-white shadow-md scale-[1.02]"
-                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                }`}
+            className={`${baseStyle} ${active ? activeStyle : inactiveStyle}`}
         >
-            {/* active indicator */}
             <span
-                className={`absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-r
-                transition-all duration-200
+                className={`absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-r transition-all duration-200
                 ${active
                         ? "bg-blue-700 opacity-100"
                         : "opacity-0 group-hover:opacity-40 bg-gray-400"
@@ -83,7 +82,6 @@ const SidebarItem = memo(function SidebarItem({
                 <span className="text-sm">{name}</span>
             </div>
 
-            {/* count */}
             <span
                 className={`text-xs px-2 py-0.5 rounded-full font-medium min-w-[24px] text-center
                     ${active
@@ -111,15 +109,10 @@ export default function Sidebar() {
 
     const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-    /* ===== counts（优化版）===== */
+    /* ===== counts ===== */
     const counts = useMemo(() => {
-        let total = 0;
-        let completed = 0;
-
-        for (const t of todos) {
-            total++;
-            if (t.completed) completed++;
-        }
+        const total = todos.length;
+        const completed = todos.filter((t) => t.completed).length;
 
         return {
             tasks: total,
@@ -157,11 +150,17 @@ export default function Sidebar() {
                         categories.length;
                     break;
                 case "Home":
+                    e.preventDefault();
                     nextIndex = 0;
                     break;
                 case "End":
+                    e.preventDefault();
                     nextIndex = categories.length - 1;
                     break;
+                case "Enter":
+                case " ":
+                    e.preventDefault();
+                    return;
                 default:
                     return;
             }
@@ -171,7 +170,7 @@ export default function Sidebar() {
 
             const el = itemRefs.current[nextIndex];
             el?.focus();
-            el?.scrollIntoView({ block: "nearest" }); // ⭐ 加分点
+            el?.scrollIntoView({ block: "nearest" });
         },
         [activeCategory, setActiveCategory]
     );
@@ -183,7 +182,7 @@ export default function Sidebar() {
         []
     );
 
-    /* ===== auto scroll on active change ===== */
+    /* ===== auto scroll ===== */
     useEffect(() => {
         const index = categories.findIndex(
             (c) => c.id === activeCategory
@@ -194,12 +193,10 @@ export default function Sidebar() {
 
     return (
         <aside className="w-64 bg-white/80 dark:bg-gray-900/80 backdrop-blur border-r border-gray-200 dark:border-gray-700 flex flex-col">
-            {/* logo */}
             <h1 className="p-6 text-2xl font-extrabold tracking-tight border-b border-gray-200 dark:border-gray-700">
                 <span className="text-blue-500">Done</span>zo
             </h1>
 
-            {/* nav */}
             <nav
                 role="tablist"
                 aria-label="タスクカテゴリー"
