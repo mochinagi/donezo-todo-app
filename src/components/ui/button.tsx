@@ -6,18 +6,17 @@ import { Loader2 } from "lucide-react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
-/**
- * Button styles
- */
+/* ================= STYLES ================= */
+
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none",
   {
     variants: {
       variant: {
         default:
           "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600",
         destructive:
-          "bg-red-500 text-white hover:bg-red-600 dark:bg-red-500 dark:hover:bg-red-600",
+          "bg-red-500 text-white hover:bg-red-600",
         outline:
           "border border-gray-300 hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800",
         secondary:
@@ -32,7 +31,7 @@ const buttonVariants = cva(
           "bg-yellow-400 text-black hover:bg-yellow-500",
       },
       size: {
-        default: "h-9 px-4 py-2",
+        default: "h-9 px-4",
         sm: "h-8 px-3 text-sm",
         lg: "h-10 px-6 text-base",
         icon: "h-9 w-9 p-0",
@@ -45,6 +44,8 @@ const buttonVariants = cva(
   }
 );
 
+/* ================= TYPES ================= */
+
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
   VariantProps<typeof buttonVariants> {
@@ -53,9 +54,8 @@ export interface ButtonProps
   loadingText?: string;
 }
 
-/**
- * Button component
- */
+/* ================= COMPONENT ================= */
+
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
     {
@@ -67,35 +67,64 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       loadingText,
       children,
       disabled,
+      onClick,
+      type,
       ...props
     },
     ref
   ) => {
     const Comp = asChild ? Slot : "button";
+
     const isDisabled = loading || disabled;
     const isIconOnly = size === "icon";
 
-    // Loader 根据按钮 size 自适应
     const loaderSize = size === "sm" ? 14 : size === "lg" ? 18 : 16;
+
+    /* ===== dev warning ===== */
+    if (process.env.NODE_ENV !== "production") {
+      if (isIconOnly && !props["aria-label"]) {
+        console.warn(
+          "Button: icon-only button should have aria-label"
+        );
+      }
+    }
+
+    /* ===== click guard ===== */
+    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (isDisabled) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      onClick?.(e);
+    };
 
     return (
       <Comp
         ref={ref}
-        type="button"
+        type={type ?? "button"}
         data-slot="button"
+        data-disabled={isDisabled ? "" : undefined}
         aria-busy={loading || undefined}
-        aria-disabled={isDisabled}
+        aria-disabled={isDisabled || undefined}
         aria-label={isIconOnly ? props["aria-label"] : undefined}
         className={cn(
           buttonVariants({ variant, size }),
-          "hover:scale-105 active:scale-95 transform transition-transform duration-200",
+          "transition-transform duration-150 hover:scale-105 active:scale-95",
+          isDisabled && "pointer-events-none",
           className
         )}
-        disabled={isDisabled}
+        disabled={!asChild ? isDisabled : undefined}
+        onClick={handleClick}
         {...props}
       >
         <span className="flex items-center gap-2">
-          {loading && <Loader2 className="animate-spin" size={loaderSize} />}
+          {loading && (
+            <Loader2
+              className="animate-spin shrink-0"
+              size={loaderSize}
+            />
+          )}
 
           {!isIconOnly && (
             <span>
@@ -106,7 +135,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
         {loading && (
           <span className="sr-only" aria-live="polite">
-            Loading
+            読み込み中
           </span>
         )}
       </Comp>
