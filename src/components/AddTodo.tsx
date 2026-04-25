@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useTodoStore } from "@/store/todoStore";
 
 const MAX_LENGTH = 100;
+const MAX_PASTE = 20;
 
 type OnAdd = (text: string) => Promise<void> | void;
 
@@ -32,14 +33,17 @@ export default function AddTodo({
 
     const todos = useTodoStore((s) => s.todos);
 
+    /* ===== normalize ===== */
+    const normalize = useCallback((v: string) => {
+        return v.replace(/\s+/g, " ").trim();
+    }, []);
+
     /* ===== fast lookup ===== */
     const todoSet = useMemo(() => {
-        return new Set(todos.map((t) => t.text.toLowerCase()));
-    }, [todos]);
-
-    /* ===== normalize ===== */
-    const normalize = (v: string) =>
-        v.replace(/\s+/g, " ").trim();
+        return new Set(
+            todos.map((t) => normalize(t.text).toLowerCase())
+        );
+    }, [todos, normalize]);
 
     /* ===== validation ===== */
     const validate = useCallback(
@@ -52,7 +56,7 @@ export default function AddTodo({
 
             return "";
         },
-        [todoSet]
+        [todoSet, normalize]
     );
 
     const error = useMemo(() => {
@@ -95,28 +99,52 @@ export default function AddTodo({
             submittingRef.current = false;
             setIsSubmitting(false);
         }
-    }, [input, onAdd, setInput, validate]);
+    }, [input, onAdd, setInput, validate, normalize]);
 
-    /* ===== bulk paste ===== */
-    const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-        const text = e.clipboardData.getData("text");
+    /* ===== bulk paste (improved) ===== */
+    const handlePaste = useCallback(
+        async (e: React.ClipboardEvent<HTMLInputElement>) => {
+            const text = e.clipboardData.getData("text");
 
-        if (!text.includes("\n")) return;
+            if (!text.includes("\n")) return;
 
-        e.preventDefault();
+            e.preventDefault();
 
-        const lines = text
-            .split("\n")
-            .map(normalize)
-            .filter(Boolean)
-            .slice(0, 20);
+            const rawLines = text.split("\n");
 
-        if (!lines.length) return;
+            const lines = Array.from(
+                new Set(
+                    rawLines
+                        .map(normalize)
+                        .filter(Boolean)
+                        .slice(0, MAX_PASTE)
+                )
+            );
 
-        lines.forEach((line) => onAdd(line));
+            if (!lines.length) return;
 
-        toast.success(`${lines.length}件追加しました`);
-    };
+            let success = 0;
+
+            for (const line of lines) {
+                const err = validate(line);
+                if (err) continue;
+
+                try {
+                    await onAdd(line);
+                    success++;
+                } catch {
+                    // ignore single failure
+                }
+            }
+
+            if (success > 0) {
+                toast.success(`${success}件追加しました`);
+            } else {
+                toast.error("追加できませんでした");
+            }
+        },
+        [normalize, onAdd, validate]
+    );
 
     /* ===== input ===== */
     const handleChange = useCallback(
@@ -132,12 +160,6 @@ export default function AddTodo({
         if (isComposingRef.current) return;
 
         if (e.key === "Enter") {
-            if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
-                handleAdd();
-                return;
-            }
-
             e.preventDefault();
             handleAdd();
         }
