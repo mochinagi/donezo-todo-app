@@ -52,6 +52,7 @@ export interface ButtonProps
   asChild?: boolean;
   loading?: boolean;
   loadingText?: string;
+  disableScale?: boolean;
 }
 
 /* ================= COMPONENT ================= */
@@ -65,6 +66,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       asChild = false,
       loading = false,
       loadingText,
+      disableScale = false,
       children,
       disabled,
       onClick,
@@ -76,7 +78,11 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const Comp = asChild ? Slot : "button";
 
     const isDisabled = loading || disabled;
-    const isIconOnly = size === "icon";
+    const isIconOnly =
+      size === "icon" ||
+      (React.Children.count(children) === 1 &&
+        React.isValidElement(children) &&
+        typeof children.type !== "string");
 
     const loaderSize = size === "sm" ? 14 : size === "lg" ? 18 : 16;
 
@@ -89,7 +95,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       }
     }
 
-    /* ===== click guard ===== */
+    /* ===== click guard (important for asChild) ===== */
     const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
       if (isDisabled) {
         e.preventDefault();
@@ -99,6 +105,23 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       onClick?.(e);
     };
 
+    const content = (
+      <>
+        {loading && (
+          <Loader2
+            className="animate-spin shrink-0"
+            size={loaderSize}
+          />
+        )}
+
+        {!isIconOnly && (
+          <span className="truncate">
+            {loading ? loadingText ?? children : children}
+          </span>
+        )}
+      </>
+    );
+
     return (
       <Comp
         ref={ref}
@@ -107,9 +130,11 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         data-disabled={isDisabled ? "" : undefined}
         aria-busy={loading || undefined}
         aria-disabled={isDisabled || undefined}
+        aria-live={loading ? "polite" : undefined}
         aria-label={isIconOnly ? props["aria-label"] : undefined}
         className={cn(
           buttonVariants({ variant, size }),
+          !disableScale &&
           "transition-transform duration-150 hover:scale-105 active:scale-95",
           isDisabled && "pointer-events-none",
           className
@@ -118,25 +143,10 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         onClick={handleClick}
         {...props}
       >
-        <span className="flex items-center gap-2">
-          {loading && (
-            <Loader2
-              className="animate-spin shrink-0"
-              size={loaderSize}
-            />
-          )}
-
-          {!isIconOnly && (
-            <span>
-              {loading ? loadingText ?? children : children}
-            </span>
-          )}
-        </span>
+        <span className="flex items-center gap-2">{content}</span>
 
         {loading && (
-          <span className="sr-only" aria-live="polite">
-            読み込み中
-          </span>
+          <span className="sr-only">読み込み中</span>
         )}
       </Comp>
     );
