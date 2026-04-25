@@ -37,10 +37,14 @@ export default function AddTodo({
         return new Set(todos.map((t) => t.text.toLowerCase()));
     }, [todos]);
 
+    /* ===== normalize ===== */
+    const normalize = (v: string) =>
+        v.replace(/\s+/g, " ").trim();
+
     /* ===== validation ===== */
     const validate = useCallback(
         (value: string) => {
-            const v = value.trim();
+            const v = normalize(value);
 
             if (!v) return "入力してください";
             if (v.length > MAX_LENGTH) return `最大${MAX_LENGTH}文字`;
@@ -52,7 +56,7 @@ export default function AddTodo({
     );
 
     const error = useMemo(() => {
-        if (!touched) return "";
+        if (!touched && !input) return "";
         return validate(input);
     }, [input, touched, validate]);
 
@@ -63,21 +67,19 @@ export default function AddTodo({
     const handleAdd = useCallback(async () => {
         if (submittingRef.current) return;
 
-        const v = input.trim();
-        const err = validate(input);
+        const value = normalize(input);
+        const err = validate(value);
 
         if (err) {
             setTouched(true);
             return;
         }
 
-        if (!v) return;
-
         try {
             submittingRef.current = true;
             setIsSubmitting(true);
 
-            await onAdd(v);
+            await onAdd(value);
 
             toast.success("タスクを追加しました");
 
@@ -95,26 +97,47 @@ export default function AddTodo({
         }
     }, [input, onAdd, setInput, validate]);
 
+    /* ===== bulk paste ===== */
+    const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+        const text = e.clipboardData.getData("text");
+
+        if (!text.includes("\n")) return;
+
+        e.preventDefault();
+
+        const lines = text
+            .split("\n")
+            .map(normalize)
+            .filter(Boolean)
+            .slice(0, 20);
+
+        if (!lines.length) return;
+
+        lines.forEach((line) => onAdd(line));
+
+        toast.success(`${lines.length}件追加しました`);
+    };
+
     /* ===== input ===== */
     const handleChange = useCallback(
         (value: string) => {
             setInput(value);
+            if (!touched) setTouched(true);
         },
-        [setInput]
+        [setInput, touched]
     );
-
-    const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-        e.preventDefault();
-        const text = e.clipboardData.getData("text");
-        const next = (input + text).slice(0, MAX_LENGTH);
-        setInput(next);
-    };
 
     /* ===== keyboard ===== */
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (isComposingRef.current) return;
 
         if (e.key === "Enter") {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                handleAdd();
+                return;
+            }
+
             e.preventDefault();
             handleAdd();
         }
@@ -148,7 +171,7 @@ export default function AddTodo({
                         placeholder={
                             isSubmitting
                                 ? "追加中..."
-                                : "タスクを入力"
+                                : "タスクを入力（改行で複数追加可）"
                         }
                         maxLength={MAX_LENGTH}
                         disabled={isSubmitting}
