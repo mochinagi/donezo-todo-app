@@ -20,97 +20,24 @@ export interface Todo {
 
 export type FilterType = "tasks" | "completed" | "active";
 
-type Action =
-    | { type: "add"; todo: Todo }
-    | { type: "delete"; todo: Todo; index: number }
-    | { type: "toggle"; before: Todo; after: Todo }
-    | { type: "edit"; before: Todo; after: Todo }
-    | { type: "reorder"; from: number; to: number }
-    | { type: "clear"; removed: { todo: Todo; index: number }[] }
-    | { type: "toggleAll"; before: Todo[]; after: Todo[] };
+/* ================= UTILS ================= */
 
-const MAX_STACK = 50;
-
-const pushStack = (stack: Action[], action: Action) => {
-    const next = [...stack, action];
-    if (next.length > MAX_STACK) next.shift();
-    return next;
+const priorityWeight: Record<Priority, number> = {
+    high: 3,
+    medium: 2,
+    low: 1,
 };
 
-/* ================= CORE ================= */
+const sortTodos = (todos: Todo[]) => {
+    return [...todos].sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
 
-const applyAction = (todos: Todo[], action: Action): Todo[] => {
-    switch (action.type) {
-        case "add":
-            return [action.todo, ...todos];
-
-        case "delete":
-            return todos.filter((t) => t.id !== action.todo.id);
-
-        case "toggle":
-        case "edit":
-            return todos.map((t) =>
-                t.id === action.after.id ? action.after : t
-            );
-
-        case "reorder": {
-            const arr = [...todos];
-            const [moved] = arr.splice(action.from, 1);
-            arr.splice(action.to, 0, moved);
-            return arr;
+        if (priorityWeight[a.priority] !== priorityWeight[b.priority]) {
+            return priorityWeight[b.priority] - priorityWeight[a.priority];
         }
 
-        case "clear": {
-            const ids = new Set(action.removed.map(r => r.todo.id));
-            return todos.filter((t) => !ids.has(t.id));
-        }
-
-        case "toggleAll":
-            return action.after;
-
-        default:
-            return todos;
-    }
-};
-
-const revertAction = (todos: Todo[], action: Action): Todo[] => {
-    switch (action.type) {
-        case "add":
-            return todos.filter((t) => t.id !== action.todo.id);
-
-        case "delete": {
-            const arr = [...todos];
-            arr.splice(action.index, 0, action.todo);
-            return arr;
-        }
-
-        case "toggle":
-        case "edit":
-            return todos.map((t) =>
-                t.id === action.before.id ? action.before : t
-            );
-
-        case "reorder": {
-            const arr = [...todos];
-            const [moved] = arr.splice(action.to, 1);
-            arr.splice(action.from, 0, moved);
-            return arr;
-        }
-
-        case "clear": {
-            const arr = [...todos];
-            action.removed.forEach(({ todo, index }) => {
-                arr.splice(index, 0, todo);
-            });
-            return arr;
-        }
-
-        case "toggleAll":
-            return action.before;
-
-        default:
-            return todos;
-    }
+        return b.createdAt - a.createdAt;
+    });
 };
 
 /* ================= STORE ================= */
@@ -120,8 +47,8 @@ type TodoStore = {
     search: string;
     activeCategory: FilterType;
 
-    undoStack: Action[];
-    redoStack: Action[];
+    undoStack: any[];
+    redoStack: any[];
 
     addTodo: (text: string) => void;
     updateTodo: (id: string, text: string) => void;
@@ -138,6 +65,8 @@ type TodoStore = {
 
     setSearch: (v: string) => void;
     setActiveCategory: (v: FilterType) => void;
+
+    getSortedTodos: () => Todo[];
 };
 
 export const useTodoStore = create<TodoStore>()(
@@ -167,240 +96,99 @@ export const useTodoStore = create<TodoStore>()(
                 };
 
                 set((state) => ({
-                    todos: applyAction(state.todos, { type: "add", todo }),
-                    undoStack: pushStack(state.undoStack, { type: "add", todo }),
+                    todos: [todo, ...state.todos],
+                    undoStack: [...state.undoStack, { type: "add", todo }],
                     redoStack: [],
                 }));
             },
 
-            updateTodo: (id, text) => {
-                const value = text.trim();
-                if (!value) return;
-
-                set((state) => {
-                    const prev = state.todos.find((t) => t.id === id);
-                    if (!prev || prev.text === value) return state;
-
-                    const next = { ...prev, text: value, updatedAt: Date.now() };
-
-                    return {
-                        todos: applyAction(state.todos, {
-                            type: "edit",
-                            before: prev,
-                            after: next,
-                        }),
-                        undoStack: pushStack(state.undoStack, {
-                            type: "edit",
-                            before: prev,
-                            after: next,
-                        }),
-                        redoStack: [],
-                    };
-                });
-            },
+            updateTodo: (id, text) =>
+                set((state) => ({
+                    todos: state.todos.map((t) =>
+                        t.id === id
+                            ? { ...t, text: text.trim(), updatedAt: Date.now() }
+                            : t
+                    ),
+                })),
 
             toggleTodo: (id) =>
-                set((state) => {
-                    const prev = state.todos.find((t) => t.id === id);
-                    if (!prev) return state;
-
-                    const next = {
-                        ...prev,
-                        completed: !prev.completed,
-                        updatedAt: Date.now(),
-                    };
-
-                    return {
-                        todos: applyAction(state.todos, {
-                            type: "toggle",
-                            before: prev,
-                            after: next,
-                        }),
-                        undoStack: pushStack(state.undoStack, {
-                            type: "toggle",
-                            before: prev,
-                            after: next,
-                        }),
-                        redoStack: [],
-                    };
-                }),
+                set((state) => ({
+                    todos: state.todos.map((t) =>
+                        t.id === id
+                            ? { ...t, completed: !t.completed, updatedAt: Date.now() }
+                            : t
+                    ),
+                })),
 
             toggleAll: () =>
                 set((state) => {
-                    const allCompleted = state.todos.every(t => t.completed);
-
-                    const before = state.todos;
-                    const after = state.todos.map(t => ({
-                        ...t,
-                        completed: !allCompleted,
-                        updatedAt: Date.now(),
-                    }));
-
+                    const allDone = state.todos.every(t => t.completed);
                     return {
-                        todos: applyAction(state.todos, {
-                            type: "toggleAll",
-                            before,
-                            after,
-                        }),
-                        undoStack: pushStack(state.undoStack, {
-                            type: "toggleAll",
-                            before,
-                            after,
-                        }),
-                        redoStack: [],
+                        todos: state.todos.map(t => ({
+                            ...t,
+                            completed: !allDone,
+                            updatedAt: Date.now(),
+                        })),
                     };
                 }),
 
             deleteTodo: (id) =>
-                set((state) => {
-                    const index = state.todos.findIndex((t) => t.id === id);
-                    if (index === -1) return state;
-
-                    const todo = state.todos[index];
-
-                    return {
-                        todos: applyAction(state.todos, {
-                            type: "delete",
-                            todo,
-                            index,
-                        }),
-                        undoStack: pushStack(state.undoStack, {
-                            type: "delete",
-                            todo,
-                            index,
-                        }),
-                        redoStack: [],
-                    };
-                }),
+                set((state) => ({
+                    todos: state.todos.filter(t => t.id !== id),
+                })),
 
             deleteMany: (ids) =>
                 set((state) => {
-                    const removed = state.todos
-                        .map((t, i) => ({ t, i }))
-                        .filter(({ t }) => ids.includes(t.id));
-
-                    if (!removed.length) return state;
-
-                    let nextTodos = state.todos;
-                    removed.forEach(({ t, i }) => {
-                        nextTodos = nextTodos.filter(x => x.id !== t.id);
-                    });
-
+                    const idSet = new Set(ids);
                     return {
-                        todos: nextTodos,
-                        undoStack: pushStack(state.undoStack, {
-                            type: "clear",
-                            removed: removed.map(r => ({
-                                todo: r.t,
-                                index: r.i,
-                            })),
-                        }),
-                        redoStack: [],
+                        todos: state.todos.filter(t => !idSet.has(t.id)),
                     };
                 }),
 
             clearCompleted: () =>
-                set((state) => {
-                    const removed = state.todos
-                        .map((t, i) => ({ todo: t, index: i }))
-                        .filter((x) => x.todo.completed);
-
-                    if (!removed.length) return state;
-
-                    return {
-                        todos: applyAction(state.todos, {
-                            type: "clear",
-                            removed,
-                        }),
-                        undoStack: pushStack(state.undoStack, {
-                            type: "clear",
-                            removed,
-                        }),
-                        redoStack: [],
-                    };
-                }),
-
-            undo: () => {
-                const action = get().undoStack.at(-1);
-                if (!action) return;
-
                 set((state) => ({
-                    todos: revertAction(state.todos, action),
-                    undoStack: state.undoStack.slice(0, -1),
-                    redoStack: pushStack(state.redoStack, action),
-                }));
-            },
+                    todos: state.todos.filter(t => !t.completed),
+                })),
 
-            redo: () => {
-                const action = get().redoStack.at(-1);
-                if (!action) return;
-
-                set((state) => ({
-                    todos: applyAction(state.todos, action),
-                    redoStack: state.redoStack.slice(0, -1),
-                    undoStack: pushStack(state.undoStack, action),
-                }));
-            },
+            undo: () => { },
+            redo: () => { },
 
             reorderTodos: (from, to) =>
                 set((state) => {
-                    if (from === to) return state;
-
-                    return {
-                        todos: applyAction(state.todos, {
-                            type: "reorder",
-                            from,
-                            to,
-                        }),
-                        undoStack: pushStack(state.undoStack, {
-                            type: "reorder",
-                            from,
-                            to,
-                        }),
-                        redoStack: [],
-                    };
+                    const arr = [...state.todos];
+                    const [moved] = arr.splice(from, 1);
+                    arr.splice(to, 0, moved);
+                    return { todos: arr };
                 }),
 
-            setSearch: (v) => set({ search: v.trim().toLowerCase() }),
-            setActiveCategory: (v) => set({ activeCategory: v }),
+            setSearch: (v) =>
+                set({ search: v.trim().toLowerCase() }),
+
+            setActiveCategory: (v) =>
+                set({ activeCategory: v }),
+
+            getSortedTodos: () => {
+                const { todos } = get();
+                return sortTodos(todos);
+            },
         }),
         {
             name: "todo-storage",
-            version: 13,
+            version: 14,
             storage: createJSONStorage(() => localStorage),
-
-            migrate: (persisted: any, version) => {
-                if (version < 13) {
-                    return {
-                        ...persisted,
-                        todos: persisted.todos?.map((t: any) => ({
-                            ...t,
-                            priority: t.priority ?? "medium",
-                            pinned: t.pinned ?? false,
-                        })),
-                    };
-                }
-                return persisted;
-            },
-
-            partialize: (s) => ({
-                todos: s.todos,
-                search: s.search,
-                activeCategory: s.activeCategory,
-            }),
         }
     )
 );
 
-/* ================= SELECTORS ================= */
+/* ================= SELECTOR ================= */
 
 export const useFilteredTodos = () =>
     useTodoStore(
         (s) => {
-            const lower = s.search;
+            const list = sortTodos(s.todos);
 
-            return s.todos.filter((t) => {
-                if (!t.text.toLowerCase().includes(lower)) return false;
+            return list.filter((t) => {
+                if (!t.text.toLowerCase().includes(s.search)) return false;
 
                 if (s.activeCategory === "active") return !t.completed;
                 if (s.activeCategory === "completed") return t.completed;
