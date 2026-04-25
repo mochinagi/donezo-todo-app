@@ -28,6 +28,8 @@ import { CSS } from "@dnd-kit/utilities";
 
 /* ================= TYPES ================= */
 
+type Filter = "all" | "active" | "completed";
+
 type Todo = {
     id: number;
     text: string;
@@ -36,19 +38,6 @@ type Todo = {
 
 type TodoListProps = {
     setIsDragging?: (dragging: boolean) => void;
-};
-
-type TodoItemUIProps = {
-    text: string;
-    completed: boolean;
-    dragging: boolean;
-    isEditing: boolean;
-    onToggle: () => void;
-    onDelete: () => void;
-    onEditStart: () => void;
-    onEditSave: (val: string) => void;
-    onEditCancel: () => void;
-    dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
 };
 
 /* ================= UI ================= */
@@ -64,7 +53,7 @@ const TodoItemUI = memo(function TodoItemUI({
     onEditSave,
     onEditCancel,
     dragHandleProps,
-}: TodoItemUIProps) {
+}: any) {
     const [editText, setEditText] = useState(text);
 
     useEffect(() => {
@@ -75,7 +64,7 @@ const TodoItemUI = memo(function TodoItemUI({
         const trimmed = editText.trim();
 
         if (!trimmed) {
-            onEditCancel();
+            onDelete(); // 空直接删
             return;
         }
 
@@ -84,11 +73,11 @@ const TodoItemUI = memo(function TodoItemUI({
         } else {
             onEditCancel();
         }
-    }, [editText, text, onEditSave, onEditCancel]);
+    }, [editText, text, onEditSave, onEditCancel, onDelete]);
 
     return (
         <Card
-            className={`group flex items-center justify-between transition-all duration-200
+            className={`group flex items-center justify-between transition
             ${completed ? "opacity-60" : "hover:scale-[1.02]"}
             ${dragging ? "shadow-xl scale-105 opacity-80" : ""}
         `}
@@ -105,7 +94,6 @@ const TodoItemUI = memo(function TodoItemUI({
                 )}
 
                 <button
-                    aria-label="toggle todo"
                     onClick={onToggle}
                     disabled={dragging || isEditing}
                     className={`p-2 rounded-full transition
@@ -122,6 +110,7 @@ const TodoItemUI = memo(function TodoItemUI({
                         autoFocus
                         value={editText}
                         onChange={(e) => setEditText(e.target.value)}
+                        onBlur={handleSave}
                         onKeyDown={(e) => {
                             if (e.key === "Enter") handleSave();
                             if (e.key === "Escape") onEditCancel();
@@ -140,7 +129,6 @@ const TodoItemUI = memo(function TodoItemUI({
                 )}
 
                 <button
-                    aria-label="delete todo"
                     onClick={onDelete}
                     className="opacity-0 group-hover:opacity-100 transition text-gray-400 hover:text-red-500"
                 >
@@ -182,14 +170,6 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
         transition,
     };
 
-    const handleSave = useCallback(
-        (val: string) => {
-            updateTodo(id, val);
-            setEditing(false);
-        },
-        [id, updateTodo]
-    );
-
     return (
         <div ref={setNodeRef} style={style}>
             <TodoItemUI
@@ -200,7 +180,10 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
                 onToggle={() => toggleTodo(id)}
                 onDelete={() => deleteTodo(id)}
                 onEditStart={() => setEditing(true)}
-                onEditSave={handleSave}
+                onEditSave={(val: string) => {
+                    updateTodo(id, val);
+                    setEditing(false);
+                }}
                 onEditCancel={() => setEditing(false)}
                 dragHandleProps={{ ...attributes, ...listeners }}
             />
@@ -211,18 +194,25 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
 /* ================= LIST ================= */
 
 export default function TodoList({ setIsDragging }: TodoListProps) {
-    const todos = useTodoStore((s) => s.todos, shallow);
-    const reorderTodos = useTodoStore((s) => s.reorderTodos);
+    const { todos, reorderTodos, clearCompleted } = useTodoStore(
+        (s) => ({
+            todos: s.todos,
+            reorderTodos: s.reorderTodos,
+            clearCompleted: s.clearCompleted,
+        }),
+        shallow
+    );
 
     const [activeId, setActiveId] = useState<number | null>(null);
+    const [filter, setFilter] = useState<Filter>("all");
 
-    const todoIds = useMemo(() => todos.map((t) => t.id), [todos]);
+    const filteredTodos = useMemo(() => {
+        if (filter === "active") return todos.filter(t => !t.completed);
+        if (filter === "completed") return todos.filter(t => t.completed);
+        return todos;
+    }, [todos, filter]);
 
-    const indexMap = useMemo(() => {
-        const map = new Map<number, number>();
-        todos.forEach((t, i) => map.set(t.id, i));
-        return map;
-    }, [todos]);
+    const todoIds = useMemo(() => filteredTodos.map(t => t.id), [filteredTodos]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -236,24 +226,20 @@ export default function TodoList({ setIsDragging }: TodoListProps) {
 
     const handleDragEnd = useCallback((event: DragEndEvent) => {
         const { active, over };
-
         setActiveId(null);
         setIsDragging?.(false);
 
         if (!over || active.id === over.id) return;
 
-        const oldIndex = indexMap.get(active.id as number);
-        const newIndex = indexMap.get(over.id as number);
+        const oldIndex = todos.findIndex(t => t.id === active.id);
+        const newIndex = todos.findIndex(t => t.id === over.id);
 
-        if (oldIndex !== undefined && newIndex !== undefined) {
+        if (oldIndex !== -1 && newIndex !== -1) {
             reorderTodos(oldIndex, newIndex);
         }
-    }, [indexMap, reorderTodos, setIsDragging]);
+    }, [todos, reorderTodos, setIsDragging]);
 
-    const activeTodo = useMemo(
-        () => todos.find((t) => t.id === activeId),
-        [activeId, todos]
-    );
+    const activeTodo = todos.find(t => t.id === activeId);
 
     return (
         <DndContext
@@ -262,38 +248,59 @@ export default function TodoList({ setIsDragging }: TodoListProps) {
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
         >
-            <SortableContext
-                items={todoIds}
-                strategy={verticalListSortingStrategy}
-            >
-                <section className="p-6 space-y-4 max-w-2xl mx-auto">
-                    {todos.length === 0 ? (
+            <div className="max-w-2xl mx-auto p-6 space-y-4">
+
+                {/* filter */}
+                <div className="flex gap-2">
+                    {["all", "active", "completed"].map(f => (
+                        <button
+                            key={f}
+                            onClick={() => setFilter(f as Filter)}
+                            className={`px-3 py-1 rounded 
+                                ${filter === f ? "bg-blue-600 text-white" : "bg-gray-200"}
+                            `}
+                        >
+                            {f}
+                        </button>
+                    ))}
+
+                    <button
+                        onClick={clearCompleted}
+                        className="ml-auto text-sm text-red-500"
+                    >
+                        clear completed
+                    </button>
+                </div>
+
+                <SortableContext
+                    items={todoIds}
+                    strategy={verticalListSortingStrategy}
+                >
+                    {filteredTodos.length === 0 ? (
                         <div className="text-center text-gray-400">
-                            Start small. Your first task matters.
+                            no tasks
                         </div>
                     ) : (
-                        todos.map((todo) => (
+                        filteredTodos.map(todo => (
                             <TodoItem key={todo.id} {...todo} />
                         ))
                     )}
-                </section>
-            </SortableContext>
+                </SortableContext>
+            </div>
 
             <DragOverlay>
                 {activeTodo && (
-                    <div className="scale-105 opacity-90">
-                        <TodoItemUI
-                            {...activeTodo}
-                            isEditing={false}
-                            dragging
-                            onToggle={() => { }}
-                            onDelete={() => { }}
-                            onEditStart={() => { }}
-                            onEditSave={() => { }}
-                            onEditCancel={() => { }}
-                            dragHandleProps={{}}
-                        />
-                    </div>
+                    <TodoItemUI
+                        {...activeTodo}
+                        isEditing={false}
+                        dragging
+                        onToggle={() => { }}
+                        onDelete={() => { }}
+                        onEditStart={() => { }}
+                        onEditSave={() => { }}
+                        onEditCancel={() => { }}
+                        dragHandleProps={{}}
+                    />
                 )}
             </DragOverlay>
         </DndContext>
