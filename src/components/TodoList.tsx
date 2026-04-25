@@ -36,9 +36,46 @@ type Todo = {
     completed: boolean;
 };
 
-type TodoListProps = {
-    setIsDragging?: (dragging: boolean) => void;
+type TodoItemUIProps = {
+    text: string;
+    completed: boolean;
+    dragging: boolean;
+    isEditing: boolean;
+    onToggle: () => void;
+    onDelete: () => void;
+    onEditStart: () => void;
+    onEditSave: (val: string) => void;
+    onEditCancel: () => void;
+    dragHandleProps: any;
 };
+
+/* ================= INPUT ================= */
+
+const TodoInput = memo(function TodoInput() {
+    const addTodo = useTodoStore(s => s.addTodo);
+
+    const [value, setValue] = useState("");
+
+    const handleAdd = useCallback(() => {
+        const v = value.trim();
+        if (!v) return;
+
+        addTodo(v);
+        setValue("");
+    }, [value, addTodo]);
+
+    return (
+        <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+                if (e.key === "Enter") handleAdd();
+            }}
+            placeholder="Add a task..."
+            className="w-full border rounded px-4 py-2 outline-none"
+        />
+    );
+});
 
 /* ================= UI ================= */
 
@@ -53,7 +90,7 @@ const TodoItemUI = memo(function TodoItemUI({
     onEditSave,
     onEditCancel,
     dragHandleProps,
-}: any) {
+}: TodoItemUIProps) {
     const [editText, setEditText] = useState(text);
 
     useEffect(() => {
@@ -64,7 +101,7 @@ const TodoItemUI = memo(function TodoItemUI({
         const trimmed = editText.trim();
 
         if (!trimmed) {
-            onDelete(); // 空直接删
+            onDelete();
             return;
         }
 
@@ -180,7 +217,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
                 onToggle={() => toggleTodo(id)}
                 onDelete={() => deleteTodo(id)}
                 onEditStart={() => setEditing(true)}
-                onEditSave={(val: string) => {
+                onEditSave={(val) => {
                     updateTodo(id, val);
                     setEditing(false);
                 }}
@@ -193,7 +230,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
 
 /* ================= LIST ================= */
 
-export default function TodoList({ setIsDragging }: TodoListProps) {
+export default function TodoList() {
     const { todos, reorderTodos, clearCompleted } = useTodoStore(
         (s) => ({
             todos: s.todos,
@@ -212,7 +249,7 @@ export default function TodoList({ setIsDragging }: TodoListProps) {
         return todos;
     }, [todos, filter]);
 
-    const todoIds = useMemo(() => filteredTodos.map(t => t.id), [filteredTodos]);
+    const remaining = todos.filter(t => !t.completed).length;
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -221,13 +258,11 @@ export default function TodoList({ setIsDragging }: TodoListProps) {
 
     const handleDragStart = useCallback((event: DragStartEvent) => {
         setActiveId(event.active.id as number);
-        setIsDragging?.(true);
-    }, [setIsDragging]);
+    }, []);
 
     const handleDragEnd = useCallback((event: DragEndEvent) => {
         const { active, over };
         setActiveId(null);
-        setIsDragging?.(false);
 
         if (!over || active.id === over.id) return;
 
@@ -237,7 +272,7 @@ export default function TodoList({ setIsDragging }: TodoListProps) {
         if (oldIndex !== -1 && newIndex !== -1) {
             reorderTodos(oldIndex, newIndex);
         }
-    }, [todos, reorderTodos, setIsDragging]);
+    }, [todos, reorderTodos]);
 
     const activeTodo = todos.find(t => t.id === activeId);
 
@@ -250,7 +285,15 @@ export default function TodoList({ setIsDragging }: TodoListProps) {
         >
             <div className="max-w-2xl mx-auto p-6 space-y-4">
 
-                {/* filter */}
+                <TodoInput />
+
+                <div className="flex justify-between text-sm text-gray-500">
+                    <span>{remaining} items left</span>
+                    <button onClick={clearCompleted}>
+                        clear completed
+                    </button>
+                </div>
+
                 <div className="flex gap-2">
                     {["all", "active", "completed"].map(f => (
                         <button
@@ -263,22 +306,15 @@ export default function TodoList({ setIsDragging }: TodoListProps) {
                             {f}
                         </button>
                     ))}
-
-                    <button
-                        onClick={clearCompleted}
-                        className="ml-auto text-sm text-red-500"
-                    >
-                        clear completed
-                    </button>
                 </div>
 
                 <SortableContext
-                    items={todoIds}
+                    items={filteredTodos.map(t => t.id)}
                     strategy={verticalListSortingStrategy}
                 >
                     {filteredTodos.length === 0 ? (
-                        <div className="text-center text-gray-400">
-                            no tasks
+                        <div className="text-center text-gray-400 py-10">
+                            nothing here
                         </div>
                     ) : (
                         filteredTodos.map(todo => (
