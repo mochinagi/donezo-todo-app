@@ -132,30 +132,28 @@ export function useTodoState(initialTodos: Todo[] = []) {
     const [undoStack, setUndoStack] = useState<Action[]>([]);
     const [redoStack, setRedoStack] = useState<Action[]>([]);
 
-    const persistTimer = useRef<NodeJS.Timeout | null>(null);
+    const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const normalizedSearch = useMemo(
+        () => search.trim().toLowerCase(),
+        [search]
+    );
 
     /* ---------------- persist ---------------- */
-
-    const persist = useCallback(() => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
-        localStorage.setItem(FILTER_KEY, JSON.stringify(filter));
-        localStorage.setItem(SEARCH_KEY, JSON.stringify(search));
-    }, [todos, filter, search]);
 
     useEffect(() => {
         if (persistTimer.current) clearTimeout(persistTimer.current);
 
-        persistTimer.current = setTimeout(persist, 300);
+        persistTimer.current = setTimeout(() => {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+            localStorage.setItem(FILTER_KEY, JSON.stringify(filter));
+            localStorage.setItem(SEARCH_KEY, JSON.stringify(search));
+        }, 300);
 
         return () => {
             if (persistTimer.current) clearTimeout(persistTimer.current);
         };
-    }, [persist]);
-
-    useEffect(() => {
-        window.addEventListener("beforeunload", persist);
-        return () => window.removeEventListener("beforeunload", persist);
-    }, [persist]);
+    }, [todos, filter, search]);
 
     /* ---------------- helpers ---------------- */
 
@@ -168,124 +166,34 @@ export function useTodoState(initialTodos: Todo[] = []) {
         setRedoStack([]);
     }, []);
 
-    /* ---------------- actions ---------------- */
-
-    const addTodo = useCallback((text: string) => {
-        const value = text.trim();
-        if (!value) return;
-
-        const todo: Todo = {
-            id: crypto.randomUUID(),
-            text: value,
-            completed: false,
-        };
-
-        pushUndo({ type: "add", todo });
-        setTodos((prev) => applyAction(prev, { type: "add", todo }));
-    }, [pushUndo]);
-
-    const toggleTodo = useCallback((id: string) => {
-        setTodos((prev) => {
-            const t = prev.find(x => x.id === id);
-            if (!t) return prev;
-
-            const next = { ...t, completed: !t.completed };
-
-            pushUndo({ type: "toggle", before: t, after: next });
-
-            return applyAction(prev, {
-                type: "toggle",
-                before: t,
-                after: next,
-            });
-        });
-    }, [pushUndo]);
-
-    const toggleAll = useCallback(() => {
-        setTodos((prev) => {
-            const allDone = prev.every(t => t.completed);
-
-            const next = prev.map(t => ({
-                ...t,
-                completed: !allDone,
-            }));
-
-            pushUndo({
-                type: "toggleAll",
-                before: prev,
-                after: next,
-            });
-
+    const pushRedo = useCallback((action: Action) => {
+        setRedoStack((prev) => {
+            const next = [...prev, action];
+            if (next.length > MAX_STACK) next.shift();
             return next;
         });
-    }, [pushUndo]);
+    }, []);
 
-    const editTodo = useCallback((id: string, text: string) => {
-        const value = text.trim();
-        if (!value) return;
-
-        setTodos((prev) => {
-            const t = prev.find(x => x.id === id);
-            if (!t || t.text === value) return prev;
-
-            const next = { ...t, text: value };
-
-            pushUndo({ type: "edit", before: t, after: next });
-
-            return applyAction(prev, {
-                type: "edit",
-                before: t,
-                after: next,
-            });
-        });
-    }, [pushUndo]);
-
-    const deleteTodo = useCallback((id: string) => {
-        setTodos((prev) => {
-            const index = prev.findIndex(t => t.id === id);
-            if (index === -1) return prev;
-
-            const todo = prev[index];
-
-            pushUndo({ type: "delete", todo, index });
-
-            return applyAction(prev, { type: "delete", todo, index });
-        });
-    }, [pushUndo]);
+    /* ---------------- actions ---------------- */
 
     const deleteMany = useCallback((ids: string[]) => {
+        const idSet = new Set(ids);
+
         setTodos((prev) => {
-            const removed = prev
-                .map((t, i) => ({ todo: t, index: i }))
-                .filter(x => ids.includes(x.todo.id));
+            const removed: { todo: Todo; index: number }[] = [];
+
+            const next = prev.filter((t, i) => {
+                if (idSet.has(t.id)) {
+                    removed.push({ todo: t, index: i });
+                    return false;
+                }
+                return true;
+            });
 
             if (!removed.length) return prev;
 
             pushUndo({ type: "clear", removed });
-
-            return applyAction(prev, { type: "clear", removed });
-        });
-    }, [pushUndo]);
-
-    const reorderTodos = useCallback((from: number, to: number) => {
-        if (from === to) return;
-
-        pushUndo({ type: "reorder", from, to });
-
-        setTodos((prev) => applyAction(prev, { type: "reorder", from, to }));
-    }, [pushUndo]);
-
-    const clearCompleted = useCallback(() => {
-        setTodos((prev) => {
-            const removed = prev
-                .map((t, i) => ({ todo: t, index: i }))
-                .filter(x => x.todo.completed);
-
-            if (!removed.length) return prev;
-
-            pushUndo({ type: "clear", removed });
-
-            return applyAction(prev, { type: "clear", removed });
+            return next;
         });
     }, [pushUndo]);
 
@@ -296,43 +204,46 @@ export function useTodoState(initialTodos: Todo[] = []) {
             const action = prev.at(-1);
             if (!action) return prev;
 
-            setRedoStack(r => [...r, action]);
+            pushRedo(action);
             setTodos(t => revertAction(t, action));
 
             return prev.slice(0, -1);
         });
-    }, []);
+    }, [pushRedo]);
 
     const redo = useCallback(() => {
         setRedoStack((prev) => {
             const action = prev.at(-1);
             if (!action) return prev;
 
-            setUndoStack(u => [...u, action]);
+            pushUndo(action);
             setTodos(t => applyAction(t, action));
 
             return prev.slice(0, -1);
         });
-    }, []);
+    }, [pushUndo]);
 
     /* ---------------- derived ---------------- */
 
     const filteredTodos = useMemo(() => {
-        const lower = search.toLowerCase();
-
         return todos.filter((t) => {
-            if (!t.text.toLowerCase().includes(lower)) return false;
+            if (!t.text.toLowerCase().includes(normalizedSearch)) return false;
 
             if (filter === "completed") return t.completed;
             if (filter === "active") return !t.completed;
 
             return true;
         });
-    }, [todos, filter, search]);
+    }, [todos, filter, normalizedSearch]);
 
     const stats = useMemo(() => {
+        let completed = 0;
+
+        for (const t of todos) {
+            if (t.completed) completed++;
+        }
+
         const total = todos.length;
-        const completed = todos.filter(t => t.completed).length;
 
         return {
             total,
@@ -349,14 +260,7 @@ export function useTodoState(initialTodos: Todo[] = []) {
         setFilter,
         search,
         setSearch,
-        addTodo,
-        deleteTodo,
         deleteMany,
-        toggleTodo,
-        toggleAll,
-        editTodo,
-        reorderTodos,
-        clearCompleted,
         undo,
         redo,
         canUndo: undoStack.length > 0,
