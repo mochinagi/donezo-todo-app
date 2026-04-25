@@ -5,8 +5,7 @@ import { cn } from "@/lib/utils";
 
 /* ================= TYPES ================= */
 
-interface InputProps
-  extends React.ComponentProps<"input"> {
+interface InputProps extends React.ComponentProps<"input"> {
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
 
@@ -37,14 +36,28 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       size = "md",
       describedBy,
       value,
+      defaultValue,
       onChange,
+      onKeyDown,
       ...props
     },
     ref
   ) {
-    const [focused, setFocused] = React.useState(false);
-
     const isControlled = value !== undefined;
+
+    const [internalValue, setInternalValue] = React.useState(
+      defaultValue ?? ""
+    );
+
+    const inputRef = React.useRef<HTMLInputElement>(null);
+
+    const mergedRef = (node: HTMLInputElement) => {
+      inputRef.current = node;
+      if (typeof ref === "function") ref(node);
+      else if (ref) (ref as any).current = node;
+    };
+
+    const currentValue = isControlled ? value : internalValue;
 
     const sizeStyles = {
       sm: "h-8 text-sm px-2",
@@ -52,14 +65,47 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       lg: "h-11 text-base px-4",
     };
 
-    const hasRightAction =
-      rightIcon || (clearable && value);
+    const showClear =
+      clearable && !!currentValue && !rightIcon;
+
+    const hasRightAction = rightIcon || showClear;
+
+    /* ===== change ===== */
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!isControlled) {
+        setInternalValue(e.target.value);
+      }
+      onChange?.(e);
+    };
+
+    /* ===== clear ===== */
+    const handleClear = () => {
+      if (!isControlled) {
+        setInternalValue("");
+      }
+
+      onClear?.();
+
+      onChange?.({
+        target: { value: "" },
+      } as any);
+
+      inputRef.current?.focus();
+    };
+
+    /* ===== keyboard ===== */
+    const handleKeyDownInternal = (
+      e: React.KeyboardEvent<HTMLInputElement>
+    ) => {
+      if (e.key === "Escape" && currentValue) {
+        handleClear();
+      }
+
+      onKeyDown?.(e);
+    };
 
     return (
-      <div
-        className="relative w-full group"
-        data-state={focused ? "focused" : "idle"}
-      >
+      <div className="relative w-full group">
         {/* left icon */}
         {leftIcon && (
           <div
@@ -71,14 +117,13 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         )}
 
         <input
-          ref={ref}
+          ref={mergedRef}
           type={type}
-          data-slot="input"
-          value={value}
-          onChange={onChange}
+          value={currentValue}
+          onChange={handleChange}
+          onKeyDown={handleKeyDownInternal}
           aria-invalid={error || undefined}
           aria-describedby={describedBy}
-          aria-label={props["aria-label"] || props.placeholder}
           className={cn(
             "w-full min-w-0 rounded-md border bg-transparent outline-none transition-all duration-200",
             "placeholder:text-muted-foreground",
@@ -88,15 +133,13 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             leftIcon && "pl-10",
             hasRightAction && "pr-10",
 
-            "border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 focus:ring-offset-1 focus:shadow-sm",
+            "border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 focus:ring-offset-1",
 
             error &&
             "border-red-500 focus:border-red-500 focus:ring-red-200",
 
             className
           )}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
           {...props}
         />
 
@@ -106,17 +149,17 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             type="button"
             onClick={onRightIconClick}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-            aria-label="action"
+            aria-label="input action"
           >
             {rightIcon}
           </button>
         )}
 
-        {/* clear button */}
-        {clearable && value && !rightIcon && (
+        {/* clear */}
+        {showClear && (
           <button
             type="button"
-            onClick={onClear}
+            onClick={handleClear}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
             aria-label="clear input"
           >
