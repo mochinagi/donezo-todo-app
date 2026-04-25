@@ -1,44 +1,105 @@
 # Donezo Todo App
 
-A simple and clean Todo application built with Next.js.
+A production-oriented Todo application built with Next.js, focusing on state management, interaction design, and scalable UI architecture.
+
+## Demo
+
+Local: http://localhost:3000
+
+---
 
 ## Features
 
-* Add and delete tasks
-* Mark tasks as completed
-* Filter tasks (All / Todo / Done)
-* Responsive and minimal UI
+### Core
+- Add / edit / delete tasks
+- Toggle completion
+- Drag & drop reordering (dnd-kit)
+
+### Productivity
+- Undo / redo (action stack based)
+- Bulk actions (clear completed, multi-add via paste)
+- Keyboard support (Enter, Ctrl/Cmd + Enter, Escape)
+
+### Filtering & Search
+- Filter (all / active / completed)
+- Real-time search
+
+### UX Improvements
+- Inline editing with auto-save
+- Validation (duplicate / max length)
+- Toast notification system (wrapped sonner)
+- Optimistic UI interactions
+
+### Persistence
+- LocalStorage persistence (zustand persist)
+- Versioned state migration
+
+---
 
 ## Tech Stack
 
-* Next.js
-* React
-* TypeScript
-* CSS / (Tailwind if you use it)
+- Next.js (App Router)
+- React + TypeScript
+- Zustand (state management)
+- dnd-kit (drag and drop)
+- Tailwind CSS
+- Sonner (toast notifications)
+
+---
+
+## Architecture
+
+### State Management
+- Zustand store with action-based undo/redo
+- Separation of applyAction / revertAction
+- Derived state via selectors
+
+### UI Layer
+- Reusable UI components (Input, Button, Toast)
+- Controlled + composable components
+- Accessibility-aware design
+
+### Interaction Design
+- Keyboard-first UX
+- Debounced persistence
+- Batch operations support
+
+---
+
+## Project Structure
+src/
+app/ # Next.js pages
+components/ # UI + feature components
+hooks/ # Custom hooks
+store/ # Zustand store
+lib/ # utilities
+
+
+---
 
 ## Getting Started
 
 ```bash
 npm install
 npm run dev
-```
+Future Improvements
+Task deadline / priority system
+Tag / project grouping
+Backend integration (API + DB)
+Authentication
+Sync across devices
+Why this project
 
-Open http://localhost:3000 in your browser.
+This project focuses on:
 
-## Project Structure
+Building a scalable state management pattern
+Designing reusable UI components
+Improving real-world UX (not just demo features)
+Notes
 
-* `app/page.tsx` - Main UI page
-* `components/` - Reusable UI components
-* `lib/` or `store/` - State management (if applicable)
+This is not a basic todo app.
+It is designed as a small-scale application to demonstrate:
 
-## Future Improvements
-
-* [ ] Add deadline for tasks
-* [ ] Add tags / categories
-* [ ] Drag & drop sorting
-* [ ] Backend integration (API + DB)
-* [ ] User authentication
-
-## Why I built this
-
-This project was created to practice building a modern web application with Next.js and improve frontend architecture and state management skills.
+state architecture
+interaction design
+frontend engineering practices
