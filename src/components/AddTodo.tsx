@@ -35,7 +35,10 @@ export default function AddTodo({
 
     /* ===== normalize ===== */
     const normalize = useCallback((v: string) => {
-        return v.replace(/\s+/g, " ").trim();
+        return v
+            .replace(/\u3000/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
     }, []);
 
     /* ===== fast lookup ===== */
@@ -47,12 +50,14 @@ export default function AddTodo({
 
     /* ===== validation ===== */
     const validate = useCallback(
-        (value: string) => {
+        (value: string, extraSet?: Set<string>) => {
             const v = normalize(value);
+            const lower = v.toLowerCase();
 
             if (!v) return "入力してください";
             if (v.length > MAX_LENGTH) return `最大${MAX_LENGTH}文字`;
-            if (todoSet.has(v.toLowerCase())) return "既に存在します";
+            if (todoSet.has(lower)) return "既に存在します";
+            if (extraSet && extraSet.has(lower)) return "重複しています";
 
             return "";
         },
@@ -85,7 +90,7 @@ export default function AddTodo({
 
             await onAdd(value);
 
-            toast.success("タスクを追加しました");
+            toast.success("追加しました");
 
             setInput("");
             setTouched(false);
@@ -104,43 +109,56 @@ export default function AddTodo({
     /* ===== bulk paste (improved) ===== */
     const handlePaste = useCallback(
         async (e: React.ClipboardEvent<HTMLInputElement>) => {
-            const text = e.clipboardData.getData("text");
+            if (submittingRef.current) return;
 
+            const text = e.clipboardData.getData("text");
             if (!text.includes("\n")) return;
 
             e.preventDefault();
 
             const rawLines = text.split("\n");
 
-            const lines = Array.from(
-                new Set(
-                    rawLines
-                        .map(normalize)
-                        .filter(Boolean)
-                        .slice(0, MAX_PASTE)
-                )
-            );
+            const seen = new Set<string>();
+
+            const lines = rawLines
+                .map(normalize)
+                .filter(Boolean)
+                .filter((line) => {
+                    const lower = line.toLowerCase();
+                    if (seen.has(lower)) return false;
+                    seen.add(lower);
+                    return true;
+                })
+                .slice(0, MAX_PASTE);
 
             if (!lines.length) return;
 
             let success = 0;
+            let fail = 0;
 
-            for (const line of lines) {
-                const err = validate(line);
-                if (err) continue;
+            await Promise.all(
+                lines.map(async (line) => {
+                    const err = validate(line, seen);
+                    if (err) {
+                        fail++;
+                        return;
+                    }
 
-                try {
-                    await onAdd(line);
-                    success++;
-                } catch {
-                    // ignore single failure
-                }
-            }
+                    try {
+                        await onAdd(line);
+                        success++;
+                    } catch {
+                        fail++;
+                    }
+                })
+            );
 
             if (success > 0) {
-                toast.success(`${success}件追加しました`);
-            } else {
-                toast.error("追加できませんでした");
+                toast.success(`${success}件追加`);
+            }
+
+            if (fail > 0) {
+                toast.error(`${fail}件失敗`);
             }
         },
         [normalize, onAdd, validate]
@@ -208,7 +226,9 @@ export default function AddTodo({
                             isComposingRef.current = true;
                         }}
                         onCompositionEnd={() => {
-                            isComposingRef.current = false;
+                            setTimeout(() => {
+                                isComposingRef.current = false;
+                            }, 0);
                         }}
                         autoFocus
                     />
