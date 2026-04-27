@@ -36,143 +36,38 @@ type Todo = {
     completed: boolean;
 };
 
-type TodoItemUIProps = {
-    text: string;
-    completed: boolean;
-    dragging: boolean;
-    isEditing: boolean;
-    onToggle: () => void;
-    onDelete: () => void;
-    onEditStart: () => void;
-    onEditSave: (val: string) => void;
-    onEditCancel: () => void;
-    dragHandleProps: any;
-};
-
 /* ================= INPUT ================= */
 
 const TodoInput = memo(function TodoInput() {
     const addTodo = useTodoStore(s => s.addTodo);
-
     const [value, setValue] = useState("");
 
     const handleAdd = useCallback(() => {
         const v = value.trim();
         if (!v) return;
-
         addTodo(v);
         setValue("");
     }, [value, addTodo]);
 
     return (
-        <input
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-                if (e.key === "Enter") handleAdd();
-            }}
-            placeholder="Add a task..."
-            className="w-full border rounded px-4 py-2 outline-none"
-        />
-    );
-});
-
-/* ================= UI ================= */
-
-const TodoItemUI = memo(function TodoItemUI({
-    text,
-    completed,
-    dragging,
-    isEditing,
-    onToggle,
-    onDelete,
-    onEditStart,
-    onEditSave,
-    onEditCancel,
-    dragHandleProps,
-}: TodoItemUIProps) {
-    const [editText, setEditText] = useState(text);
-
-    useEffect(() => {
-        setEditText(text);
-    }, [text]);
-
-    const handleSave = useCallback(() => {
-        const trimmed = editText.trim();
-
-        if (!trimmed) {
-            onDelete();
-            return;
-        }
-
-        if (trimmed !== text) {
-            onEditSave(trimmed);
-        } else {
-            onEditCancel();
-        }
-    }, [editText, text, onEditSave, onEditCancel, onDelete]);
-
-    return (
-        <Card
-            className={`group flex items-center justify-between transition
-            ${completed ? "opacity-60" : "hover:scale-[1.02]"}
-            ${dragging ? "shadow-xl scale-105 opacity-80" : ""}
-        `}
-        >
-            <CardContent className="flex items-center gap-4 w-full">
-
-                {!isEditing && (
-                    <div
-                        {...dragHandleProps}
-                        className="cursor-grab text-gray-400 opacity-0 group-hover:opacity-100"
-                    >
-                        <GripVertical size={20} />
-                    </div>
-                )}
-
-                <button
-                    onClick={onToggle}
-                    disabled={dragging || isEditing}
-                    className={`p-2 rounded-full transition
-                        ${completed
-                            ? "bg-blue-600 text-white"
-                            : "bg-gray-200 text-gray-400"
-                        }`}
-                >
-                    <CheckCircle2 size={20} />
-                </button>
-
-                {isEditing ? (
-                    <input
-                        autoFocus
-                        value={editText}
-                        onChange={(e) => setEditText(e.target.value)}
-                        onBlur={handleSave}
-                        onKeyDown={(e) => {
-                            if (e.key === "Enter") handleSave();
-                            if (e.key === "Escape") onEditCancel();
-                        }}
-                        className="flex-1 border-b outline-none"
-                    />
-                ) : (
-                    <span
-                        onDoubleClick={onEditStart}
-                        className={`flex-1 cursor-pointer text-lg
-                            ${completed ? "line-through text-gray-400" : ""}
-                        `}
-                    >
-                        {text}
-                    </span>
-                )}
-
-                <button
-                    onClick={onDelete}
-                    className="opacity-0 group-hover:opacity-100 transition text-gray-400 hover:text-red-500"
-                >
-                    <Trash2 size={20} />
-                </button>
-            </CardContent>
-        </Card>
+        <div className="flex gap-2">
+            <input
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter") handleAdd();
+                    if (e.key === "Escape") setValue("");
+                }}
+                placeholder="Add a task..."
+                className="flex-1 border rounded px-4 py-2 outline-none"
+            />
+            <button
+                onClick={handleAdd}
+                className="px-4 border rounded"
+            >
+                add
+            </button>
+        </div>
     );
 });
 
@@ -189,6 +84,11 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
     );
 
     const [editing, setEditing] = useState(false);
+    const [editText, setEditText] = useState(text);
+
+    useEffect(() => {
+        setEditText(text);
+    }, [text]);
 
     const {
         attributes,
@@ -207,41 +107,103 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
         transition,
     };
 
+    const handleSave = () => {
+        const v = editText.trim();
+        if (!v) {
+            deleteTodo(id);
+            return;
+        }
+        updateTodo(id, v);
+        setEditing(false);
+    };
+
+    const handleCancel = () => {
+        setEditText(text);
+        setEditing(false);
+    };
+
     return (
         <div ref={setNodeRef} style={style}>
-            <TodoItemUI
-                text={text}
-                completed={completed}
-                dragging={isDragging}
-                isEditing={editing}
-                onToggle={() => toggleTodo(id)}
-                onDelete={() => deleteTodo(id)}
-                onEditStart={() => setEditing(true)}
-                onEditSave={(val) => {
-                    updateTodo(id, val);
-                    setEditing(false);
-                }}
-                onEditCancel={() => setEditing(false)}
-                dragHandleProps={{ ...attributes, ...listeners }}
-            />
+            <Card className={`flex items-center ${isDragging ? "opacity-50" : ""}`}>
+                <CardContent className="flex items-center gap-3 w-full">
+
+                    <div {...attributes} {...listeners} className="cursor-grab">
+                        <GripVertical size={18} />
+                    </div>
+
+                    <button onClick={() => toggleTodo(id)}>
+                        <CheckCircle2 />
+                    </button>
+
+                    {editing ? (
+                        <input
+                            autoFocus
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            onBlur={handleSave}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") handleSave();
+                                if (e.key === "Escape") handleCancel();
+                            }}
+                            className="flex-1 border-b outline-none"
+                        />
+                    ) : (
+                        <span
+                            onDoubleClick={() => setEditing(true)}
+                            className={`flex-1 cursor-text ${completed ? "line-through text-gray-400" : ""}`}
+                        >
+                            {text}
+                        </span>
+                    )}
+
+                    <button onClick={() => {
+                        if (confirm("delete this task?")) {
+                            deleteTodo(id);
+                        }
+                    }}>
+                        <Trash2 size={18} />
+                    </button>
+                </CardContent>
+            </Card>
         </div>
     );
 });
 
-/* ================= LIST ================= */
+/* ================= MAIN ================= */
 
 export default function TodoList() {
-    const { todos, reorderTodos, clearCompleted } = useTodoStore(
+    const { todos, reorderTodos, clearCompleted, setTodos, toggleTodo } = useTodoStore(
         (s) => ({
             todos: s.todos,
             reorderTodos: s.reorderTodos,
             clearCompleted: s.clearCompleted,
+            setTodos: s.setTodos,
+            toggleTodo: s.toggleTodo,
         }),
         shallow
     );
 
     const [activeId, setActiveId] = useState<number | null>(null);
     const [filter, setFilter] = useState<Filter>("all");
+
+    /* ========= localStorage ========= */
+
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem("todos");
+            if (saved) {
+                setTodos(JSON.parse(saved));
+            }
+        } catch {
+            console.warn("failed to parse todos");
+        }
+    }, [setTodos]);
+
+    useEffect(() => {
+        localStorage.setItem("todos", JSON.stringify(todos));
+    }, [todos]);
+
+    /* ========= filter ========= */
 
     const filteredTodos = useMemo(() => {
         if (filter === "active") return todos.filter(t => !t.completed);
@@ -251,30 +213,49 @@ export default function TodoList() {
 
     const remaining = todos.filter(t => !t.completed).length;
 
+    /* ========= DND ========= */
+
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
         useSensor(KeyboardSensor)
     );
 
-    const handleDragStart = useCallback((event: DragStartEvent) => {
+    const handleDragStart = (event: DragStartEvent) => {
         setActiveId(event.active.id as number);
-    }, []);
+    };
 
-    const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const handleDragEnd = (event: DragEndEvent) => {
         const { active, over };
         setActiveId(null);
 
         if (!over || active.id === over.id) return;
 
-        const oldIndex = todos.findIndex(t => t.id === active.id);
-        const newIndex = todos.findIndex(t => t.id === over.id);
+        const oldIndex = filteredTodos.findIndex(t => t.id === active.id);
+        const newIndex = filteredTodos.findIndex(t => t.id === over.id);
 
-        if (oldIndex !== -1 && newIndex !== -1) {
-            reorderTodos(oldIndex, newIndex);
-        }
-    }, [todos, reorderTodos]);
+        const oldId = filteredTodos[oldIndex].id;
+        const newId = filteredTodos[newIndex].id;
+
+        const realOldIndex = todos.findIndex(t => t.id === oldId);
+        const realNewIndex = todos.findIndex(t => t.id === newId);
+
+        reorderTodos(realOldIndex, realNewIndex);
+    };
 
     const activeTodo = todos.find(t => t.id === activeId);
+
+    /* ========= bulk ========= */
+
+    const toggleAll = () => {
+        const allCompleted = todos.every(t => t.completed);
+        todos.forEach(t => {
+            if (t.completed === allCompleted) {
+                toggleTodo(t.id);
+            }
+        });
+    };
+
+    /* ========= UI ========= */
 
     return (
         <DndContext
@@ -287,11 +268,21 @@ export default function TodoList() {
 
                 <TodoInput />
 
-                <div className="flex justify-between text-sm text-gray-500">
+                <div className="flex justify-between text-sm">
                     <span>{remaining} items left</span>
-                    <button onClick={clearCompleted}>
-                        clear completed
-                    </button>
+
+                    <div className="flex gap-3">
+                        <button onClick={toggleAll}>
+                            toggle all
+                        </button>
+                        <button onClick={() => {
+                            if (confirm("clear completed?")) {
+                                clearCompleted();
+                            }
+                        }}>
+                            clear completed
+                        </button>
+                    </div>
                 </div>
 
                 <div className="flex gap-2">
@@ -299,9 +290,7 @@ export default function TodoList() {
                         <button
                             key={f}
                             onClick={() => setFilter(f as Filter)}
-                            className={`px-3 py-1 rounded 
-                                ${filter === f ? "bg-blue-600 text-white" : "bg-gray-200"}
-                            `}
+                            className={filter === f ? "font-bold underline" : ""}
                         >
                             {f}
                         </button>
@@ -314,7 +303,9 @@ export default function TodoList() {
                 >
                     {filteredTodos.length === 0 ? (
                         <div className="text-center text-gray-400 py-10">
-                            nothing here
+                            {todos.length === 0
+                                ? "no tasks yet"
+                                : "no tasks in this filter"}
                         </div>
                     ) : (
                         filteredTodos.map(todo => (
@@ -326,17 +317,7 @@ export default function TodoList() {
 
             <DragOverlay>
                 {activeTodo && (
-                    <TodoItemUI
-                        {...activeTodo}
-                        isEditing={false}
-                        dragging
-                        onToggle={() => { }}
-                        onDelete={() => { }}
-                        onEditStart={() => { }}
-                        onEditSave={() => { }}
-                        onEditCancel={() => { }}
-                        dragHandleProps={{}}
-                    />
+                    <Card className="p-4">{activeTodo.text}</Card>
                 )}
             </DragOverlay>
         </DndContext>
