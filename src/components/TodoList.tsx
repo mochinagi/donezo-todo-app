@@ -58,12 +58,13 @@ const TodoInput = memo(function TodoInput() {
                     if (e.key === "Enter") handleAdd();
                     if (e.key === "Escape") setValue("");
                 }}
-                placeholder="Add a task..."
+                placeholder="Add a new task"
                 className="flex-1 border rounded px-4 py-2 outline-none"
             />
             <button
                 onClick={handleAdd}
-                className="px-4 border rounded"
+                disabled={!value.trim()}
+                className="px-4 border rounded disabled:opacity-40"
             >
                 add
             </button>
@@ -107,7 +108,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
         transition,
     };
 
-    const handleSave = () => {
+    const handleSave = useCallback(() => {
         const v = editText.trim();
         if (!v) {
             deleteTodo(id);
@@ -115,12 +116,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
         }
         updateTodo(id, v);
         setEditing(false);
-    };
-
-    const handleCancel = () => {
-        setEditText(text);
-        setEditing(false);
-    };
+    }, [editText, id, updateTodo, deleteTodo]);
 
     return (
         <div ref={setNodeRef} style={style}>
@@ -143,24 +139,25 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
                             onBlur={handleSave}
                             onKeyDown={(e) => {
                                 if (e.key === "Enter") handleSave();
-                                if (e.key === "Escape") handleCancel();
+                                if (e.key === "Escape") setEditing(false);
                             }}
                             className="flex-1 border-b outline-none"
                         />
                     ) : (
                         <span
                             onDoubleClick={() => setEditing(true)}
-                            className={`flex-1 cursor-text ${completed ? "line-through text-gray-400" : ""}`}
+                            className={`flex-1 cursor-text ${completed ? "line-through text-gray-400" : ""
+                                }`}
                         >
                             {text}
                         </span>
                     )}
 
-                    <button onClick={() => {
-                        if (confirm("delete this task?")) {
-                            deleteTodo(id);
-                        }
-                    }}>
+                    <button
+                        onClick={() => {
+                            if (confirm("delete this task?")) deleteTodo(id);
+                        }}
+                    >
                         <Trash2 size={18} />
                     </button>
                 </CardContent>
@@ -172,35 +169,36 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
 /* ================= MAIN ================= */
 
 export default function TodoList() {
-    const { todos, reorderTodos, clearCompleted, setTodos, toggleTodo } = useTodoStore(
-        (s) => ({
-            todos: s.todos,
-            reorderTodos: s.reorderTodos,
-            clearCompleted: s.clearCompleted,
-            setTodos: s.setTodos,
-            toggleTodo: s.toggleTodo,
-        }),
-        shallow
-    );
+    const { todos, reorderTodos, clearCompleted, setTodos, toggleTodo } =
+        useTodoStore(
+            (s) => ({
+                todos: s.todos,
+                reorderTodos: s.reorderTodos,
+                clearCompleted: s.clearCompleted,
+                setTodos: s.setTodos,
+                toggleTodo: s.toggleTodo,
+            }),
+            shallow
+        );
 
     const [activeId, setActiveId] = useState<number | null>(null);
     const [filter, setFilter] = useState<Filter>("all");
 
-    /* ========= localStorage ========= */
+    /* ========= localStorage (debounce) ========= */
 
     useEffect(() => {
         try {
             const saved = localStorage.getItem("todos");
-            if (saved) {
-                setTodos(JSON.parse(saved));
-            }
-        } catch {
-            console.warn("failed to parse todos");
-        }
+            if (saved) setTodos(JSON.parse(saved));
+        } catch { }
     }, [setTodos]);
 
     useEffect(() => {
-        localStorage.setItem("todos", JSON.stringify(todos));
+        const id = setTimeout(() => {
+            localStorage.setItem("todos", JSON.stringify(todos));
+        }, 300);
+
+        return () => clearTimeout(id);
     }, [todos]);
 
     /* ========= filter ========= */
@@ -211,7 +209,10 @@ export default function TodoList() {
         return todos;
     }, [todos, filter]);
 
-    const remaining = todos.filter(t => !t.completed).length;
+    const remaining = useMemo(
+        () => todos.filter(t => !t.completed).length,
+        [todos]
+    );
 
     /* ========= DND ========= */
 
@@ -233,27 +234,32 @@ export default function TodoList() {
         const oldIndex = filteredTodos.findIndex(t => t.id === active.id);
         const newIndex = filteredTodos.findIndex(t => t.id === over.id);
 
-        const oldId = filteredTodos[oldIndex].id;
-        const newId = filteredTodos[newIndex].id;
+        if (oldIndex === -1 || newIndex === -1) return;
 
-        const realOldIndex = todos.findIndex(t => t.id === oldId);
-        const realNewIndex = todos.findIndex(t => t.id === newId);
+        const newOrder = [...filteredTodos];
+        const [moved] = newOrder.splice(oldIndex, 1);
+        newOrder.splice(newIndex, 0, moved);
 
-        reorderTodos(realOldIndex, realNewIndex);
+        const merged = todos.map(t => {
+            const found = newOrder.find(n => n.id === t.id);
+            return found ?? t;
+        });
+
+        setTodos(merged);
     };
 
     const activeTodo = todos.find(t => t.id === activeId);
 
     /* ========= bulk ========= */
 
-    const toggleAll = () => {
-        const allCompleted = todos.every(t => t.completed);
+    const toggleAll = useCallback(() => {
+        const shouldComplete = !todos.every(t => t.completed);
         todos.forEach(t => {
-            if (t.completed === allCompleted) {
+            if (t.completed !== shouldComplete) {
                 toggleTodo(t.id);
             }
         });
-    };
+    }, [todos, toggleTodo]);
 
     /* ========= UI ========= */
 
@@ -275,22 +281,29 @@ export default function TodoList() {
                         <button onClick={toggleAll}>
                             toggle all
                         </button>
-                        <button onClick={() => {
-                            if (confirm("clear completed?")) {
-                                clearCompleted();
-                            }
-                        }}>
+                        <button
+                            disabled={!todos.some(t => t.completed)}
+                            onClick={() => {
+                                if (confirm("clear completed?")) {
+                                    clearCompleted();
+                                }
+                            }}
+                        >
                             clear completed
                         </button>
                     </div>
                 </div>
 
                 <div className="flex gap-2">
-                    {["all", "active", "completed"].map(f => (
+                    {(["all", "active", "completed"] as Filter[]).map(f => (
                         <button
                             key={f}
-                            onClick={() => setFilter(f as Filter)}
-                            className={filter === f ? "font-bold underline" : ""}
+                            onClick={() => setFilter(f)}
+                            className={
+                                filter === f
+                                    ? "font-bold underline"
+                                    : "opacity-60"
+                            }
                         >
                             {f}
                         </button>
@@ -305,7 +318,7 @@ export default function TodoList() {
                         <div className="text-center text-gray-400 py-10">
                             {todos.length === 0
                                 ? "no tasks yet"
-                                : "no tasks in this filter"}
+                                : "no tasks under this filter"}
                         </div>
                     ) : (
                         filteredTodos.map(todo => (
