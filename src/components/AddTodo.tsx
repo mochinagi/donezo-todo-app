@@ -29,39 +29,31 @@ export default function AddTodo({
 
     const inputRef = useRef<HTMLInputElement>(null);
     const isComposingRef = useRef(false);
-    const submittingRef = useRef(false);
 
     const todos = useTodoStore((s) => s.todos);
 
-    /* ===== normalize ===== */
     const normalize = useCallback((v: string) => {
-        return v
-            .replace(/\u3000/g, " ")
-            .replace(/\s+/g, " ")
-            .trim();
+        return v.replace(/\u3000/g, " ").replace(/\s+/g, " ").trim();
     }, []);
 
-    /* ===== fast lookup ===== */
-    const todoSet = useMemo(() => {
+    const existingSet = useMemo(() => {
         return new Set(
             todos.map((t) => normalize(t.text).toLowerCase())
         );
     }, [todos, normalize]);
 
-    /* ===== validation ===== */
     const validate = useCallback(
-        (value: string, extraSet?: Set<string>) => {
+        (value: string) => {
             const v = normalize(value);
             const lower = v.toLowerCase();
 
             if (!v) return "入力してください";
             if (v.length > MAX_LENGTH) return `最大${MAX_LENGTH}文字`;
-            if (todoSet.has(lower)) return "既に存在します";
-            if (extraSet && extraSet.has(lower)) return "重複しています";
+            if (existingSet.has(lower)) return "既に存在します";
 
             return "";
         },
-        [todoSet, normalize]
+        [existingSet, normalize]
     );
 
     const error = useMemo(() => {
@@ -69,12 +61,10 @@ export default function AddTodo({
         return validate(input);
     }, [input, touched, validate]);
 
-    const hasError = !!error;
     const length = input.length;
 
-    /* ===== add ===== */
     const handleAdd = useCallback(async () => {
-        if (submittingRef.current) return;
+        if (isSubmitting) return;
 
         const value = normalize(input);
         const err = validate(value);
@@ -85,7 +75,6 @@ export default function AddTodo({
         }
 
         try {
-            submittingRef.current = true;
             setIsSubmitting(true);
 
             await onAdd(value);
@@ -101,34 +90,21 @@ export default function AddTodo({
         } catch {
             toast.error("追加に失敗しました");
         } finally {
-            submittingRef.current = false;
             setIsSubmitting(false);
         }
-    }, [input, onAdd, setInput, validate, normalize]);
+    }, [input, onAdd, setInput, validate, normalize, isSubmitting]);
 
-    /* ===== bulk paste (improved) ===== */
     const handlePaste = useCallback(
         async (e: React.ClipboardEvent<HTMLInputElement>) => {
-            if (submittingRef.current) return;
-
             const text = e.clipboardData.getData("text");
             if (!text.includes("\n")) return;
 
             e.preventDefault();
 
-            const rawLines = text.split("\n");
-
-            const seen = new Set<string>();
-
-            const lines = rawLines
+            const lines = text
+                .split("\n")
                 .map(normalize)
                 .filter(Boolean)
-                .filter((line) => {
-                    const lower = line.toLowerCase();
-                    if (seen.has(lower)) return false;
-                    seen.add(lower);
-                    return true;
-                })
                 .slice(0, MAX_PASTE);
 
             if (!lines.length) return;
@@ -138,7 +114,7 @@ export default function AddTodo({
 
             await Promise.all(
                 lines.map(async (line) => {
-                    const err = validate(line, seen);
+                    const err = validate(line);
                     if (err) {
                         fail++;
                         return;
@@ -153,27 +129,12 @@ export default function AddTodo({
                 })
             );
 
-            if (success > 0) {
-                toast.success(`${success}件追加`);
-            }
-
-            if (fail > 0) {
-                toast.error(`${fail}件失敗`);
-            }
+            if (success) toast.success(`${success}件追加`);
+            if (fail) toast.error(`${fail}件失敗`);
         },
         [normalize, onAdd, validate]
     );
 
-    /* ===== input ===== */
-    const handleChange = useCallback(
-        (value: string) => {
-            setInput(value);
-            if (!touched) setTouched(true);
-        },
-        [setInput, touched]
-    );
-
-    /* ===== keyboard ===== */
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (isComposingRef.current) return;
 
@@ -188,15 +149,15 @@ export default function AddTodo({
         }
     };
 
+    const disabled =
+        !input.trim() || isSubmitting || !!error;
+
     const lengthColor =
         length > MAX_LENGTH
             ? "text-red-500"
             : length > MAX_LENGTH * 0.8
                 ? "text-yellow-500"
                 : "text-gray-400";
-
-    const disabled =
-        !input.trim() || isSubmitting || hasError;
 
     return (
         <div className="p-6 border-b space-y-2">
@@ -205,30 +166,28 @@ export default function AddTodo({
                     <Input
                         ref={inputRef}
                         value={input}
-                        onChange={(e) => handleChange(e.target.value)}
+                        onChange={(e) => {
+                            setInput(e.target.value);
+                            if (!touched) setTouched(true);
+                        }}
                         onBlur={() => setTouched(true)}
                         onPaste={handlePaste}
+                        onKeyDown={handleKeyDown}
                         placeholder={
-                            isSubmitting
-                                ? "追加中..."
-                                : "タスクを入力（改行で複数追加可）"
+                            isSubmitting ? "追加中..." : "タスクを入力"
                         }
                         maxLength={MAX_LENGTH}
                         disabled={isSubmitting}
-                        aria-invalid={hasError}
-                        aria-describedby="todo-error"
+                        aria-invalid={!!error}
                         className={clsx(
                             "pl-10 pr-12 rounded-lg",
-                            hasError && "border-red-400"
+                            error && "border-red-400"
                         )}
-                        onKeyDown={handleKeyDown}
                         onCompositionStart={() => {
                             isComposingRef.current = true;
                         }}
                         onCompositionEnd={() => {
-                            setTimeout(() => {
-                                isComposingRef.current = false;
-                            }, 0);
+                            isComposingRef.current = false;
                         }}
                         autoFocus
                     />
@@ -252,7 +211,6 @@ export default function AddTodo({
                     type="button"
                     onClick={handleAdd}
                     disabled={disabled}
-                    className="flex items-center gap-2"
                 >
                     {isSubmitting ? (
                         <Loader2 className="animate-spin" size={16} />
@@ -263,9 +221,8 @@ export default function AddTodo({
                 </Button>
             </div>
 
-            {hasError && (
+            {error && (
                 <div
-                    id="todo-error"
                     role="alert"
                     className="flex items-center gap-1 text-sm text-red-500"
                 >
