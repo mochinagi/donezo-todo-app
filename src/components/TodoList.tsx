@@ -146,8 +146,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
                     ) : (
                         <span
                             onDoubleClick={() => setEditing(true)}
-                            className={`flex-1 cursor-text ${completed ? "line-through text-gray-400" : ""
-                                }`}
+                            className={`flex-1 cursor-text ${completed ? "line-through text-gray-400" : ""}`}
                         >
                             {text}
                         </span>
@@ -169,14 +168,13 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
 /* ================= MAIN ================= */
 
 export default function TodoList() {
-    const { todos, reorderTodos, clearCompleted, setTodos, toggleTodo } =
+    const { todos, setTodos, toggleTodo, clearCompleted } =
         useTodoStore(
             (s) => ({
                 todos: s.todos,
-                reorderTodos: s.reorderTodos,
-                clearCompleted: s.clearCompleted,
                 setTodos: s.setTodos,
                 toggleTodo: s.toggleTodo,
+                clearCompleted: s.clearCompleted,
             }),
             shallow
         );
@@ -184,21 +182,20 @@ export default function TodoList() {
     const [activeId, setActiveId] = useState<number | null>(null);
     const [filter, setFilter] = useState<Filter>("all");
 
-    /* ========= localStorage (debounce) ========= */
+    /* ========= localStorage ========= */
 
     useEffect(() => {
         try {
             const saved = localStorage.getItem("todos");
-            if (saved) setTodos(JSON.parse(saved));
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) setTodos(parsed);
+            }
         } catch { }
     }, [setTodos]);
 
     useEffect(() => {
-        const id = setTimeout(() => {
-            localStorage.setItem("todos", JSON.stringify(todos));
-        }, 300);
-
-        return () => clearTimeout(id);
+        localStorage.setItem("todos", JSON.stringify(todos));
     }, [todos]);
 
     /* ========= filter ========= */
@@ -226,26 +223,21 @@ export default function TodoList() {
     };
 
     const handleDragEnd = (event: DragEndEvent) => {
-        const { active, over };
+        const { active, over } = event;
         setActiveId(null);
 
         if (!over || active.id === over.id) return;
 
-        const oldIndex = filteredTodos.findIndex(t => t.id === active.id);
-        const newIndex = filteredTodos.findIndex(t => t.id === over.id);
+        const oldIndex = todos.findIndex(t => t.id === active.id);
+        const newIndex = todos.findIndex(t => t.id === over.id);
 
         if (oldIndex === -1 || newIndex === -1) return;
 
-        const newOrder = [...filteredTodos];
-        const [moved] = newOrder.splice(oldIndex, 1);
-        newOrder.splice(newIndex, 0, moved);
+        const newTodos = [...todos];
+        const [moved] = newTodos.splice(oldIndex, 1);
+        newTodos.splice(newIndex, 0, moved);
 
-        const merged = todos.map(t => {
-            const found = newOrder.find(n => n.id === t.id);
-            return found ?? t;
-        });
-
-        setTodos(merged);
+        setTodos(newTodos);
     };
 
     const activeTodo = todos.find(t => t.id === activeId);
@@ -253,13 +245,14 @@ export default function TodoList() {
     /* ========= bulk ========= */
 
     const toggleAll = useCallback(() => {
-        const shouldComplete = !todos.every(t => t.completed);
-        todos.forEach(t => {
-            if (t.completed !== shouldComplete) {
-                toggleTodo(t.id);
-            }
-        });
-    }, [todos, toggleTodo]);
+        const allCompleted = todos.every(t => t.completed);
+        setTodos(
+            todos.map(t => ({
+                ...t,
+                completed: !allCompleted,
+            }))
+        );
+    }, [todos, setTodos]);
 
     /* ========= UI ========= */
 
@@ -281,6 +274,7 @@ export default function TodoList() {
                         <button onClick={toggleAll}>
                             toggle all
                         </button>
+
                         <button
                             disabled={!todos.some(t => t.completed)}
                             onClick={() => {
@@ -299,11 +293,7 @@ export default function TodoList() {
                         <button
                             key={f}
                             onClick={() => setFilter(f)}
-                            className={
-                                filter === f
-                                    ? "font-bold underline"
-                                    : "opacity-60"
-                            }
+                            className={filter === f ? "font-bold underline" : "opacity-60"}
                         >
                             {f}
                         </button>
@@ -311,14 +301,12 @@ export default function TodoList() {
                 </div>
 
                 <SortableContext
-                    items={filteredTodos.map(t => t.id)}
+                    items={todos.map(t => t.id)}
                     strategy={verticalListSortingStrategy}
                 >
                     {filteredTodos.length === 0 ? (
                         <div className="text-center text-gray-400 py-10">
-                            {todos.length === 0
-                                ? "no tasks yet"
-                                : "no tasks under this filter"}
+                            {todos.length === 0 ? "no tasks yet" : "no tasks under this filter"}
                         </div>
                     ) : (
                         filteredTodos.map(todo => (
@@ -330,7 +318,9 @@ export default function TodoList() {
 
             <DragOverlay>
                 {activeTodo && (
-                    <Card className="p-4">{activeTodo.text}</Card>
+                    <Card className="p-4">
+                        {activeTodo.text}
+                    </Card>
                 )}
             </DragOverlay>
         </DndContext>
