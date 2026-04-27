@@ -40,6 +40,9 @@ const load = <T,>(key: string, fallback: T): T => {
 
 /* ================= CORE ================= */
 
+const clamp = (n: number, min: number, max: number) =>
+    Math.max(min, Math.min(max, n));
+
 const applyAction = (todos: Todo[], action: Action): Todo[] => {
     switch (action.type) {
         case "add":
@@ -59,8 +62,12 @@ const applyAction = (todos: Todo[], action: Action): Todo[] => {
 
         case "reorder": {
             const arr = [...todos];
-            const [moved] = arr.splice(action.from, 1);
-            arr.splice(action.to, 0, moved);
+            const from = clamp(action.from, 0, arr.length - 1);
+            const to = clamp(action.to, 0, arr.length - 1);
+
+            const [moved] = arr.splice(from, 1);
+            arr.splice(to, 0, moved);
+
             return arr;
         }
 
@@ -94,8 +101,12 @@ const revertAction = (todos: Todo[], action: Action): Todo[] => {
 
         case "reorder": {
             const arr = [...todos];
-            const [moved] = arr.splice(action.to, 1);
-            arr.splice(action.from, 0, moved);
+            const from = clamp(action.to, 0, arr.length - 1);
+            const to = clamp(action.from, 0, arr.length - 1);
+
+            const [moved] = arr.splice(from, 1);
+            arr.splice(to, 0, moved);
+
             return arr;
         }
 
@@ -132,15 +143,15 @@ export function useTodoState(initialTodos: Todo[] = []) {
         [search]
     );
 
-    /* ---------------- persist ---------------- */
+    /* ================= PERSIST ================= */
 
     useEffect(() => {
         if (persistTimer.current) clearTimeout(persistTimer.current);
 
         persistTimer.current = setTimeout(() => {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
-            localStorage.setItem(FILTER_KEY, JSON.stringify(filter));
-            localStorage.setItem(SEARCH_KEY, JSON.stringify(search));
+            localStorage.setItem(FILTER_KEY, filter);
+            localStorage.setItem(SEARCH_KEY, search);
         }, 300);
 
         return () => {
@@ -148,7 +159,7 @@ export function useTodoState(initialTodos: Todo[] = []) {
         };
     }, [todos, filter, search]);
 
-    /* ---------------- dispatch ---------------- */
+    /* ================= DISPATCH ================= */
 
     const dispatch = useCallback((action: Action) => {
         setTodos(prev => applyAction(prev, action));
@@ -162,16 +173,17 @@ export function useTodoState(initialTodos: Todo[] = []) {
         setRedoStack([]);
     }, []);
 
-    /* ---------------- actions ---------------- */
+    /* ================= ACTIONS ================= */
 
     const addTodo = useCallback((text: string) => {
-        const todo: Todo = {
-            id: crypto.randomUUID(),
-            text,
-            completed: false,
-        };
-
-        dispatch({ type: "add", todo });
+        dispatch({
+            type: "add",
+            todo: {
+                id: crypto.randomUUID(),
+                text,
+                completed: false,
+            },
+        });
     }, [dispatch]);
 
     const toggleTodo = useCallback((id: string) => {
@@ -181,12 +193,7 @@ export function useTodoState(initialTodos: Todo[] = []) {
 
             const next = { ...target, completed: !target.completed };
 
-            dispatch({
-                type: "toggle",
-                before: target,
-                after: next,
-            });
-
+            dispatch({ type: "toggle", before: target, after: next });
             return prev;
         });
     }, [dispatch]);
@@ -198,12 +205,7 @@ export function useTodoState(initialTodos: Todo[] = []) {
 
             const next = { ...target, text };
 
-            dispatch({
-                type: "edit",
-                before: target,
-                after: next,
-            });
-
+            dispatch({ type: "edit", before: target, after: next });
             return prev;
         });
     }, [dispatch]);
@@ -220,9 +222,7 @@ export function useTodoState(initialTodos: Todo[] = []) {
                 return true;
             });
 
-            if (removed.length) {
-                dispatch({ type: "delete", removed });
-            }
+            if (removed.length) dispatch({ type: "delete", removed });
 
             return next;
         });
@@ -255,6 +255,7 @@ export function useTodoState(initialTodos: Todo[] = []) {
     const toggleAll = useCallback(() => {
         setTodos(prev => {
             const allDone = prev.every(t => t.completed);
+
             const next = prev.map(t => ({
                 ...t,
                 completed: !allDone,
@@ -270,35 +271,29 @@ export function useTodoState(initialTodos: Todo[] = []) {
         });
     }, [dispatch]);
 
-    /* ---------------- undo / redo ---------------- */
+    /* ================= UNDO / REDO ================= */
 
     const undo = useCallback(() => {
-        setUndoStack(prev => {
-            const action = prev.at(-1);
-            if (!action) return prev;
+        const action = undoStack.at(-1);
+        if (!action) return;
 
-            setTodos(t => revertAction(t, action));
+        setTodos(prev => revertAction(prev, action));
 
-            setRedoStack(r => [...r, action]);
-
-            return prev.slice(0, -1);
-        });
-    }, []);
+        setUndoStack(s => s.slice(0, -1));
+        setRedoStack(s => [...s, action]);
+    }, [undoStack]);
 
     const redo = useCallback(() => {
-        setRedoStack(prev => {
-            const action = prev.at(-1);
-            if (!action) return prev;
+        const action = redoStack.at(-1);
+        if (!action) return;
 
-            setTodos(t => applyAction(t, action));
+        setTodos(prev => applyAction(prev, action));
 
-            setUndoStack(u => [...u, action]);
+        setRedoStack(s => s.slice(0, -1));
+        setUndoStack(s => [...s, action]);
+    }, [redoStack]);
 
-            return prev.slice(0, -1);
-        });
-    }, []);
-
-    /* ---------------- derived ---------------- */
+    /* ================= DERIVED ================= */
 
     const filteredTodos = useMemo(() => {
         return todos.filter(t => {
@@ -319,8 +314,7 @@ export function useTodoState(initialTodos: Todo[] = []) {
             total,
             completed,
             active: total - completed,
-            completionRate:
-                total === 0 ? 0 : Math.round((completed / total) * 100),
+            completionRate: total === 0 ? 0 : Math.round((completed / total) * 100),
         };
     }, [todos]);
 
