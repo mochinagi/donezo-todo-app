@@ -18,22 +18,66 @@ type ApiResponse<T> = {
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true";
 const BASE_URL = "/api";
 const TIMEOUT = 5000;
+const RETRY = 2;
 
 /* ================= ERROR ================= */
 
 export class APIError extends Error {
     status: number;
+    original?: unknown;
 
-    constructor(message: string, status: number) {
+    constructor(message: string, status: number, original?: unknown) {
         super(message);
         this.status = status;
+        this.original = original;
     }
 }
+
+/* ================= MOCK LAYER ================= */
+
+class MockDB {
+    private todos: Todo[] = [
+        { id: crypto.randomUUID(), text: "Mock Task", completed: false },
+        { id: crypto.randomUUID(), text: "Learn Zustand", completed: true },
+    ];
+
+    getAll() {
+        return [...this.todos];
+    }
+
+    add(text: string) {
+        const todo: Todo = {
+            id: crypto.randomUUID(),
+            text,
+            completed: false,
+        };
+        this.todos.unshift(todo);
+        return todo;
+    }
+
+    update(id: string, updates: Partial<Omit<Todo, "id">>) {
+        this.todos = this.todos.map(t =>
+            t.id === id ? { ...t, ...updates } : t
+        );
+
+        return this.todos.find(t => t.id === id)!;
+    }
+
+    delete(id: string) {
+        this.todos = this.todos.filter(t => t.id !== id);
+    }
+
+    reset() {
+        this.todos = [];
+    }
+}
+
+const mockDB = new MockDB();
 
 /* ================= UTILS ================= */
 
 const delay = (ms: number) =>
-    new Promise((res) => setTimeout(res, ms));
+    new Promise(res => setTimeout(res, ms));
 
 const safeJson = async (res: Response) => {
     try {
@@ -43,18 +87,12 @@ const safeJson = async (res: Response) => {
     }
 };
 
-/* ================= MOCK ================= */
-
-let mockTodos: Todo[] = [
-    { id: crypto.randomUUID(), text: "Mock Task", completed: false },
-    { id: crypto.randomUUID(), text: "Learn Zustand", completed: true },
-];
-
 /* ================= CORE REQUEST ================= */
 
 async function request<T>(
     url: string,
-    options?: RequestInit
+    options: RequestInit = {},
+    retryCount = RETRY
 ): Promise<T> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), TIMEOUT);
@@ -65,7 +103,7 @@ async function request<T>(
             signal: controller.signal,
             headers: {
                 "Content-Type": "application/json",
-                ...(options?.headers || {}),
+                ...(options.headers || {}),
             },
         });
 
@@ -74,19 +112,24 @@ async function request<T>(
         if (!res.ok) {
             throw new APIError(
                 json?.message || "Request failed",
-                res.status
+                res.status,
+                json
             );
         }
 
         return json?.data as T;
     } catch (err: any) {
-        if (err.name === "AbortError") {
-            throw new APIError("Request timeout", 408);
+        if (err?.name === "AbortError") {
+            throw new APIError("Request timeout", 408, err);
         }
 
-        throw err instanceof APIError
-            ? err
-            : new APIError("Network error", 500);
+        if (retryCount > 0) {
+            return request<T>(url, options, retryCount - 1);
+        }
+
+        if (err instanceof APIError) throw err;
+
+        throw new APIError("Network error", 500, err);
     } finally {
         clearTimeout(timeout);
     }
@@ -97,8 +140,8 @@ async function request<T>(
 /* GET */
 export const fetchTodos = async (): Promise<Todo[]> => {
     if (USE_MOCK) {
-        await delay(300);
-        return [...mockTodos];
+        await delay(200);
+        return mockDB.getAll();
     }
 
     return request<Todo[]>(`${BASE_URL}/todos`);
@@ -108,15 +151,7 @@ export const fetchTodos = async (): Promise<Todo[]> => {
 export const addTodo = async (text: string): Promise<Todo> => {
     if (USE_MOCK) {
         await delay(200);
-
-        const newTodo: Todo = {
-            id: crypto.randomUUID(),
-            text,
-            completed: false,
-        };
-
-        mockTodos.unshift(newTodo);
-        return newTodo;
+        return mockDB.add(text);
     }
 
     return request<Todo>(`${BASE_URL}/todos`, {
@@ -132,12 +167,7 @@ export const updateTodo = async (
 ): Promise<Todo> => {
     if (USE_MOCK) {
         await delay(200);
-
-        mockTodos = mockTodos.map((t) =>
-            t.id === id ? { ...t, ...updates } : t
-        );
-
-        return mockTodos.find((t) => t.id === id)!;
+        return mockDB.update(id, updates);
     }
 
     return request<Todo>(`${BASE_URL}/todos/${id}`, {
@@ -150,12 +180,17 @@ export const updateTodo = async (
 export const deleteTodo = async (id: string): Promise<void> => {
     if (USE_MOCK) {
         await delay(200);
-
-        mockTodos = mockTodos.filter((t) => t.id !== id);
+        mockDB.delete(id);
         return;
     }
 
     await request<void>(`${BASE_URL}/todos/${id}`, {
         method: "DELETE",
     });
+};
+
+/* ================= DEV HELPERS ================= */
+
+export const __mockReset = () => {
+    if (USE_MOCK) mockDB.reset();
 };
