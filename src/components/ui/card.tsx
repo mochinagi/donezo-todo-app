@@ -1,12 +1,14 @@
+"use client";
+
 import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 
-/**
- * Card styles（Buttonと統一🔥）
- */
+/* ================= VARIANTS ================= */
+
 const cardVariants = cva(
-  "rounded-xl flex flex-col gap-4 transition-all duration-200",
+  "rounded-xl flex flex-col transition-all duration-200 outline-none",
   {
     variants: {
       variant: {
@@ -19,37 +21,84 @@ const cardVariants = cva(
         ghost:
           "bg-transparent border-none shadow-none",
       },
-      size: {
+      padding: {
+        none: "p-0",
         sm: "p-3",
         md: "p-5",
         lg: "p-6",
       },
       interactive: {
-        true: "hover:shadow-lg hover:-translate-y-1 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-blue-400 cursor-pointer",
+        true: "cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-400",
+        false: "",
+      },
+      disabled: {
+        true: "opacity-50 pointer-events-none",
         false: "",
       },
     },
+    compoundVariants: [
+      {
+        interactive: true,
+        disabled: false,
+        class:
+          "hover:shadow-lg hover:-translate-y-1 active:scale-[0.98]",
+      },
+    ],
     defaultVariants: {
       variant: "default",
-      size: "md",
+      padding: "md",
       interactive: false,
+      disabled: false,
     },
   }
 );
 
 type CardProps = React.ComponentProps<"div"> &
-  VariantProps<typeof cardVariants>;
+  VariantProps<typeof cardVariants> & {
+    asChild?: boolean;
+  };
 
-/**
- * Card
- */
+/* ================= CARD ================= */
+
 const Card = React.forwardRef<HTMLDivElement, CardProps>(
-  ({ className, variant, size, interactive, ...props }, ref) => {
+  (
+    {
+      className,
+      variant,
+      padding,
+      interactive,
+      disabled,
+      asChild = false,
+      onKeyDown,
+      ...props
+    },
+    ref
+  ) => {
+    const Comp = asChild ? Slot : "div";
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!interactive || disabled) return;
+
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        (e.target as HTMLElement).click();
+      }
+
+      onKeyDown?.(e);
+    };
+
     return (
-      <div
+      <Comp
         ref={ref}
         data-slot="card"
-        className={cn(cardVariants({ variant, size, interactive }), className)}
+        data-state={disabled ? "disabled" : "active"}
+        tabIndex={interactive && !disabled ? 0 : undefined}
+        role={interactive ? "button" : undefined}
+        onKeyDown={handleKeyDown}
+        className={cn(
+          cardVariants({ variant, padding, interactive, disabled }),
+          className
+        )}
         {...props}
       />
     );
@@ -58,9 +107,8 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
 
 Card.displayName = "Card";
 
-/**
- * Header
- */
+/* ================= SUB COMPONENTS ================= */
+
 const CardHeader = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
@@ -74,12 +122,8 @@ const CardHeader = React.forwardRef<
     />
   );
 });
-
 CardHeader.displayName = "CardHeader";
 
-/**
- * Title（よりセマンティック🔥）
- */
 const CardTitle = React.forwardRef<
   HTMLHeadingElement,
   React.ComponentProps<"h3">
@@ -93,12 +137,8 @@ const CardTitle = React.forwardRef<
     />
   );
 });
-
 CardTitle.displayName = "CardTitle";
 
-/**
- * Description
- */
 const CardDescription = React.forwardRef<
   HTMLParagraphElement,
   React.ComponentProps<"p">
@@ -112,12 +152,8 @@ const CardDescription = React.forwardRef<
     />
   );
 });
-
 CardDescription.displayName = "CardDescription";
 
-/**
- * Action
- */
 const CardAction = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
@@ -131,12 +167,8 @@ const CardAction = React.forwardRef<
     />
   );
 });
-
 CardAction.displayName = "CardAction";
 
-/**
- * Content（padding統一🔥）
- */
 const CardContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
@@ -150,12 +182,8 @@ const CardContent = React.forwardRef<
     />
   );
 });
-
 CardContent.displayName = "CardContent";
 
-/**
- * Footer
- */
 const CardFooter = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
@@ -172,8 +200,9 @@ const CardFooter = React.forwardRef<
     />
   );
 });
-
 CardFooter.displayName = "CardFooter";
+
+/* ================= EXPORT ================= */
 
 export {
   Card,
