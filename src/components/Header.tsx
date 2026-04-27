@@ -31,33 +31,22 @@ type HeaderProps = {
 
 /* ================= HOOK ================= */
 
-function useDebouncedCallback<T extends (...args: unknown[]) => void>(
-    callback: T,
+function useDebounce<T extends (...args: any[]) => void>(
+    fn: T,
     delay: number
 ) {
-    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const debounced = useCallback(
+    return useCallback(
         (...args: Parameters<T>) => {
-            if (timerRef.current) clearTimeout(timerRef.current);
+            if (timer.current) clearTimeout(timer.current);
 
-            timerRef.current = setTimeout(() => {
-                callback(...args);
+            timer.current = setTimeout(() => {
+                fn(...args);
             }, delay);
         },
-        [callback, delay]
+        [fn, delay]
     );
-
-    const cancel = useCallback(() => {
-        if (timerRef.current) {
-            clearTimeout(timerRef.current);
-            timerRef.current = null;
-        }
-    }, []);
-
-    useEffect(() => cancel, [cancel]);
-
-    return { debounced, cancel };
 }
 
 /* ================= COMPONENT ================= */
@@ -70,44 +59,35 @@ export default function Header({
 }: HeaderProps) {
     const categoryName = categoryMap[categoryId] ?? "タスク";
 
-    const [localValue, setLocalValue] = useState(search);
+    const [value, setValue] = useState(search);
 
-    const syncingRef = useRef(false);
     const inputRef = useRef<HTMLInputElement | null>(null);
-    const isComposingRef = useRef(false);
+    const isComposing = useRef(false);
 
-    /* ===== debounce ===== */
-    const { debounced, cancel } = useDebouncedCallback(
-        (value: string) => {
-            syncingRef.current = true;
-            onSearchChange(value);
-        },
-        300
-    );
+    const debouncedSearch = useDebounce(onSearchChange, 300);
 
+    /* sync external -> local */
     useEffect(() => {
-        if (isComposingRef.current) return;
-        debounced(localValue);
-    }, [localValue, debounced]);
-
-    useEffect(() => {
-        if (syncingRef.current) {
-            syncingRef.current = false;
-            return;
-        }
-        setLocalValue(search);
+        if (isComposing.current) return;
+        setValue(search);
     }, [search]);
 
-    /* ===== keyboard ===== */
-    const toggleFocus = useCallback(() => {
-        const input = inputRef.current;
-        if (!input) return;
+    /* local -> store */
+    useEffect(() => {
+        if (isComposing.current) return;
+        debouncedSearch(value);
+    }, [value, debouncedSearch]);
 
-        if (document.activeElement === input) {
-            input.blur();
+    /* keyboard focus */
+    const focusInput = useCallback(() => {
+        const el = inputRef.current;
+        if (!el) return;
+
+        if (document.activeElement === el) {
+            el.blur();
         } else {
-            input.focus();
-            input.select();
+            el.focus();
+            el.select();
         }
     }, []);
 
@@ -119,7 +99,7 @@ export default function Header({
 
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
                 e.preventDefault();
-                toggleFocus();
+                focusInput();
             }
 
             if (e.key === "/" && !isTyping) {
@@ -130,40 +110,35 @@ export default function Header({
 
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
-    }, [toggleFocus]);
+    }, [focusInput]);
 
-    /* ===== subtitle ===== */
+    /* subtitle */
     const subtitle = useMemo(() => {
-        if (total === 0) {
-            return search
-                ? "条件に一致するタスクはありません"
-                : "タスクがありません";
-        }
+        if (total === 0 && !search) return "タスクがありません";
+        if (total === 0 && search) return "該当するタスクがありません";
 
         if (search) {
-            return `「${search}」の検索結果（${total}件）`;
+            return `"${search}" の検索結果 · ${total}件`;
         }
 
         return `${total}件のタスク`;
     }, [search, total]);
 
-    /* ===== clear ===== */
-    const handleClear = useCallback(() => {
-        cancel();
-        setLocalValue("");
+    /* clear */
+    const clear = useCallback(() => {
+        setValue("");
         onSearchChange("");
         inputRef.current?.focus();
-    }, [onSearchChange, cancel]);
+    }, [onSearchChange]);
 
     /* ================= UI ================= */
 
     return (
-        <header
-            className="flex flex-col sm:flex-row items-start sm:items-center justify-between
+        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between
             bg-white/80 dark:bg-gray-900/80 backdrop-blur
-            px-6 py-4 border-b border-gray-200 dark:border-gray-700"
-        >
-            {/* title */}
+            px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+
+            {/* left */}
             <div className="flex flex-col mb-3 sm:mb-0">
                 <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
                     {categoryName}
@@ -175,64 +150,56 @@ export default function Header({
             </div>
 
             {/* search */}
-            <div
-                role="search"
-                className="relative w-full max-w-xs sm:w-72 group"
-            >
+            <div className="relative w-full max-w-xs sm:w-72 group">
+
                 <Input
                     ref={inputRef}
-                    value={localValue}
-                    onChange={(e) => setLocalValue(e.target.value)}
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
                     onCompositionStart={() => {
-                        isComposingRef.current = true;
+                        isComposing.current = true;
                     }}
                     onCompositionEnd={(e) => {
-                        isComposingRef.current = false;
-                        setLocalValue(e.currentTarget.value);
+                        isComposing.current = false;
+                        setValue(e.currentTarget.value);
                     }}
-                    placeholder="検索 (Ctrl/Cmd + K / /)"
+                    placeholder="検索（Ctrl+K / /）"
                     className={clsx(
                         "pl-10 pr-10 rounded-lg transition-all",
                         "focus:ring-2 focus:ring-blue-400 focus:outline-none",
-                        "group-focus-within:ring-2 group-focus-within:ring-blue-400",
-                        "hover:bg-gray-50 dark:hover:bg-gray-800"
+                        "group-focus-within:ring-2 group-focus-within:ring-blue-400"
                     )}
                     role="searchbox"
                     aria-label="タスク検索"
-                    aria-keyshortcuts="Ctrl+K Meta+K /"
                     autoComplete="off"
                     onKeyDown={(e) => {
                         if (e.key === "Escape") {
-                            if (localValue) {
-                                handleClear();
-                            } else {
-                                inputRef.current?.blur();
-                            }
+                            value ? clear() : inputRef.current?.blur();
                         }
                     }}
                 />
 
                 <Search
                     aria-hidden="true"
-                    className={clsx(
-                        "absolute left-3 top-1/2 -translate-y-1/2 transition",
-                        localValue ? "text-gray-600" : "text-gray-400"
-                    )}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                     size={16}
                 />
 
-                {localValue && (
+                {value && (
                     <button
-                        onClick={handleClear}
+                        onClick={clear}
                         aria-label="検索をクリア"
                         className="absolute right-3 top-1/2 -translate-y-1/2
-                        text-gray-400 hover:text-gray-600 transition
-                        p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700
-                        focus:outline-none focus:ring-2 focus:ring-blue-300"
+                        text-gray-400 hover:text-gray-600 transition"
                     >
                         <X size={16} />
                     </button>
                 )}
+
+                {/* keyboard hint */}
+                <div className="absolute right-10 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 hidden sm:block">
+                    ⌘K
+                </div>
             </div>
         </header>
     );
