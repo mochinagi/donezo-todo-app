@@ -20,14 +20,18 @@ export interface Todo {
 
 export type FilterType = "tasks" | "completed" | "active";
 
+type ActionMeta = {
+    at: number;
+};
+
 type Action =
-    | { type: "add"; todo: Todo }
-    | { type: "delete"; removed: { todo: Todo; index: number }[] }
-    | { type: "update"; before: Todo; after: Todo }
-    | { type: "toggle"; before: Todo; after: Todo }
-    | { type: "toggleAll"; before: Todo[]; after: Todo[] }
-    | { type: "reorder"; from: number; to: number }
-    | { type: "clearCompleted"; removed: { todo: Todo; index: number }[] };
+    | { type: "add"; todo: Todo; meta: ActionMeta }
+    | { type: "delete"; removed: { todo: Todo; index: number }[]; meta: ActionMeta }
+    | { type: "update"; before: Todo; after: Todo; meta: ActionMeta }
+    | { type: "toggle"; before: Todo; after: Todo; meta: ActionMeta }
+    | { type: "toggleAll"; before: Todo[]; after: Todo[]; meta: ActionMeta }
+    | { type: "reorder"; from: number; to: number; meta: ActionMeta }
+    | { type: "clearCompleted"; removed: { todo: Todo; index: number }[]; meta: ActionMeta };
 
 /* ================= UTILS ================= */
 
@@ -36,6 +40,11 @@ const priorityWeight: Record<Priority, number> = {
     medium: 2,
     low: 1,
 };
+
+const withMeta = <T extends Omit<Action, "meta">>(action: T): Action => ({
+    ...action,
+    meta: { at: Date.now() },
+});
 
 const sortTodos = (todos: Todo[]) => {
     return [...todos].sort((a, b) => {
@@ -116,6 +125,17 @@ const revert = (todos: Todo[], action: Action): Todo[] => {
     }
 };
 
+const buildRemoved = (todos: Todo[], ids: string[]) => {
+    const set = new Set(ids);
+    const removed: { todo: Todo; index: number }[] = [];
+
+    todos.forEach((t, i) => {
+        if (set.has(t.id)) removed.push({ todo: t, index: i });
+    });
+
+    return removed;
+};
+
 /* ================= STORE ================= */
 
 type TodoStore = {
@@ -132,6 +152,7 @@ type TodoStore = {
     updateTodo: (id: string, text: string) => void;
     toggleTodo: (id: string) => void;
     toggleAll: () => void;
+
     deleteTodo: (id: string) => void;
     deleteMany: (ids: string[]) => void;
     clearCompleted: () => void;
@@ -181,7 +202,7 @@ export const useTodoStore = create<TodoStore>()(
                     updatedAt: now,
                 };
 
-                get().dispatch({ type: "add", todo });
+                get().dispatch(withMeta({ type: "add", todo }));
             },
 
             updateTodo: (id, text) => {
@@ -194,11 +215,11 @@ export const useTodoStore = create<TodoStore>()(
                     updatedAt: Date.now(),
                 };
 
-                get().dispatch({
+                get().dispatch(withMeta({
                     type: "update",
                     before: t,
                     after: next,
-                });
+                }));
             },
 
             toggleTodo: (id) => {
@@ -211,11 +232,11 @@ export const useTodoStore = create<TodoStore>()(
                     updatedAt: Date.now(),
                 };
 
-                get().dispatch({
+                get().dispatch(withMeta({
                     type: "toggle",
                     before: t,
                     after: next,
-                });
+                }));
             },
 
             toggleAll: () => {
@@ -228,59 +249,44 @@ export const useTodoStore = create<TodoStore>()(
                     updatedAt: Date.now(),
                 }));
 
-                get().dispatch({
+                get().dispatch(withMeta({
                     type: "toggleAll",
                     before: todos,
                     after: next,
-                });
+                }));
             },
 
             deleteTodo: (id) => {
                 const { todos } = get();
-                const index = todos.findIndex(t => t.id === id);
-                if (index === -1) return;
+                const removed = buildRemoved(todos, [id]);
+                if (!removed.length) return;
 
-                get().dispatch({
-                    type: "delete",
-                    removed: [{ todo: todos[index], index }],
-                });
+                get().dispatch(withMeta({ type: "delete", removed }));
             },
 
             deleteMany: (ids) => {
                 const { todos } = get();
-                const idSet = new Set(ids);
+                const removed = buildRemoved(todos, ids);
+                if (!removed.length) return;
 
-                const removed: { todo: Todo; index: number }[] = [];
-
-                todos.forEach((t, i) => {
-                    if (idSet.has(t.id)) {
-                        removed.push({ todo: t, index: i });
-                    }
-                });
-
-                if (removed.length) {
-                    get().dispatch({ type: "delete", removed });
-                }
+                get().dispatch(withMeta({ type: "delete", removed }));
             },
 
             clearCompleted: () => {
                 const { todos } = get();
+                const completedIds = todos.filter(t => t.completed).map(t => t.id);
+                const removed = buildRemoved(todos, completedIds);
 
-                const removed: { todo: Todo; index: number }[] = [];
+                if (!removed.length) return;
 
-                todos.forEach((t, i) => {
-                    if (t.completed) {
-                        removed.push({ todo: t, index: i });
-                    }
-                });
-
-                if (removed.length) {
-                    get().dispatch({ type: "clearCompleted", removed });
-                }
+                get().dispatch(withMeta({
+                    type: "clearCompleted",
+                    removed,
+                }));
             },
 
             reorderTodos: (from, to) => {
-                get().dispatch({ type: "reorder", from, to });
+                get().dispatch(withMeta({ type: "reorder", from, to }));
             },
 
             undo: () => {
@@ -320,7 +326,7 @@ export const useTodoStore = create<TodoStore>()(
         }),
         {
             name: "todo-storage",
-            version: 15,
+            version: 16,
             storage: createJSONStorage(() => localStorage),
             partialize: (state) => ({
                 todos: state.todos,
