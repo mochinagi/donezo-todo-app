@@ -9,45 +9,54 @@ export function cn(...inputs: ClassValue[]) {
 
 /* ================= DEBOUNCE ================= */
 
-export function debounce<T extends (...args: unknown[]) => void>(
+export function debounce<T extends (...args: any[]) => any>(
   fn: T,
   delay = 300,
   options: { leading?: boolean; trailing?: boolean } = {}
 ) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let lastArgs: Parameters<T> | null = null;
+  let lastResolve: ((value: ReturnType<T>) => void) | null = null;
 
   const { leading = false, trailing = true } = options;
 
   const debounced = (...args: Parameters<T>) => {
-    const callNow = leading && !timer;
+    return new Promise<ReturnType<T>>((resolve) => {
+      const callNow = leading && !timer;
 
-    lastArgs = args;
+      lastArgs = args;
+      lastResolve = resolve;
 
-    if (timer) clearTimeout(timer);
+      if (timer) clearTimeout(timer);
 
-    timer = setTimeout(() => {
-      if (trailing && !callNow && lastArgs) {
-        fn(...lastArgs);
+      timer = setTimeout(() => {
+        if (trailing && !callNow && lastArgs) {
+          const result = fn(...lastArgs);
+          lastResolve?.(result);
+        }
+        timer = null;
+        lastArgs = null;
+        lastResolve = null;
+      }, delay);
+
+      if (callNow) {
+        const result = fn(...args);
+        resolve(result);
       }
-      timer = null;
-      lastArgs = null;
-    }, delay);
-
-    if (callNow) {
-      fn(...args);
-    }
+    });
   };
 
   debounced.cancel = () => {
     if (timer) clearTimeout(timer);
     timer = null;
     lastArgs = null;
+    lastResolve = null;
   };
 
   debounced.flush = () => {
     if (timer && lastArgs) {
-      fn(...lastArgs);
+      const result = fn(...lastArgs);
+      lastResolve?.(result);
       debounced.cancel();
     }
   };
@@ -60,12 +69,16 @@ export function debounce<T extends (...args: unknown[]) => void>(
 
 /* ================= THROTTLE ================= */
 
-export function throttle<T extends (...args: unknown[]) => void>(
+export function throttle<T extends (...args: any[]) => any>(
   fn: T,
-  delay = 300
+  delay = 300,
+  options: { trailing?: boolean } = {}
 ) {
   let lastCall = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastArgs: Parameters<T> | null = null;
+
+  const { trailing = true } = options;
 
   const throttled = (...args: Parameters<T>) => {
     const now = Date.now();
@@ -78,18 +91,24 @@ export function throttle<T extends (...args: unknown[]) => void>(
       }
       lastCall = now;
       fn(...args);
-    } else if (!timer) {
-      timer = setTimeout(() => {
-        lastCall = Date.now();
-        fn(...args);
-        timer = null;
-      }, remaining);
+    } else if (trailing) {
+      lastArgs = args;
+
+      if (!timer) {
+        timer = setTimeout(() => {
+          lastCall = Date.now();
+          if (lastArgs) fn(...lastArgs);
+          timer = null;
+          lastArgs = null;
+        }, remaining);
+      }
     }
   };
 
   throttled.cancel = () => {
     if (timer) clearTimeout(timer);
     timer = null;
+    lastArgs = null;
   };
 
   return throttled as T & { cancel: () => void };
@@ -97,8 +116,8 @@ export function throttle<T extends (...args: unknown[]) => void>(
 
 /* ================= BASICS ================= */
 
-export const sleep = (ms: number): Promise<void> =>
-  new Promise((res) => setTimeout(res, ms));
+export const sleep = (ms: number) =>
+  new Promise<void>((res) => setTimeout(res, ms));
 
 export const isBrowser =
   typeof window !== "undefined" &&
@@ -124,7 +143,7 @@ export function invariant(
   }
 }
 
-/* ================= TYPE HELPERS ================= */
+/* ================= TYPE ================= */
 
 export function isDefined<T>(
   value: T | null | undefined
@@ -132,32 +151,14 @@ export function isDefined<T>(
   return value != null;
 }
 
-export function isEmpty(value: unknown) {
-  if (value == null) return true;
+/* ================= SAFE JSON ================= */
 
-  if (typeof value === "string") return value.trim().length === 0;
-
-  if (Array.isArray(value)) return value.length === 0;
-
-  if (value instanceof Map || value instanceof Set)
-    return value.size === 0;
-
-  if (value instanceof Date) return isNaN(value.getTime());
-
-  if (typeof value === "object")
-    return Object.keys(value as object).length === 0;
-
-  return false;
-}
-
-/* ================= MATH ================= */
-
-export function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
-}
-
-export function range(length: number, start = 0) {
-  return Array.from({ length }, (_, i) => i + start);
+export function safeParse<T>(str: string, fallback: T): T {
+  try {
+    return JSON.parse(str);
+  } catch {
+    return fallback;
+  }
 }
 
 /* ================= ARRAY ================= */
@@ -173,17 +174,49 @@ export function uniqueBy<T>(
   return Array.from(map.values());
 }
 
+export function arrayMove<T>(arr: T[], from: number, to: number) {
+  const copy = [...arr];
+  const [item] = copy.splice(from, 1);
+  copy.splice(to, 0, item);
+  return copy;
+}
+
 /* ================= OBJECT ================= */
 
 export function deepClone<T>(obj: T): T {
-  return structuredClone(obj);
+  if (typeof structuredClone === "function") {
+    return structuredClone(obj);
+  }
+  return JSON.parse(JSON.stringify(obj));
+}
+
+export function pick<T extends object, K extends keyof T>(
+  obj: T,
+  keys: K[]
+): Pick<T, K> {
+  const result = {} as Pick<T, K>;
+  keys.forEach((k) => {
+    if (k in obj) result[k] = obj[k];
+  });
+  return result;
+}
+
+export function omit<T extends object, K extends keyof T>(
+  obj: T,
+  keys: K[]
+): Omit<T, K> {
+  const result = { ...obj };
+  keys.forEach((k) => {
+    delete result[k];
+  });
+  return result;
 }
 
 /* ================= FUNCTION ================= */
 
-export function once<T extends (...args: unknown[]) => unknown>(fn: T): T {
+export function once<T extends (...args: any[]) => any>(fn: T): T {
   let called = false;
-  let result: unknown;
+  let result: any;
 
   return ((...args: Parameters<T>) => {
     if (!called) {
@@ -197,7 +230,10 @@ export function once<T extends (...args: unknown[]) => unknown>(fn: T): T {
 /* ================= ID ================= */
 
 export function uid() {
-  return crypto.randomUUID();
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2);
 }
 
 /* ================= DATE ================= */
