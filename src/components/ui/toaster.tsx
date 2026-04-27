@@ -1,6 +1,6 @@
 "use client";
 
-import { Toaster, toast as sonnerToast, type ToastT } from "sonner";
+import { Toaster, toast as sonnerToast } from "sonner";
 
 /* ================= TOASTER ================= */
 
@@ -22,6 +22,8 @@ export default function AppToaster() {
 
 /* ================= INTERNAL ================= */
 
+type ToastType = "success" | "error" | "info" | "loading";
+
 type ToastOptions = {
     description?: string;
     id?: string;
@@ -30,8 +32,21 @@ type ToastOptions = {
 
 const activeToasts = new Set<string>();
 
+const handlers = {
+    success: sonnerToast.success,
+    error: sonnerToast.error,
+    info: sonnerToast,
+    loading: sonnerToast.loading,
+};
+
+const cleanup = (id?: string | number) => {
+    if (typeof id === "string") {
+        activeToasts.delete(id);
+    }
+};
+
 const create = (
-    type: "success" | "error" | "info" | "loading",
+    type: ToastType,
     message: string,
     opts?: ToastOptions
 ) => {
@@ -41,16 +56,15 @@ const create = (
 
     if (id) activeToasts.add(id);
 
-    const t =
-        type === "success"
-            ? sonnerToast.success(message, opts)
-            : type === "error"
-                ? sonnerToast.error(message, opts)
-                : type === "loading"
-                    ? sonnerToast.loading(message, opts)
-                    : sonnerToast(message, opts);
+    const handler = handlers[type];
 
-    return t;
+    const toastId = handler(message, {
+        ...opts,
+        onDismiss: () => cleanup(id),
+        onAutoClose: () => cleanup(id),
+    });
+
+    return toastId;
 };
 
 /* ================= API ================= */
@@ -69,9 +83,7 @@ export const toast = {
         create("loading", message, opts),
 
     dismiss: (id?: string | number) => {
-        if (id && typeof id === "string") {
-            activeToasts.delete(id);
-        }
+        cleanup(id);
         sonnerToast.dismiss(id);
     },
 
@@ -86,30 +98,39 @@ export const toast = {
         });
     },
 
+    /* ===== promise (improved) ===== */
     promise: async <T,>(
         promise: Promise<T>,
         messages: {
             loading: string;
             success: string | ((data: T) => string);
             error: string | ((err: any) => string);
-        }
+        },
+        opts?: ToastOptions
     ) => {
-        return sonnerToast.promise(
-            promise,
-            {
-                loading: messages.loading,
-                success: (data) =>
-                    typeof messages.success === "function"
-                        ? messages.success(data)
-                        : messages.success,
-                error: (err) =>
-                    typeof messages.error === "function"
-                        ? messages.error(err)
-                        : messages.error ?? err?.message ?? "error",
-            }
-        );
+        const id = opts?.id;
+
+        if (id && activeToasts.has(id)) return;
+
+        if (id) activeToasts.add(id);
+
+        return sonnerToast.promise(promise, {
+            loading: messages.loading,
+            success: (data) =>
+                typeof messages.success === "function"
+                    ? messages.success(data)
+                    : messages.success,
+            error: (err) =>
+                typeof messages.error === "function"
+                    ? messages.error(err)
+                    : messages.error ?? err?.message ?? "error",
+            ...opts,
+            onDismiss: () => cleanup(id),
+            onAutoClose: () => cleanup(id),
+        });
     },
 
+    /* ===== action ===== */
     action: (
         message: string,
         label: string,
@@ -123,4 +144,20 @@ export const toast = {
                 onClick,
             },
         }),
+
+    /* ===== loading task helper ===== */
+    createTask: (message: string, opts?: ToastOptions) => {
+        const id = opts?.id ?? crypto.randomUUID();
+
+        toast.loading(message, { ...opts, id });
+
+        return {
+            success: (msg: string) =>
+                toast.update(id, msg, { ...opts }),
+            error: (msg: string) =>
+                toast.update(id, msg, { ...opts }),
+            dismiss: () => toast.dismiss(id),
+            id,
+        };
+    },
 };
