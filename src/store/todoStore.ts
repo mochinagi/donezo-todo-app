@@ -20,8 +20,15 @@ export interface Todo {
 
 export type FilterType = "tasks" | "completed" | "active";
 
+/* ================= LIMIT ================= */
+
+const MAX_HISTORY = 50;
+
+/* ================= ACTION ================= */
+
 type ActionMeta = {
     at: number;
+    silent?: boolean;
 };
 
 type Action =
@@ -35,27 +42,19 @@ type Action =
 
 /* ================= UTILS ================= */
 
-const priorityWeight: Record<Priority, number> = {
-    high: 3,
-    medium: 2,
-    low: 1,
-};
-
-const withMeta = <T extends Omit<Action, "meta">>(action: T): Action => ({
+const withMeta = <T extends Omit<Action, "meta">>(
+    action: T,
+    meta?: Partial<ActionMeta>
+): Action => ({
     ...action,
-    meta: { at: Date.now() },
+    meta: {
+        at: Date.now(),
+        ...meta,
+    },
 });
 
 const sortTodos = (todos: Todo[]) => {
-    return [...todos].sort((a, b) => {
-        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-
-        if (priorityWeight[a.priority] !== priorityWeight[b.priority]) {
-            return priorityWeight[b.priority] - priorityWeight[a.priority];
-        }
-
-        return b.createdAt - a.createdAt;
-    });
+    return [...todos].sort((a, b) => b.createdAt - a.createdAt);
 };
 
 const apply = (todos: Todo[], action: Action): Todo[] => {
@@ -79,6 +78,13 @@ const apply = (todos: Todo[], action: Action): Todo[] => {
             return action.after;
 
         case "reorder": {
+            if (
+                action.from < 0 ||
+                action.to < 0 ||
+                action.from >= todos.length ||
+                action.to >= todos.length
+            ) return todos;
+
             const arr = [...todos];
             const [moved] = arr.splice(action.from, 1);
             arr.splice(action.to, 0, moved);
@@ -127,13 +133,9 @@ const revert = (todos: Todo[], action: Action): Todo[] => {
 
 const buildRemoved = (todos: Todo[], ids: string[]) => {
     const set = new Set(ids);
-    const removed: { todo: Todo; index: number }[] = [];
-
-    todos.forEach((t, i) => {
-        if (set.has(t.id)) removed.push({ todo: t, index: i });
-    });
-
-    return removed;
+    return todos
+        .map((t, i) => (set.has(t.id) ? { todo: t, index: i } : null))
+        .filter(Boolean) as { todo: Todo; index: number }[];
 };
 
 /* ================= STORE ================= */
@@ -179,16 +181,29 @@ export const useTodoStore = create<TodoStore>()(
             redoStack: [],
 
             dispatch: (action) => {
-                set((state) => ({
-                    todos: apply(state.todos, action),
-                    undoStack: [...state.undoStack, action],
-                    redoStack: [],
-                }));
+                set((state) => {
+                    const nextTodos = apply(state.todos, action);
+
+                    if (action.meta?.silent) {
+                        return { todos: nextTodos };
+                    }
+
+                    const nextUndo = [...state.undoStack, action].slice(-MAX_HISTORY);
+
+                    return {
+                        todos: nextTodos,
+                        undoStack: nextUndo,
+                        redoStack: [],
+                    };
+                });
             },
 
             addTodo: (text) => {
                 const value = text.trim();
                 if (!value) return;
+
+                const exists = get().todos.some(t => t.text === value);
+                if (exists) return;
 
                 const now = Date.now();
 
@@ -206,12 +221,15 @@ export const useTodoStore = create<TodoStore>()(
             },
 
             updateTodo: (id, text) => {
+                const value = text.trim();
+                if (!value) return;
+
                 const t = get().todos.find(t => t.id === id);
                 if (!t) return;
 
                 const next = {
                     ...t,
-                    text: text.trim(),
+                    text: value,
                     updatedAt: Date.now(),
                 };
 
@@ -257,25 +275,23 @@ export const useTodoStore = create<TodoStore>()(
             },
 
             deleteTodo: (id) => {
-                const { todos } = get();
-                const removed = buildRemoved(todos, [id]);
+                const removed = buildRemoved(get().todos, [id]);
                 if (!removed.length) return;
 
                 get().dispatch(withMeta({ type: "delete", removed }));
             },
 
             deleteMany: (ids) => {
-                const { todos } = get();
-                const removed = buildRemoved(todos, ids);
+                const removed = buildRemoved(get().todos, ids);
                 if (!removed.length) return;
 
                 get().dispatch(withMeta({ type: "delete", removed }));
             },
 
             clearCompleted: () => {
-                const { todos } = get();
-                const completedIds = todos.filter(t => t.completed).map(t => t.id);
-                const removed = buildRemoved(todos, completedIds);
+                const todos = get().todos;
+                const ids = todos.filter(t => t.completed).map(t => t.id);
+                const removed = buildRemoved(todos, ids);
 
                 if (!removed.length) return;
 
@@ -297,7 +313,7 @@ export const useTodoStore = create<TodoStore>()(
                 set((state) => ({
                     todos: revert(todos, action),
                     undoStack: state.undoStack.slice(0, -1),
-                    redoStack: [...state.redoStack, action],
+                    redoStack: [...state.redoStack, action].slice(-MAX_HISTORY),
                 }));
             },
 
@@ -309,7 +325,7 @@ export const useTodoStore = create<TodoStore>()(
                 set((state) => ({
                     todos: apply(todos, action),
                     redoStack: state.redoStack.slice(0, -1),
-                    undoStack: [...state.undoStack, action],
+                    undoStack: [...state.undoStack, action].slice(-MAX_HISTORY),
                 }));
             },
 
@@ -319,20 +335,23 @@ export const useTodoStore = create<TodoStore>()(
             setActiveCategory: (v) =>
                 set({ activeCategory: v }),
 
-            getSortedTodos: () => {
-                const { todos } = get();
-                return sortTodos(todos);
-            },
+            getSortedTodos: () => sortTodos(get().todos),
         }),
         {
             name: "todo-storage",
-            version: 16,
+            version: 17,
             storage: createJSONStorage(() => localStorage),
-            partialize: (state) => ({
-                todos: state.todos,
-                search: state.search,
-                activeCategory: state.activeCategory,
-            }),
+            migrate: (state: any) => {
+                if (!state?.todos) return state;
+                return {
+                    ...state,
+                    todos: state.todos.map((t: any) => ({
+                        ...t,
+                        createdAt: t.createdAt ?? Date.now(),
+                        updatedAt: t.updatedAt ?? Date.now(),
+                    })),
+                };
+            },
         }
     )
 );
@@ -342,9 +361,7 @@ export const useTodoStore = create<TodoStore>()(
 export const useFilteredTodos = () =>
     useTodoStore(
         (s) => {
-            const list = sortTodos(s.todos);
-
-            return list.filter((t) => {
+            return sortTodos(s.todos).filter((t) => {
                 if (!t.text.toLowerCase().includes(s.search)) return false;
 
                 if (s.activeCategory === "active") return !t.completed;
