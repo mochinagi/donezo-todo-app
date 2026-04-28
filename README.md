@@ -1,37 +1,47 @@
 # Donezo Todo App
 
-A production-oriented Todo application built with Next.js, focusing on state management, interaction design, and scalable UI architecture.
+A Todo application built with Next.js, focused on state architecture, interaction design, and real-world frontend patterns.
 
-## Demo
+This is not a minimal demo. The project is designed to explore how a small application can be structured like a scalable product.
 
-Local: http://localhost:3000
+---
+
+## Overview
+
+Donezo is a task management app with:
+
+- Action-based state management (undo / redo)
+- Optimistic UI updates
+- Structured API layer with retry and caching
+- Custom toast system with lifecycle control
+
+The goal is to simulate real frontend engineering concerns rather than just implementing features.
 
 ---
 
 ## Features
 
-### Core
-- Add / edit / delete tasks
+### Task Management
+- Create, edit, delete tasks
 - Toggle completion
 - Drag & drop reordering (dnd-kit)
 
-### Productivity
-- Undo / redo (action stack based)
-- Bulk actions (clear completed, multi-add via paste)
-- Keyboard support (Enter, Ctrl/Cmd + Enter, Escape)
+### Interaction
+- Undo / redo with action stack
+- Inline editing (auto-save)
+- Keyboard support (Enter, Escape)
 
-### Filtering & Search
-- Filter (all / active / completed)
+### Filtering
+- All / Active / Completed
 - Real-time search
 
-### UX Improvements
-- Inline editing with auto-save
-- Validation (duplicate / max length)
-- Toast notification system (wrapped sonner)
-- Optimistic UI interactions
+### Feedback System
+- Toast abstraction layer (based on sonner)
+- Loading / success / error flows
+- Action-based notifications
 
 ### Persistence
-- LocalStorage persistence (zustand persist)
+- Zustand + localStorage
 - Versioned state migration
 
 ---
@@ -40,40 +50,48 @@ Local: http://localhost:3000
 
 - Next.js (App Router)
 - React + TypeScript
-- Zustand (state management)
-- dnd-kit (drag and drop)
+- Zustand
+- dnd-kit
 - Tailwind CSS
-- Sonner (toast notifications)
+- Sonner
 
 ---
 
 ## Architecture
 
-### State Management
-- Zustand store with action-based undo/redo
-- Separation of applyAction / revertAction
-- Derived state via selectors
+### State (Zustand)
+- Centralized store
+- Action-driven updates
+- Undo / redo via reversible actions
+- Derived state through selectors
 
-### UI Layer
-- Reusable UI components (Input, Button, Toast)
-- Controlled + composable components
-- Accessibility-aware design
+### API Layer
+- Fetch wrapper with:
+  - retry strategy (5xx only)
+  - request deduplication
+  - simple caching
+- Mock layer for local development
 
-### Interaction Design
-- Keyboard-first UX
+### UI
+- Component-driven structure
+- Controlled inputs
+- Separation of logic and presentation
+
+### UX Design
+- Keyboard-first interactions
+- Optimistic updates
 - Debounced persistence
-- Batch operations support
 
 ---
 
 ## Project Structure
-src/
-app/ # Next.js pages
-components/ # UI + feature components
-hooks/ # Custom hooks
-store/ # Zustand store
-lib/ # utilities
 
+src/
+  app/           # Next.js app router
+  components/    # UI and feature components
+  hooks/         # custom hooks
+  store/         # Zustand store
+  lib/           # API / utilities
 
 ---
 
@@ -82,24 +100,25 @@ lib/ # utilities
 ```bash
 npm install
 npm run dev
+Open http://localhost:3000
+
+Environment
+NEXT_PUBLIC_USE_MOCK=true
+true → use local mock API
+false → use real backend (if implemented)
+
 Future Improvements
-Task deadline / priority system
-Tag / project grouping
-Backend integration (API + DB)
+Task priority / deadline
+Tag or project grouping
+Backend integration (API + database)
 Authentication
-Sync across devices
-Why this project
+Multi-device sync
+Notes
 
 This project focuses on:
 
-Building a scalable state management pattern
-Designing reusable UI components
-Improving real-world UX (not just demo features)
-Notes
+building a maintainable state model
+designing predictable UI interactions
+structuring frontend code for scalability
 
-This is not a basic todo app.
-It is designed as a small-scale application to demonstrate:
-
-state architecture
-interaction design
-frontend engineering practices
+It is intentionally built beyond a basic todo app to reflect real development patterns.
