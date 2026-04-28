@@ -20,7 +20,7 @@ export default function AppToaster() {
     );
 }
 
-/* ================= INTERNAL ================= */
+/* ================= TYPES ================= */
 
 type ToastType = "success" | "error" | "info" | "loading";
 
@@ -28,9 +28,14 @@ type ToastOptions = {
     description?: string;
     id?: string;
     duration?: number;
+    silent?: boolean;
 };
 
-const activeToasts = new Set<string>();
+/* ================= INTERNAL ================= */
+
+const activeToasts = new Map<string, number>(); // id -> timestamp
+
+const THROTTLE = 800;
 
 const handlers = {
     success: sonnerToast.success,
@@ -39,27 +44,47 @@ const handlers = {
     loading: sonnerToast.loading,
 };
 
+const now = () => Date.now();
+
+const shouldBlock = (id?: string) => {
+    if (!id) return false;
+
+    const last = activeToasts.get(id);
+    if (!last) return false;
+
+    return now() - last < THROTTLE;
+};
+
+const mark = (id?: string) => {
+    if (id) activeToasts.set(id, now());
+};
+
 const cleanup = (id?: string | number) => {
     if (typeof id === "string") {
         activeToasts.delete(id);
     }
 };
 
+/* ================= CORE ================= */
+
 const create = (
     type: ToastType,
     message: string,
     opts?: ToastOptions
 ) => {
-    const id = opts?.id;
+    const { id, silent, ...rest } = opts || {};
 
-    if (id && activeToasts.has(id)) return id;
+    if (silent) return;
 
-    if (id) activeToasts.add(id);
+    if (shouldBlock(id)) return id;
+
+    mark(id);
 
     const handler = handlers[type];
 
     const toastId = handler(message, {
-        ...opts,
+        ...rest,
+        id,
         onDismiss: () => cleanup(id),
         onAutoClose: () => cleanup(id),
     });
@@ -92,13 +117,14 @@ export const toast = {
         message: string,
         opts?: ToastOptions
     ) => {
+        cleanup(id);
         return sonnerToast(message, {
             id,
             ...opts,
         });
     },
 
-    /* ===== promise (improved) ===== */
+    /* ===== promise ===== */
     promise: async <T,>(
         promise: Promise<T>,
         messages: {
@@ -110,9 +136,9 @@ export const toast = {
     ) => {
         const id = opts?.id;
 
-        if (id && activeToasts.has(id)) return;
+        if (shouldBlock(id)) return;
 
-        if (id) activeToasts.add(id);
+        mark(id);
 
         return sonnerToast.promise(promise, {
             loading: messages.loading,
@@ -137,26 +163,40 @@ export const toast = {
         onClick: () => void,
         opts?: ToastOptions
     ) =>
-        sonnerToast(message, {
+        create("info", message, {
             ...opts,
             action: {
                 label,
-                onClick,
+                onClick: () => {
+                    onClick();
+                    if (opts?.id) cleanup(opts.id);
+                },
             },
         }),
 
-    /* ===== loading task helper ===== */
+    /* ===== task helper ===== */
     createTask: (message: string, opts?: ToastOptions) => {
         const id = opts?.id ?? crypto.randomUUID();
 
-        toast.loading(message, { ...opts, id });
+        let finished = false;
+
+        create("loading", message, { ...opts, id });
 
         return {
-            success: (msg: string) =>
-                toast.update(id, msg, { ...opts }),
-            error: (msg: string) =>
-                toast.update(id, msg, { ...opts }),
-            dismiss: () => toast.dismiss(id),
+            success: (msg: string) => {
+                if (finished) return;
+                finished = true;
+                toast.update(id, msg, opts);
+            },
+            error: (msg: string) => {
+                if (finished) return;
+                finished = true;
+                toast.update(id, msg, opts);
+            },
+            dismiss: () => {
+                finished = true;
+                toast.dismiss(id);
+            },
             id,
         };
     },
