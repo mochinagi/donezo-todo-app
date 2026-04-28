@@ -5,6 +5,12 @@ import { cn } from "@/lib/utils";
 
 /* ================= TYPES ================= */
 
+export interface InputRef {
+  focus: () => void;
+  clear: () => void;
+  value: string;
+}
+
 interface InputProps extends React.ComponentProps<"input"> {
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
@@ -18,158 +24,180 @@ interface InputProps extends React.ComponentProps<"input"> {
   size?: "sm" | "md" | "lg";
 
   describedBy?: string;
+
+  disableEscapeClear?: boolean;
 }
 
 /* ================= COMPONENT ================= */
 
-const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  function Input(
-    {
-      className,
-      type = "text",
-      leftIcon,
-      rightIcon,
-      onRightIconClick,
-      clearable,
-      onClear,
-      error,
-      size = "md",
-      describedBy,
-      value,
-      defaultValue,
-      onChange,
-      onKeyDown,
-      ...props
-    },
-    ref
-  ) {
-    const isControlled = value !== undefined;
+const Input = React.forwardRef<InputRef, InputProps>(function Input(
+  {
+    className,
+    type = "text",
+    leftIcon,
+    rightIcon,
+    onRightIconClick,
+    clearable,
+    onClear,
+    error,
+    size = "md",
+    describedBy,
+    value,
+    defaultValue,
+    onChange,
+    onKeyDown,
+    disableEscapeClear,
+    ...props
+  },
+  ref
+) {
+  const isControlled = value !== undefined;
 
-    const [internalValue, setInternalValue] = React.useState(
-      defaultValue ?? ""
-    );
+  const wasControlled = React.useRef(isControlled);
 
-    const inputRef = React.useRef<HTMLInputElement>(null);
-
-    const mergedRef = (node: HTMLInputElement) => {
-      inputRef.current = node;
-      if (typeof ref === "function") ref(node);
-      else if (ref) (ref as any).current = node;
-    };
-
-    const currentValue = isControlled ? value : internalValue;
-
-    const sizeStyles = {
-      sm: "h-8 text-sm px-2",
-      md: "h-9 text-sm px-3",
-      lg: "h-11 text-base px-4",
-    };
-
-    const showClear =
-      clearable && !!currentValue && !rightIcon;
-
-    const hasRightAction = rightIcon || showClear;
-
-    /* ===== change ===== */
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (!isControlled) {
-        setInternalValue(e.target.value);
-      }
-      onChange?.(e);
-    };
-
-    /* ===== clear ===== */
-    const handleClear = () => {
-      if (!isControlled) {
-        setInternalValue("");
-      }
-
-      onClear?.();
-
-      onChange?.({
-        target: { value: "" },
-      } as any);
-
-      inputRef.current?.focus();
-    };
-
-    /* ===== keyboard ===== */
-    const handleKeyDownInternal = (
-      e: React.KeyboardEvent<HTMLInputElement>
-    ) => {
-      if (e.key === "Escape" && currentValue) {
-        handleClear();
-      }
-
-      onKeyDown?.(e);
-    };
-
-    return (
-      <div className="relative w-full group">
-        {/* left icon */}
-        {leftIcon && (
-          <div
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-gray-600 transition-colors pointer-events-none"
-            aria-hidden="true"
-          >
-            {leftIcon}
-          </div>
-        )}
-
-        <input
-          ref={mergedRef}
-          type={type}
-          value={currentValue}
-          onChange={handleChange}
-          onKeyDown={handleKeyDownInternal}
-          aria-invalid={error || undefined}
-          aria-describedby={describedBy}
-          className={cn(
-            "w-full min-w-0 rounded-md border bg-transparent outline-none transition-all duration-200",
-            "placeholder:text-muted-foreground",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-            sizeStyles[size],
-
-            leftIcon && "pl-10",
-            hasRightAction && "pr-10",
-
-            "border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 focus:ring-offset-1",
-
-            error &&
-            "border-red-500 focus:border-red-500 focus:ring-red-200",
-
-            className
-          )}
-          {...props}
-        />
-
-        {/* right icon */}
-        {rightIcon && (
-          <button
-            type="button"
-            onClick={onRightIconClick}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-            aria-label="input action"
-          >
-            {rightIcon}
-          </button>
-        )}
-
-        {/* clear */}
-        {showClear && (
-          <button
-            type="button"
-            onClick={handleClear}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
-            aria-label="clear input"
-          >
-            ×
-          </button>
-        )}
-      </div>
-    );
+  if (process.env.NODE_ENV !== "production") {
+    if (wasControlled.current !== isControlled) {
+      console.warn("Input changed from controlled to uncontrolled");
+    }
   }
-);
+
+  const [internalValue, setInternalValue] = React.useState(
+    defaultValue ?? ""
+  );
+
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  const setRefs = React.useCallback((node: HTMLInputElement | null) => {
+    inputRef.current = node;
+  }, []);
+
+  const currentValue = isControlled ? value ?? "" : internalValue;
+
+  const sizeStyles = {
+    sm: "h-8 text-sm px-2",
+    md: "h-9 text-sm px-3",
+    lg: "h-11 text-base px-4",
+  };
+
+  const showClear = clearable && !!currentValue && !rightIcon;
+  const hasRightAction = rightIcon || showClear;
+
+  /* ===== emit change (real event) ===== */
+  const emitChange = (next: string) => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value"
+    )?.set;
+
+    setter?.call(input, next);
+
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+
+  /* ===== change ===== */
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isControlled) {
+      setInternalValue(e.target.value);
+    }
+    onChange?.(e);
+  };
+
+  /* ===== clear ===== */
+  const handleClear = () => {
+    if (!isControlled) {
+      setInternalValue("");
+    }
+
+    emitChange("");
+
+    onClear?.();
+
+    inputRef.current?.focus();
+  };
+
+  /* ===== keyboard ===== */
+  const handleKeyDownInternal = (
+    e: React.KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (!disableEscapeClear && e.key === "Escape" && currentValue) {
+      handleClear();
+    }
+
+    onKeyDown?.(e);
+  };
+
+  /* ===== expose API ===== */
+  React.useImperativeHandle(ref, () => ({
+    focus: () => inputRef.current?.focus(),
+    clear: handleClear,
+    value: String(currentValue ?? ""),
+  }));
+
+  return (
+    <div className="relative w-full group">
+      {leftIcon && (
+        <div
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-gray-600 transition-colors pointer-events-none"
+          aria-hidden="true"
+        >
+          {leftIcon}
+        </div>
+      )}
+
+      <input
+        ref={setRefs}
+        type={type}
+        value={currentValue}
+        onChange={handleChange}
+        onKeyDown={handleKeyDownInternal}
+        aria-invalid={error || undefined}
+        aria-describedby={describedBy}
+        className={cn(
+          "w-full min-w-0 rounded-md border bg-transparent outline-none transition-all duration-200",
+          "placeholder:text-muted-foreground",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+          sizeStyles[size],
+
+          leftIcon && "pl-10",
+          hasRightAction && "pr-10",
+
+          "border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 focus:ring-offset-1",
+
+          error &&
+          "border-red-500 focus:border-red-500 focus:ring-red-200",
+
+          className
+        )}
+        {...props}
+      />
+
+      {rightIcon && (
+        <button
+          type="button"
+          onClick={onRightIconClick}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+          aria-label="input action"
+        >
+          {rightIcon}
+        </button>
+      )}
+
+      {showClear && (
+        <button
+          type="button"
+          onClick={handleClear}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
+          aria-label="clear input"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+});
 
 Input.displayName = "Input";
 
