@@ -34,20 +34,29 @@ type Todo = {
     id: number;
     text: string;
     completed: boolean;
+    createdAt: number;
 };
 
 /* ================= INPUT ================= */
 
 const TodoInput = memo(function TodoInput() {
     const addTodo = useTodoStore(s => s.addTodo);
+    const todos = useTodoStore(s => s.todos);
     const [value, setValue] = useState("");
 
     const handleAdd = useCallback(() => {
         const v = value.trim();
         if (!v) return;
+
+        // 防重复
+        if (todos.some(t => t.text === v)) {
+            setValue("");
+            return;
+        }
+
         addTodo(v);
         setValue("");
-    }, [value, addTodo]);
+    }, [value, addTodo, todos]);
 
     return (
         <div className="flex gap-2">
@@ -110,13 +119,20 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
 
     const handleSave = useCallback(() => {
         const v = editText.trim();
+
         if (!v) {
             deleteTodo(id);
             return;
         }
+
         updateTodo(id, v);
         setEditing(false);
     }, [editText, id, updateTodo, deleteTodo]);
+
+    const handleCancel = () => {
+        setEditText(text);
+        setEditing(false);
+    };
 
     return (
         <div ref={setNodeRef} style={style}>
@@ -139,7 +155,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
                             onBlur={handleSave}
                             onKeyDown={(e) => {
                                 if (e.key === "Enter") handleSave();
-                                if (e.key === "Escape") setEditing(false);
+                                if (e.key === "Escape") handleCancel();
                             }}
                             className="flex-1 border-b outline-none"
                         />
@@ -168,12 +184,11 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
 /* ================= MAIN ================= */
 
 export default function TodoList() {
-    const { todos, setTodos, toggleTodo, clearCompleted } =
+    const { todos, setTodos, clearCompleted } =
         useTodoStore(
             (s) => ({
                 todos: s.todos,
                 setTodos: s.setTodos,
-                toggleTodo: s.toggleTodo,
                 clearCompleted: s.clearCompleted,
             }),
             shallow
@@ -186,7 +201,7 @@ export default function TodoList() {
 
     useEffect(() => {
         try {
-            const saved = localStorage.getItem("todos");
+            const saved = localStorage.getItem("todos_v2");
             if (saved) {
                 const parsed = JSON.parse(saved);
                 if (Array.isArray(parsed)) setTodos(parsed);
@@ -195,7 +210,7 @@ export default function TodoList() {
     }, [setTodos]);
 
     useEffect(() => {
-        localStorage.setItem("todos", JSON.stringify(todos));
+        localStorage.setItem("todos_v2", JSON.stringify(todos));
     }, [todos]);
 
     /* ========= filter ========= */
@@ -223,9 +238,12 @@ export default function TodoList() {
     };
 
     const handleDragEnd = (event: DragEndEvent) => {
-        const { active, over } = event;
         setActiveId(null);
 
+        // filter 状态下禁止排序
+        if (filter !== "all") return;
+
+        const { active, over } = event;
         if (!over || active.id === over.id) return;
 
         const oldIndex = todos.findIndex(t => t.id === active.id);
@@ -301,7 +319,7 @@ export default function TodoList() {
                 </div>
 
                 <SortableContext
-                    items={todos.map(t => t.id)}
+                    items={filteredTodos.map(t => t.id)}
                     strategy={verticalListSortingStrategy}
                 >
                     {filteredTodos.length === 0 ? (
