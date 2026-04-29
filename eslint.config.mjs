@@ -3,6 +3,9 @@ import { fileURLToPath } from "url";
 import { FlatCompat } from "@eslint/eslintrc";
 import js from "@eslint/js";
 
+import tseslint from "typescript-eslint";
+import unusedImports from "eslint-plugin-unused-imports";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -13,6 +16,9 @@ const compat = new FlatCompat({
 export default [
   js.configs.recommended,
 
+  ...tseslint.configs.recommended,
+  ...tseslint.configs.recommendedTypeChecked,
+
   ...compat.extends(
     "next/core-web-vitals",
     "next/typescript",
@@ -22,6 +28,12 @@ export default [
   ),
 
   {
+    plugins: {
+      "unused-imports": unusedImports,
+    },
+  },
+
+  {
     ignores: [
       "**/node_modules/**",
       "**/.next/**",
@@ -29,6 +41,8 @@ export default [
       "**/build/**",
       "**/out/**",
       "**/coverage/**",
+      "**/*.config.js",
+      "**/*.config.mjs",
       "**/.env*",
     ],
   },
@@ -36,7 +50,8 @@ export default [
   {
     languageOptions: {
       parserOptions: {
-        project: "./tsconfig.json", // 🔥 启用 type-aware lint
+        project: "./tsconfig.json",
+        tsconfigRootDir: __dirname,
       },
     },
   },
@@ -45,7 +60,7 @@ export default [
     rules: {
       /* ================= TS ================= */
 
-      "@typescript-eslint/no-unused-vars": "off", // 用下面的替代
+      "@typescript-eslint/no-unused-vars": "off",
 
       "@typescript-eslint/consistent-type-imports": [
         "warn",
@@ -56,6 +71,10 @@ export default [
         "warn",
         { ignoreRestArgs: true },
       ],
+
+      "@typescript-eslint/no-floating-promises": "warn",
+
+      "@typescript-eslint/await-thenable": "warn",
 
       /* ================= UNUSED ================= */
 
@@ -102,7 +121,7 @@ export default [
               group: "internal",
             },
           ],
-          "newlines-between": "always",
+          "newlines-between": "never",
           alphabetize: {
             order: "asc",
             caseInsensitive: true,
@@ -111,7 +130,9 @@ export default [
       ],
 
       "import/no-duplicates": "warn",
-      "import/no-unresolved": "error",
+
+      // Next + alias
+      "import/no-unresolved": "off",
     },
   },
 ];
