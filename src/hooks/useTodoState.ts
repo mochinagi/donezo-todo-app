@@ -26,7 +26,10 @@ const FILTER_KEY = "donezo-filter";
 const SEARCH_KEY = "donezo-search";
 const MAX_STACK = 50;
 
-/* ================= STORAGE ================= */
+/* ================= UTILS ================= */
+
+const normalizeText = (v: string) =>
+    v.trim().replace(/\s+/g, " ").toLowerCase();
 
 const load = <T,>(key: string, fallback: T): T => {
     if (typeof window === "undefined") return fallback;
@@ -38,10 +41,10 @@ const load = <T,>(key: string, fallback: T): T => {
     }
 };
 
-/* ================= CORE ================= */
-
 const clamp = (n: number, min: number, max: number) =>
     Math.max(min, Math.min(max, n));
+
+/* ================= CORE ================= */
 
 const applyAction = (todos: Todo[], action: Action): Todo[] => {
     switch (action.type) {
@@ -89,9 +92,12 @@ const revertAction = (todos: Todo[], action: Action): Todo[] => {
         case "delete":
         case "clearCompleted": {
             const arr = [...todos];
-            action.removed.forEach(({ todo, index }) => {
-                arr.splice(index, 0, todo);
-            });
+            // 保证顺序正确
+            [...action.removed]
+                .sort((a, b) => a.index - b.index)
+                .forEach(({ todo, index }) => {
+                    arr.splice(index, 0, todo);
+                });
             return arr;
         }
 
@@ -135,13 +141,13 @@ export function useTodoState(initialTodos: Todo[] = []) {
         load(SEARCH_KEY, "")
     );
 
-    const [undoStack, setUndoStack] = useState<Action[]>([]);
-    const [redoStack, setRedoStack] = useState<Action[]>([]);
+    const undoRef = useRef<Action[]>([]);
+    const redoRef = useRef<Action[]>([]);
 
     const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const normalizedSearch = useMemo(
-        () => search.trim().toLowerCase(),
+        () => normalizeText(search),
         [search]
     );
 
@@ -166,8 +172,12 @@ export function useTodoState(initialTodos: Todo[] = []) {
     const dispatch = useCallback((action: Action) => {
         setTodos(prev => applyAction(prev, action));
 
-        setUndoStack(prev => [...prev, action].slice(-MAX_STACK));
-        setRedoStack([]);
+        undoRef.current.push(action);
+        if (undoRef.current.length > MAX_STACK) {
+            undoRef.current.shift();
+        }
+
+        redoRef.current = [];
     }, []);
 
     /* ================= ACTIONS ================= */
@@ -176,7 +186,9 @@ export function useTodoState(initialTodos: Todo[] = []) {
         const value = text.trim();
         if (!value) return;
 
-        if (todos.some(t => t.text === value)) return;
+        const normalized = normalizeText(value);
+
+        if (todos.some(t => normalizeText(t.text) === normalized)) return;
 
         dispatch({
             type: "add",
@@ -204,6 +216,8 @@ export function useTodoState(initialTodos: Todo[] = []) {
         const target = todos.find(t => t.id === id);
         if (!target) return;
 
+        if (target.text === value) return;
+
         const next = { ...target, text: value };
 
         dispatch({ type: "edit", before: target, after: next });
@@ -211,13 +225,10 @@ export function useTodoState(initialTodos: Todo[] = []) {
 
     const deleteMany = useCallback((ids: string[]) => {
         const idSet = new Set(ids);
-        const removed: { todo: Todo; index: number }[] = [];
 
-        todos.forEach((t, i) => {
-            if (idSet.has(t.id)) {
-                removed.push({ todo: t, index: i });
-            }
-        });
+        const removed = todos
+            .map((t, i) => (idSet.has(t.id) ? { todo: t, index: i } : null))
+            .filter(Boolean) as { todo: Todo; index: number }[];
 
         if (!removed.length) return;
 
@@ -257,28 +268,26 @@ export function useTodoState(initialTodos: Todo[] = []) {
     /* ================= UNDO / REDO ================= */
 
     const undo = useCallback(() => {
-        const action = undoStack.at(-1);
+        const action = undoRef.current.pop();
         if (!action) return;
 
         setTodos(prev => revertAction(prev, action));
-        setUndoStack(s => s.slice(0, -1));
-        setRedoStack(s => [...s, action].slice(-MAX_STACK));
-    }, [undoStack]);
+        redoRef.current.push(action);
+    }, []);
 
     const redo = useCallback(() => {
-        const action = redoStack.at(-1);
+        const action = redoRef.current.pop();
         if (!action) return;
 
         setTodos(prev => applyAction(prev, action));
-        setRedoStack(s => s.slice(0, -1));
-        setUndoStack(s => [...s, action].slice(-MAX_STACK));
-    }, [redoStack]);
+        undoRef.current.push(action);
+    }, []);
 
     /* ================= DERIVED ================= */
 
     const filteredTodos = useMemo(() => {
         return todos.filter(t => {
-            if (!t.text.toLowerCase().includes(normalizedSearch)) return false;
+            if (!normalizeText(t.text).includes(normalizedSearch)) return false;
 
             if (filter === "completed") return t.completed;
             if (filter === "active") return !t.completed;
@@ -305,7 +314,7 @@ export function useTodoState(initialTodos: Todo[] = []) {
 
         undo,
         redo,
-        canUndo: undoStack.length > 0,
-        canRedo: redoStack.length > 0,
+        canUndo: undoRef.current.length > 0,
+        canRedo: redoRef.current.length > 0,
     };
 }
