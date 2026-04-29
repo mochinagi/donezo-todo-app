@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Trash2, CheckCircle2, GripVertical } from "lucide-react";
 import { useTodoStore } from "@/store/todoStore";
@@ -44,12 +44,14 @@ const TodoInput = memo(function TodoInput() {
     const todos = useTodoStore(s => s.todos);
     const [value, setValue] = useState("");
 
+    const normalize = (v: string) =>
+        v.trim().replace(/\s+/g, " ");
+
     const handleAdd = useCallback(() => {
-        const v = value.trim();
+        const v = normalize(value);
         if (!v) return;
 
-        // 防重复
-        if (todos.some(t => t.text === v)) {
+        if (todos.some(t => t.text.toLowerCase() === v.toLowerCase())) {
             setValue("");
             return;
         }
@@ -125,9 +127,12 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
             return;
         }
 
-        updateTodo(id, v);
+        if (v !== text) {
+            updateTodo(id, v);
+        }
+
         setEditing(false);
-    }, [editText, id, updateTodo, deleteTodo]);
+    }, [editText, id, updateTodo, deleteTodo, text]);
 
     const handleCancel = () => {
         setEditText(text);
@@ -197,20 +202,39 @@ export default function TodoList() {
     const [activeId, setActiveId] = useState<number | null>(null);
     const [filter, setFilter] = useState<Filter>("all");
 
+    const historyRef = useRef<Todo[][]>([]);
+
+    const pushHistory = () => {
+        historyRef.current.push(todos);
+        if (historyRef.current.length > 20) {
+            historyRef.current.shift();
+        }
+    };
+
+    const undo = () => {
+        const prev = historyRef.current.pop();
+        if (prev) setTodos(prev);
+    };
+
     /* ========= localStorage ========= */
 
     useEffect(() => {
         try {
-            const saved = localStorage.getItem("todos_v2");
+            const saved = localStorage.getItem("todos_v3");
             if (saved) {
                 const parsed = JSON.parse(saved);
-                if (Array.isArray(parsed)) setTodos(parsed);
+                if (parsed?.version === 1 && Array.isArray(parsed.data)) {
+                    setTodos(parsed.data);
+                }
             }
         } catch { }
     }, [setTodos]);
 
     useEffect(() => {
-        localStorage.setItem("todos_v2", JSON.stringify(todos));
+        localStorage.setItem(
+            "todos_v3",
+            JSON.stringify({ version: 1, data: todos })
+        );
     }, [todos]);
 
     /* ========= filter ========= */
@@ -239,8 +263,6 @@ export default function TodoList() {
 
     const handleDragEnd = (event: DragEndEvent) => {
         setActiveId(null);
-
-        // filter 状态下禁止排序
         if (filter !== "all") return;
 
         const { active, over } = event;
@@ -250,6 +272,8 @@ export default function TodoList() {
         const newIndex = todos.findIndex(t => t.id === over.id);
 
         if (oldIndex === -1 || newIndex === -1) return;
+
+        pushHistory();
 
         const newTodos = [...todos];
         const [moved] = newTodos.splice(oldIndex, 1);
@@ -263,6 +287,8 @@ export default function TodoList() {
     /* ========= bulk ========= */
 
     const toggleAll = useCallback(() => {
+        pushHistory();
+
         const allCompleted = todos.every(t => t.completed);
         setTodos(
             todos.map(t => ({
@@ -271,6 +297,12 @@ export default function TodoList() {
             }))
         );
     }, [todos, setTodos]);
+
+    const handleClearCompleted = () => {
+        pushHistory();
+        clearCompleted();
+        setFilter("all");
+    };
 
     /* ========= UI ========= */
 
@@ -295,13 +327,16 @@ export default function TodoList() {
 
                         <button
                             disabled={!todos.some(t => t.completed)}
-                            onClick={() => {
-                                if (confirm("clear completed?")) {
-                                    clearCompleted();
-                                }
-                            }}
+                            onClick={handleClearCompleted}
                         >
                             clear completed
+                        </button>
+
+                        <button
+                            onClick={undo}
+                            disabled={historyRef.current.length === 0}
+                        >
+                            undo
                         </button>
                     </div>
                 </div>
