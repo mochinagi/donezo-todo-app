@@ -24,6 +24,25 @@ export type FilterType = "tasks" | "completed" | "active";
 
 const MAX_HISTORY = 50;
 
+/* ================= UTILS ================= */
+
+const normalizeText = (v: string) =>
+    v.trim().replace(/\s+/g, " ").toLowerCase();
+
+const withMeta = <T extends Omit<Action, "meta">>(
+    action: T,
+    meta?: Partial<ActionMeta>
+): Action => ({
+    ...action,
+    meta: {
+        at: Date.now(),
+        ...meta,
+    },
+});
+
+const sortTodos = (todos: Todo[]) =>
+    [...todos].sort((a, b) => b.createdAt - a.createdAt);
+
 /* ================= ACTION ================= */
 
 type ActionMeta = {
@@ -40,22 +59,7 @@ type Action =
     | { type: "reorder"; from: number; to: number; meta: ActionMeta }
     | { type: "clearCompleted"; removed: { todo: Todo; index: number }[]; meta: ActionMeta };
 
-/* ================= UTILS ================= */
-
-const withMeta = <T extends Omit<Action, "meta">>(
-    action: T,
-    meta?: Partial<ActionMeta>
-): Action => ({
-    ...action,
-    meta: {
-        at: Date.now(),
-        ...meta,
-    },
-});
-
-const sortTodos = (todos: Todo[]) => {
-    return [...todos].sort((a, b) => b.createdAt - a.createdAt);
-};
+/* ================= CORE ================= */
 
 const apply = (todos: Todo[], action: Action): Todo[] => {
     switch (action.type) {
@@ -78,14 +82,12 @@ const apply = (todos: Todo[], action: Action): Todo[] => {
             return action.after;
 
         case "reorder": {
-            if (
-                action.from < 0 ||
-                action.to < 0 ||
-                action.from >= todos.length ||
-                action.to >= todos.length
-            ) return todos;
+            if (action.from === action.to) return todos;
+            if (action.from < 0 || action.to < 0) return todos;
 
             const arr = [...todos];
+            if (action.from >= arr.length || action.to >= arr.length) return todos;
+
             const [moved] = arr.splice(action.from, 1);
             arr.splice(action.to, 0, moved);
             return arr;
@@ -104,9 +106,11 @@ const revert = (todos: Todo[], action: Action): Todo[] => {
         case "delete":
         case "clearCompleted": {
             const arr = [...todos];
-            action.removed.forEach(({ todo, index }) => {
-                arr.splice(index, 0, todo);
-            });
+            [...action.removed]
+                .sort((a, b) => a.index - b.index)
+                .forEach(({ todo, index }) => {
+                    arr.splice(index, 0, todo);
+                });
             return arr;
         }
 
@@ -188,11 +192,9 @@ export const useTodoStore = create<TodoStore>()(
                         return { todos: nextTodos };
                     }
 
-                    const nextUndo = [...state.undoStack, action].slice(-MAX_HISTORY);
-
                     return {
                         todos: nextTodos,
-                        undoStack: nextUndo,
+                        undoStack: [...state.undoStack, action].slice(-MAX_HISTORY),
                         redoStack: [],
                     };
                 });
@@ -202,8 +204,9 @@ export const useTodoStore = create<TodoStore>()(
                 const value = text.trim();
                 if (!value) return;
 
-                const exists = get().todos.some(t => t.text === value);
-                if (exists) return;
+                const normalized = normalizeText(value);
+
+                if (get().todos.some(t => normalizeText(t.text) === normalized)) return;
 
                 const now = Date.now();
 
@@ -226,6 +229,8 @@ export const useTodoStore = create<TodoStore>()(
 
                 const t = get().todos.find(t => t.id === id);
                 if (!t) return;
+
+                if (t.text === value) return;
 
                 const next = {
                     ...t,
@@ -306,52 +311,41 @@ export const useTodoStore = create<TodoStore>()(
             },
 
             undo: () => {
-                const { undoStack, todos } = get();
-                const action = undoStack.at(-1);
-                if (!action) return;
+                set((state) => {
+                    const action = state.undoStack.at(-1);
+                    if (!action) return state;
 
-                set((state) => ({
-                    todos: revert(todos, action),
-                    undoStack: state.undoStack.slice(0, -1),
-                    redoStack: [...state.redoStack, action].slice(-MAX_HISTORY),
-                }));
+                    return {
+                        todos: revert(state.todos, action),
+                        undoStack: state.undoStack.slice(0, -1),
+                        redoStack: [...state.redoStack, action].slice(-MAX_HISTORY),
+                    };
+                });
             },
 
             redo: () => {
-                const { redoStack, todos } = get();
-                const action = redoStack.at(-1);
-                if (!action) return;
+                set((state) => {
+                    const action = state.redoStack.at(-1);
+                    if (!action) return state;
 
-                set((state) => ({
-                    todos: apply(todos, action),
-                    redoStack: state.redoStack.slice(0, -1),
-                    undoStack: [...state.undoStack, action].slice(-MAX_HISTORY),
-                }));
+                    return {
+                        todos: apply(state.todos, action),
+                        redoStack: state.redoStack.slice(0, -1),
+                        undoStack: [...state.undoStack, action].slice(-MAX_HISTORY),
+                    };
+                });
             },
 
-            setSearch: (v) =>
-                set({ search: v.trim().toLowerCase() }),
+            setSearch: (v) => set({ search: v }),
 
-            setActiveCategory: (v) =>
-                set({ activeCategory: v }),
+            setActiveCategory: (v) => set({ activeCategory: v }),
 
             getSortedTodos: () => sortTodos(get().todos),
         }),
         {
             name: "todo-storage",
-            version: 17,
+            version: 18,
             storage: createJSONStorage(() => localStorage),
-            migrate: (state: any) => {
-                if (!state?.todos) return state;
-                return {
-                    ...state,
-                    todos: state.todos.map((t: any) => ({
-                        ...t,
-                        createdAt: t.createdAt ?? Date.now(),
-                        updatedAt: t.updatedAt ?? Date.now(),
-                    })),
-                };
-            },
         }
     )
 );
@@ -361,8 +355,10 @@ export const useTodoStore = create<TodoStore>()(
 export const useFilteredTodos = () =>
     useTodoStore(
         (s) => {
+            const search = normalizeText(s.search);
+
             return sortTodos(s.todos).filter((t) => {
-                if (!t.text.toLowerCase().includes(s.search)) return false;
+                if (!normalizeText(t.text).includes(search)) return false;
 
                 if (s.activeCategory === "active") return !t.completed;
                 if (s.activeCategory === "completed") return t.completed;
