@@ -33,9 +33,10 @@ type ToastOptions = {
 
 /* ================= INTERNAL ================= */
 
-const activeToasts = new Map<string, number>(); // id -> timestamp
+const activeToasts = new Map<string, number>();
 
 const THROTTLE = 800;
+const TTL = 5000;
 
 const handlers = {
     success: sonnerToast.success,
@@ -46,23 +47,29 @@ const handlers = {
 
 const now = () => Date.now();
 
-const shouldBlock = (id?: string) => {
-    if (!id) return false;
+const makeKey = (type: ToastType, message: string, id?: string) =>
+    id ?? `${type}:${message}`;
 
-    const last = activeToasts.get(id);
+const shouldBlock = (key: string) => {
+    const last = activeToasts.get(key);
     if (!last) return false;
-
     return now() - last < THROTTLE;
 };
 
-const mark = (id?: string) => {
-    if (id) activeToasts.set(id, now());
+const mark = (key: string) => {
+    activeToasts.set(key, now());
+
+    // TTL cleanup 防止泄漏
+    setTimeout(() => {
+        const ts = activeToasts.get(key);
+        if (ts && now() - ts >= TTL) {
+            activeToasts.delete(key);
+        }
+    }, TTL);
 };
 
-const cleanup = (id?: string | number) => {
-    if (typeof id === "string") {
-        activeToasts.delete(id);
-    }
+const cleanup = (key: string) => {
+    activeToasts.delete(key);
 };
 
 /* ================= CORE ================= */
@@ -76,17 +83,19 @@ const create = (
 
     if (silent) return;
 
-    if (shouldBlock(id)) return id;
+    const key = makeKey(type, message, id);
 
-    mark(id);
+    if (shouldBlock(key)) return id;
+
+    mark(key);
 
     const handler = handlers[type];
 
     const toastId = handler(message, {
         ...rest,
         id,
-        onDismiss: () => cleanup(id),
-        onAutoClose: () => cleanup(id),
+        onDismiss: () => cleanup(key),
+        onAutoClose: () => cleanup(key),
     });
 
     return toastId;
@@ -108,17 +117,17 @@ export const toast = {
         create("loading", message, opts),
 
     dismiss: (id?: string | number) => {
-        cleanup(id);
         sonnerToast.dismiss(id);
     },
 
     update: (
         id: string | number,
         message: string,
+        type: ToastType = "info",
         opts?: ToastOptions
     ) => {
-        cleanup(id);
-        return sonnerToast(message, {
+        const handler = handlers[type];
+        return handler(message, {
             id,
             ...opts,
         });
@@ -135,25 +144,28 @@ export const toast = {
         opts?: ToastOptions
     ) => {
         const id = opts?.id;
+        const key = makeKey("loading", messages.loading, id);
 
-        if (shouldBlock(id)) return;
+        if (shouldBlock(key)) return;
 
-        mark(id);
+        mark(key);
 
-        return sonnerToast.promise(promise, {
-            loading: messages.loading,
-            success: (data) =>
-                typeof messages.success === "function"
-                    ? messages.success(data)
-                    : messages.success,
-            error: (err) =>
-                typeof messages.error === "function"
-                    ? messages.error(err)
-                    : messages.error ?? err?.message ?? "error",
-            ...opts,
-            onDismiss: () => cleanup(id),
-            onAutoClose: () => cleanup(id),
-        });
+        try {
+            return await sonnerToast.promise(promise, {
+                loading: messages.loading,
+                success: (data) =>
+                    typeof messages.success === "function"
+                        ? messages.success(data)
+                        : messages.success,
+                error: (err) =>
+                    typeof messages.error === "function"
+                        ? messages.error(err)
+                        : messages.error ?? err?.message ?? "error",
+                ...opts,
+            });
+        } finally {
+            cleanup(key);
+        }
     },
 
     /* ===== action ===== */
@@ -167,17 +179,13 @@ export const toast = {
             ...opts,
             action: {
                 label,
-                onClick: () => {
-                    onClick();
-                    if (opts?.id) cleanup(opts.id);
-                },
+                onClick,
             },
         }),
 
     /* ===== task helper ===== */
     createTask: (message: string, opts?: ToastOptions) => {
         const id = opts?.id ?? crypto.randomUUID();
-
         let finished = false;
 
         create("loading", message, { ...opts, id });
@@ -186,12 +194,12 @@ export const toast = {
             success: (msg: string) => {
                 if (finished) return;
                 finished = true;
-                toast.update(id, msg, opts);
+                toast.update(id, msg, "success", opts);
             },
             error: (msg: string) => {
                 if (finished) return;
                 finished = true;
-                toast.update(id, msg, opts);
+                toast.update(id, msg, "error", opts);
             },
             dismiss: () => {
                 finished = true;
