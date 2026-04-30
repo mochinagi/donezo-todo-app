@@ -8,6 +8,7 @@ export interface Todo {
     id: string;
     text: string;
     completed: boolean;
+    createdAt: number;
 }
 
 export type FilterType = "all" | "completed" | "active";
@@ -21,7 +22,9 @@ type Action =
     | { type: "clearCompleted"; removed: { todo: Todo; index: number }[] }
     | { type: "toggleAll"; before: Todo[]; after: Todo[] };
 
-const STORAGE_KEY = "donezo-todos-v3";
+/* ================= CONST ================= */
+
+const STORAGE_KEY = "donezo-todos-v4";
 const FILTER_KEY = "donezo-filter";
 const SEARCH_KEY = "donezo-search";
 const MAX_STACK = 50;
@@ -30,6 +33,11 @@ const MAX_STACK = 50;
 
 const normalizeText = (v: string) =>
     v.trim().replace(/\s+/g, " ").toLowerCase();
+
+const safeClone = <T,>(data: T): T =>
+    typeof structuredClone === "function"
+        ? structuredClone(data)
+        : JSON.parse(JSON.stringify(data));
 
 const load = <T,>(key: string, fallback: T): T => {
     if (typeof window === "undefined") return fallback;
@@ -92,7 +100,6 @@ const revertAction = (todos: Todo[], action: Action): Todo[] => {
         case "delete":
         case "clearCompleted": {
             const arr = [...todos];
-            // 保证顺序正确
             [...action.removed]
                 .sort((a, b) => a.index - b.index)
                 .forEach(({ todo, index }) => {
@@ -143,7 +150,6 @@ export function useTodoState(initialTodos: Todo[] = []) {
 
     const undoRef = useRef<Action[]>([]);
     const redoRef = useRef<Action[]>([]);
-
     const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const normalizedSearch = useMemo(
@@ -160,7 +166,7 @@ export function useTodoState(initialTodos: Todo[] = []) {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
             localStorage.setItem(FILTER_KEY, filter);
             localStorage.setItem(SEARCH_KEY, search);
-        }, 300);
+        }, 250);
 
         return () => {
             if (persistTimer.current) clearTimeout(persistTimer.current);
@@ -172,7 +178,7 @@ export function useTodoState(initialTodos: Todo[] = []) {
     const dispatch = useCallback((action: Action) => {
         setTodos(prev => applyAction(prev, action));
 
-        undoRef.current.push(action);
+        undoRef.current.push(safeClone(action));
         if (undoRef.current.length > MAX_STACK) {
             undoRef.current.shift();
         }
@@ -196,6 +202,7 @@ export function useTodoState(initialTodos: Todo[] = []) {
                 id: crypto.randomUUID(),
                 text: value,
                 completed: false,
+                createdAt: Date.now(),
             },
         });
     }, [dispatch, todos]);
@@ -204,9 +211,11 @@ export function useTodoState(initialTodos: Todo[] = []) {
         const target = todos.find(t => t.id === id);
         if (!target) return;
 
-        const next = { ...target, completed: !target.completed };
-
-        dispatch({ type: "toggle", before: target, after: next });
+        dispatch({
+            type: "toggle",
+            before: safeClone(target),
+            after: { ...target, completed: !target.completed },
+        });
     }, [dispatch, todos]);
 
     const editTodo = useCallback((id: string, text: string) => {
@@ -214,20 +223,20 @@ export function useTodoState(initialTodos: Todo[] = []) {
         if (!value) return;
 
         const target = todos.find(t => t.id === id);
-        if (!target) return;
+        if (!target || target.text === value) return;
 
-        if (target.text === value) return;
-
-        const next = { ...target, text: value };
-
-        dispatch({ type: "edit", before: target, after: next });
+        dispatch({
+            type: "edit",
+            before: safeClone(target),
+            after: { ...target, text: value },
+        });
     }, [dispatch, todos]);
 
     const deleteMany = useCallback((ids: string[]) => {
         const idSet = new Set(ids);
 
         const removed = todos
-            .map((t, i) => (idSet.has(t.id) ? { todo: t, index: i } : null))
+            .map((t, i) => (idSet.has(t.id) ? { todo: safeClone(t), index: i } : null))
             .filter(Boolean) as { todo: Todo; index: number }[];
 
         if (!removed.length) return;
@@ -237,7 +246,7 @@ export function useTodoState(initialTodos: Todo[] = []) {
 
     const clearCompleted = useCallback(() => {
         const removed = todos
-            .map((t, i) => (t.completed ? { todo: t, index: i } : null))
+            .map((t, i) => (t.completed ? { todo: safeClone(t), index: i } : null))
             .filter(Boolean) as { todo: Todo; index: number }[];
 
         if (!removed.length) return;
@@ -260,7 +269,7 @@ export function useTodoState(initialTodos: Todo[] = []) {
 
         dispatch({
             type: "toggleAll",
-            before: todos,
+            before: safeClone(todos),
             after: next,
         });
     }, [dispatch, todos]);
