@@ -28,7 +28,7 @@ const cardVariants = cva(
         lg: "p-6",
       },
       interactive: {
-        true: "cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-400",
+        true: "cursor-pointer",
         false: "",
       },
       disabled: {
@@ -69,6 +69,7 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
       interactive,
       disabled,
       asChild = false,
+      onClick,
       onKeyDown,
       ...props
     },
@@ -76,27 +77,44 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ) => {
     const Comp = asChild ? Slot : "div";
 
+    const isClickable = interactive && !disabled && !asChild;
+
     const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (!interactive || disabled) return;
+      if (!isClickable) return;
 
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        (e.target as HTMLElement).click();
+        (e.currentTarget as HTMLElement).click();
       }
 
       onKeyDown?.(e);
+    };
+
+    const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+      if (disabled) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      onClick?.(e);
     };
 
     return (
       <Comp
         ref={ref}
         data-slot="card"
-        data-state={disabled ? "disabled" : "active"}
-        tabIndex={interactive && !disabled ? 0 : undefined}
-        role={interactive ? "button" : undefined}
+        data-variant={variant}
+        data-interactive={interactive ? "true" : "false"}
+        data-disabled={disabled ? "true" : "false"}
+        tabIndex={isClickable ? 0 : undefined}
+        role={isClickable ? "button" : undefined}
+        aria-disabled={disabled || undefined}
         onKeyDown={handleKeyDown}
+        onClick={handleClick}
         className={cn(
           cardVariants({ variant, padding, interactive, disabled }),
+          isClickable &&
+          "focus-visible:ring-2 focus-visible:ring-blue-400",
           className
         )}
         {...props}
@@ -112,94 +130,82 @@ Card.displayName = "Card";
 const CardHeader = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
->(({ className, ...props }, ref) => {
-  return (
-    <div
-      ref={ref}
-      data-slot="card-header"
-      className={cn("flex flex-col gap-1.5", className)}
-      {...props}
-    />
-  );
-});
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    data-slot="card-header"
+    className={cn("flex flex-col gap-1.5", className)}
+    {...props}
+  />
+));
 CardHeader.displayName = "CardHeader";
 
 const CardTitle = React.forwardRef<
   HTMLHeadingElement,
   React.ComponentProps<"h3">
->(({ className, ...props }, ref) => {
-  return (
-    <h3
-      ref={ref}
-      data-slot="card-title"
-      className={cn("font-semibold text-lg tracking-tight", className)}
-      {...props}
-    />
-  );
-});
+>(({ className, ...props }, ref) => (
+  <h3
+    ref={ref}
+    data-slot="card-title"
+    className={cn("font-semibold text-lg tracking-tight", className)}
+    {...props}
+  />
+));
 CardTitle.displayName = "CardTitle";
 
 const CardDescription = React.forwardRef<
   HTMLParagraphElement,
   React.ComponentProps<"p">
->(({ className, ...props }, ref) => {
-  return (
-    <p
-      ref={ref}
-      data-slot="card-description"
-      className={cn("text-sm text-gray-500 dark:text-gray-400", className)}
-      {...props}
-    />
-  );
-});
+>(({ className, ...props }, ref) => (
+  <p
+    ref={ref}
+    data-slot="card-description"
+    className={cn("text-sm text-gray-500 dark:text-gray-400", className)}
+    {...props}
+  />
+));
 CardDescription.displayName = "CardDescription";
 
 const CardAction = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
->(({ className, ...props }, ref) => {
-  return (
-    <div
-      ref={ref}
-      data-slot="card-action"
-      className={cn("self-end", className)}
-      {...props}
-    />
-  );
-});
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    data-slot="card-action"
+    className={cn("self-end", className)}
+    {...props}
+  />
+));
 CardAction.displayName = "CardAction";
 
 const CardContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
->(({ className, ...props }, ref) => {
-  return (
-    <div
-      ref={ref}
-      data-slot="card-content"
-      className={cn("text-sm", className)}
-      {...props}
-    />
-  );
-});
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    data-slot="card-content"
+    className={cn("text-sm", className)}
+    {...props}
+  />
+));
 CardContent.displayName = "CardContent";
 
 const CardFooter = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
->(({ className, ...props }, ref) => {
-  return (
-    <div
-      ref={ref}
-      data-slot="card-footer"
-      className={cn(
-        "flex items-center justify-between pt-2",
-        className
-      )}
-      {...props}
-    />
-  );
-});
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    data-slot="card-footer"
+    className={cn(
+      "flex items-center justify-between pt-2",
+      className
+    )}
+    {...props}
+  />
+));
 CardFooter.displayName = "CardFooter";
 
 /* ================= EXPORT ================= */
