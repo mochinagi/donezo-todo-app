@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, AlertCircle, Loader2 } from "lucide-react";
 import { useState, useRef, useCallback, useMemo } from "react";
 import clsx from "clsx";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toaster";
 import { useTodoStore } from "@/store/todoStore";
 
 const MAX_LENGTH = 100;
@@ -56,12 +56,14 @@ export default function AddTodo({
         [existingSet, normalize]
     );
 
+    const normalizedInput = useMemo(() => normalize(input), [input, normalize]);
+
     const error = useMemo(() => {
         if (!touched && !input) return "";
-        return validate(input);
-    }, [input, touched, validate]);
+        return validate(normalizedInput);
+    }, [normalizedInput, touched, input, validate]);
 
-    const length = input.length;
+    const length = normalizedInput.length;
 
     const handleAdd = useCallback(async () => {
         if (isSubmitting) return;
@@ -71,6 +73,12 @@ export default function AddTodo({
 
         if (err) {
             setTouched(true);
+            return;
+        }
+
+        // 再校验一次（防 race）
+        if (existingSet.has(value.toLowerCase())) {
+            toast.error("既に存在します");
             return;
         }
 
@@ -84,15 +92,15 @@ export default function AddTodo({
             setInput("");
             setTouched(false);
 
-            requestAnimationFrame(() => {
+            setTimeout(() => {
                 inputRef.current?.focus();
-            });
+            }, 0);
         } catch {
             toast.error("追加に失敗しました");
         } finally {
             setIsSubmitting(false);
         }
-    }, [input, onAdd, setInput, validate, normalize, isSubmitting]);
+    }, [input, onAdd, setInput, validate, normalize, isSubmitting, existingSet]);
 
     const handlePaste = useCallback(
         async (e: React.ClipboardEvent<HTMLInputElement>) => {
@@ -112,27 +120,26 @@ export default function AddTodo({
             let success = 0;
             let fail = 0;
 
-            await Promise.all(
-                lines.map(async (line) => {
-                    const err = validate(line);
-                    if (err) {
-                        fail++;
-                        return;
-                    }
+            for (const line of lines) {
+                const err = validate(line);
 
-                    try {
-                        await onAdd(line);
-                        success++;
-                    } catch {
-                        fail++;
-                    }
-                })
-            );
+                if (err || existingSet.has(line.toLowerCase())) {
+                    fail++;
+                    continue;
+                }
+
+                try {
+                    await onAdd(line);
+                    success++;
+                } catch {
+                    fail++;
+                }
+            }
 
             if (success) toast.success(`${success}件追加`);
             if (fail) toast.error(`${fail}件失敗`);
         },
-        [normalize, onAdd, validate]
+        [normalize, onAdd, validate, existingSet]
     );
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -150,7 +157,7 @@ export default function AddTodo({
     };
 
     const disabled =
-        !input.trim() || isSubmitting || !!error;
+        !normalizedInput || isSubmitting || !!error;
 
     const lengthColor =
         length > MAX_LENGTH
