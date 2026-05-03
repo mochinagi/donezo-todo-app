@@ -1,13 +1,13 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
-/* ================= UI ================= */
+/* UI */
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(...inputs));
 }
 
-/* ================= DEBOUNCE ================= */
+/* DEBOUNCE */
 
 export function debounce<T extends (...args: any[]) => any>(
   fn: T,
@@ -16,32 +16,36 @@ export function debounce<T extends (...args: any[]) => any>(
 ) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let lastArgs: Parameters<T> | null = null;
-  let lastResolve: ((value: ReturnType<T>) => void) | null = null;
+  let resolveQueue: ((value: ReturnType<T>) => void)[] = [];
 
   const { leading = false, trailing = true } = options;
+
+  const run = (args: Parameters<T>) => {
+    const result = fn(...args);
+    resolveQueue.forEach((r) => r(result));
+    resolveQueue = [];
+    return result;
+  };
 
   const debounced = (...args: Parameters<T>) => {
     return new Promise<ReturnType<T>>((resolve) => {
       const callNow = leading && !timer;
 
       lastArgs = args;
-      lastResolve = resolve;
+      resolveQueue.push(resolve);
 
       if (timer) clearTimeout(timer);
 
       timer = setTimeout(() => {
-        if (trailing && !callNow && lastArgs) {
-          const result = fn(...lastArgs);
-          lastResolve?.(result);
+        if (trailing && lastArgs && !callNow) {
+          run(lastArgs);
         }
         timer = null;
         lastArgs = null;
-        lastResolve = null;
       }, delay);
 
       if (callNow) {
-        const result = fn(...args);
-        resolve(result);
+        return resolve(run(args));
       }
     });
   };
@@ -50,13 +54,12 @@ export function debounce<T extends (...args: any[]) => any>(
     if (timer) clearTimeout(timer);
     timer = null;
     lastArgs = null;
-    lastResolve = null;
+    resolveQueue = [];
   };
 
   debounced.flush = () => {
     if (timer && lastArgs) {
-      const result = fn(...lastArgs);
-      lastResolve?.(result);
+      run(lastArgs);
       debounced.cancel();
     }
   };
@@ -67,21 +70,26 @@ export function debounce<T extends (...args: any[]) => any>(
   };
 }
 
-/* ================= THROTTLE ================= */
+/* THROTTLE */
 
 export function throttle<T extends (...args: any[]) => any>(
   fn: T,
   delay = 300,
-  options: { trailing?: boolean } = {}
+  options: { leading?: boolean; trailing?: boolean } = {}
 ) {
   let lastCall = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let lastArgs: Parameters<T> | null = null;
 
-  const { trailing = true } = options;
+  const { leading = true, trailing = true } = options;
 
   const throttled = (...args: Parameters<T>) => {
     const now = Date.now();
+
+    if (!lastCall && !leading) {
+      lastCall = now;
+    }
+
     const remaining = delay - (now - lastCall);
 
     if (remaining <= 0) {
@@ -96,7 +104,7 @@ export function throttle<T extends (...args: any[]) => any>(
 
       if (!timer) {
         timer = setTimeout(() => {
-          lastCall = Date.now();
+          lastCall = leading ? Date.now() : 0;
           if (lastArgs) fn(...lastArgs);
           timer = null;
           lastArgs = null;
@@ -109,12 +117,13 @@ export function throttle<T extends (...args: any[]) => any>(
     if (timer) clearTimeout(timer);
     timer = null;
     lastArgs = null;
+    lastCall = 0;
   };
 
   return throttled as T & { cancel: () => void };
 }
 
-/* ================= BASICS ================= */
+/* BASICS */
 
 export const sleep = (ms: number) =>
   new Promise<void>((res) => setTimeout(res, ms));
@@ -125,7 +134,16 @@ export const isBrowser =
 
 export const noop = () => { };
 
-/* ================= ASSERT ================= */
+export const clamp = (n: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, n));
+
+export const isEmpty = (v: any) =>
+  v == null ||
+  (typeof v === "string" && v.trim() === "") ||
+  (Array.isArray(v) && v.length === 0) ||
+  (typeof v === "object" && Object.keys(v).length === 0);
+
+/* ASSERT */
 
 export function invariant(
   condition: unknown,
@@ -143,7 +161,7 @@ export function invariant(
   }
 }
 
-/* ================= TYPE ================= */
+/* TYPE */
 
 export function isDefined<T>(
   value: T | null | undefined
@@ -151,9 +169,10 @@ export function isDefined<T>(
   return value != null;
 }
 
-/* ================= SAFE JSON ================= */
+/* SAFE JSON */
 
-export function safeParse<T>(str: string, fallback: T): T {
+export function safeParse<T>(str: string | null | undefined, fallback: T): T {
+  if (!str) return fallback;
   try {
     return JSON.parse(str);
   } catch {
@@ -161,7 +180,7 @@ export function safeParse<T>(str: string, fallback: T): T {
   }
 }
 
-/* ================= ARRAY ================= */
+/* ARRAY */
 
 export function uniqueBy<T>(
   arr: T[],
@@ -175,13 +194,20 @@ export function uniqueBy<T>(
 }
 
 export function arrayMove<T>(arr: T[], from: number, to: number) {
+  const length = arr.length;
+  const start = clamp(from, 0, length - 1);
+  const end = clamp(to, 0, length - 1);
+
+  if (start === end) return arr.slice();
+
   const copy = [...arr];
-  const [item] = copy.splice(from, 1);
-  copy.splice(to, 0, item);
+  const [item] = copy.splice(start, 1);
+  copy.splice(end, 0, item);
+
   return copy;
 }
 
-/* ================= OBJECT ================= */
+/* OBJECT */
 
 export function deepClone<T>(obj: T): T {
   if (typeof structuredClone === "function") {
@@ -195,9 +221,9 @@ export function pick<T extends object, K extends keyof T>(
   keys: K[]
 ): Pick<T, K> {
   const result = {} as Pick<T, K>;
-  keys.forEach((k) => {
+  for (const k of keys) {
     if (k in obj) result[k] = obj[k];
-  });
+  }
   return result;
 }
 
@@ -206,13 +232,13 @@ export function omit<T extends object, K extends keyof T>(
   keys: K[]
 ): Omit<T, K> {
   const result = { ...obj };
-  keys.forEach((k) => {
+  for (const k of keys) {
     delete result[k];
-  });
+  }
   return result;
 }
 
-/* ================= FUNCTION ================= */
+/* FUNCTION */
 
 export function once<T extends (...args: any[]) => any>(fn: T): T {
   let called = false;
@@ -227,32 +253,32 @@ export function once<T extends (...args: any[]) => any>(fn: T): T {
   }) as T;
 }
 
-/* ================= ID ================= */
+/* ID */
 
 export function uid() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
   }
-  return Math.random().toString(36).slice(2);
+  return (
+    Math.random().toString(36).slice(2) +
+    Date.now().toString(36)
+  );
 }
 
-/* ================= DATE ================= */
+/* DATE */
 
 export function formatDate(
   date: Date | number,
   format: "YYYY-MM-DD" | "YYYY/MM/DD" = "YYYY-MM-DD"
 ) {
   const d = new Date(date);
-
   if (isNaN(d.getTime())) return "";
 
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
 
-  if (format === "YYYY/MM/DD") {
-    return `${y}/${m}/${day}`;
-  }
-
-  return `${y}-${m}-${day}`;
+  return format === "YYYY/MM/DD"
+    ? `${y}/${m}/${day}`
+    : `${y}-${m}-${day}`;
 }
