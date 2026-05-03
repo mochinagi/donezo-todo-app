@@ -9,11 +9,8 @@ import {
     useState,
     useCallback,
     useMemo,
-    useRef,
     type ReactNode,
 } from "react";
-
-/* ================= TYPES ================= */
 
 export type AppTheme = "light" | "dark" | "system";
 type ResolvedTheme = "light" | "dark";
@@ -24,14 +21,13 @@ type ThemeProviderProps = {
 
 const STORAGE_KEY = "donezo-theme";
 
-/* ================= PROVIDER ================= */
-
 export function ThemeProvider({ children }: ThemeProviderProps) {
     return (
         <NextThemesProvider
             attribute="class"
             defaultTheme="system"
             enableSystem
+            storageKey={STORAGE_KEY}
             disableTransitionOnChange
         >
             {children}
@@ -39,28 +35,14 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     );
 }
 
-/* ================= HOOK ================= */
-
 export function useAppTheme() {
     const { theme, setTheme, resolvedTheme, systemTheme } = useTheme();
 
     const [mounted, setMounted] = useState(false);
-    const userSelectedRef = useRef(false);
 
     useEffect(() => {
         setMounted(true);
-
-        // restore user preference（你自己的控制层）
-        try {
-            const saved = localStorage.getItem(STORAGE_KEY) as AppTheme | null;
-            if (saved) {
-                userSelectedRef.current = true;
-                setTheme(saved);
-            }
-        } catch { }
-    }, [setTheme]);
-
-    /* ---------- 安全主题 ---------- */
+    }, []);
 
     const currentTheme = (theme ?? "system") as AppTheme;
 
@@ -70,34 +52,18 @@ export function useAppTheme() {
     const safeSystemTheme: ResolvedTheme =
         mounted && systemTheme ? (systemTheme as ResolvedTheme) : "light";
 
-    /* ---------- 状态 ---------- */
-
     const isDark = safeResolvedTheme === "dark";
     const isLight = safeResolvedTheme === "light";
     const isSystem = currentTheme === "system";
 
     const isReady = mounted && !!resolvedTheme;
 
-    /* ---------- 行为封装 ---------- */
-
-    const persist = (value: AppTheme) => {
-        try {
-            localStorage.setItem(STORAGE_KEY, value);
-        } catch { }
-    };
-
     const applyTheme = useCallback(
-        (value: AppTheme, fromUser = true) => {
-            if (fromUser) userSelectedRef.current = true;
+        (value: AppTheme) => {
             setTheme(value);
-            persist(value);
         },
         [setTheme]
     );
-
-    const setLight = useCallback(() => applyTheme("light"), [applyTheme]);
-    const setDark = useCallback(() => applyTheme("dark"), [applyTheme]);
-    const setSystem = useCallback(() => applyTheme("system"), [applyTheme]);
 
     const toggleTheme = useCallback(() => {
         applyTheme(isDark ? "light" : "dark");
@@ -109,19 +75,14 @@ export function useAppTheme() {
         return applyTheme("light");
     }, [currentTheme, applyTheme]);
 
-    const resetTheme = useCallback(() => {
-        userSelectedRef.current = false;
-        applyTheme("system", false);
-    }, [applyTheme]);
-
-    /* ---------- 语义层（关键） ---------- */
+    const setLight = useCallback(() => applyTheme("light"), [applyTheme]);
+    const setDark = useCallback(() => applyTheme("dark"), [applyTheme]);
+    const setSystem = useCallback(() => applyTheme("system"), [applyTheme]);
 
     const preference = currentTheme;
     const resolved = safeResolvedTheme;
 
-    const source = userSelectedRef.current ? "user" : "system";
-
-    /* ---------- return ---------- */
+    const source = currentTheme === "system" ? "system" : "user";
 
     return useMemo(
         () => ({
@@ -145,7 +106,6 @@ export function useAppTheme() {
                 setTheme: applyTheme,
                 toggleTheme,
                 cycleTheme,
-                resetTheme,
                 setLight,
                 setDark,
                 setSystem,
@@ -157,6 +117,7 @@ export function useAppTheme() {
             safeSystemTheme,
             preference,
             resolved,
+            source,
             isDark,
             isLight,
             isSystem,
@@ -165,7 +126,6 @@ export function useAppTheme() {
             applyTheme,
             toggleTheme,
             cycleTheme,
-            resetTheme,
             setLight,
             setDark,
             setSystem,
