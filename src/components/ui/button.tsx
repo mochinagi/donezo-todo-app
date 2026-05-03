@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
-/* ================= STYLES ================= */
+/* ================= styles ================= */
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none",
@@ -44,7 +44,7 @@ const buttonVariants = cva(
   }
 );
 
-/* ================= TYPES ================= */
+/* ================= types ================= */
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
@@ -55,7 +55,7 @@ export interface ButtonProps
   disableScale?: boolean;
 }
 
-/* ================= COMPONENT ================= */
+/* ================= component ================= */
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
@@ -77,25 +77,22 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ) => {
     const Comp = asChild ? Slot : "button";
 
-    const isDisabled = loading || disabled;
+    const isDisabled = disabled || loading;
+
     const isIconOnly =
       size === "icon" ||
       (React.Children.count(children) === 1 &&
-        React.isValidElement(children) &&
-        typeof children.type !== "string");
+        React.isValidElement(children));
 
-    const loaderSize = size === "sm" ? 14 : size === "lg" ? 18 : 16;
+    const loaderSize =
+      size === "sm" ? 14 : size === "lg" ? 18 : 16;
 
-    /* ===== dev warning ===== */
     if (process.env.NODE_ENV !== "production") {
       if (isIconOnly && !props["aria-label"]) {
-        console.warn(
-          "Button: icon-only button should have aria-label"
-        );
+        console.warn("Button: missing aria-label for icon button");
       }
     }
 
-    /* ===== click guard (important for asChild) ===== */
     const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
       if (isDisabled) {
         e.preventDefault();
@@ -105,36 +102,41 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       onClick?.(e);
     };
 
-    const content = (
-      <>
-        {loading && (
-          <Loader2
-            className="animate-spin shrink-0"
-            size={loaderSize}
-          />
-        )}
+    const renderContent = () => {
+      if (loading) {
+        return (
+          <>
+            <Loader2
+              className="animate-spin shrink-0"
+              size={loaderSize}
+            />
+            {!isIconOnly && (
+              <span className="truncate">
+                {loadingText ?? children}
+              </span>
+            )}
+          </>
+        );
+      }
 
-        {!isIconOnly && (
-          <span className="truncate">
-            {loading ? loadingText ?? children : children}
-          </span>
-        )}
-      </>
-    );
+      if (isIconOnly) return children;
+
+      return <span className="truncate">{children}</span>;
+    };
 
     return (
       <Comp
         ref={ref}
         type={type ?? "button"}
         data-slot="button"
-        data-disabled={isDisabled ? "" : undefined}
+        data-state={loading ? "loading" : "idle"}
         aria-busy={loading || undefined}
         aria-disabled={isDisabled || undefined}
-        aria-live={loading ? "polite" : undefined}
         aria-label={isIconOnly ? props["aria-label"] : undefined}
         className={cn(
           buttonVariants({ variant, size }),
           !disableScale &&
+          !isDisabled &&
           "transition-transform duration-150 hover:scale-105 active:scale-95",
           isDisabled && "pointer-events-none",
           className
@@ -143,10 +145,12 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         onClick={handleClick}
         {...props}
       >
-        <span className="flex items-center gap-2">{content}</span>
+        <span className="flex items-center gap-2">
+          {renderContent()}
+        </span>
 
         {loading && (
-          <span className="sr-only">読み込み中</span>
+          <span className="sr-only">loading</span>
         )}
       </Comp>
     );
