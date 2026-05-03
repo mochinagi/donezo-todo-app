@@ -37,17 +37,19 @@ type Todo = {
     createdAt: number;
 };
 
+/* ================= UTILS ================= */
+
+const normalize = (v: string) =>
+    v.trim().replace(/\s+/g, " ").slice(0, 200);
+
 /* ================= INPUT ================= */
 
-const TodoInput = memo(function TodoInput() {
+const TodoInput = memo(function TodoInput({ pushHistory }: { pushHistory: () => void }) {
     const addTodo = useTodoStore(s => s.addTodo);
     const todos = useTodoStore(s => s.todos);
 
     const [value, setValue] = useState("");
     const inputRef = useRef<HTMLInputElement>(null);
-
-    const normalize = (v: string) =>
-        v.trim().replace(/\s+/g, " ");
 
     const handleAdd = useCallback(() => {
         const v = normalize(value);
@@ -58,10 +60,11 @@ const TodoInput = memo(function TodoInput() {
             return;
         }
 
+        pushHistory();
         addTodo(v);
         setValue("");
         inputRef.current?.focus();
-    }, [value, addTodo, todos]);
+    }, [value, addTodo, todos, pushHistory]);
 
     return (
         <div className="flex gap-2">
@@ -78,7 +81,7 @@ const TodoInput = memo(function TodoInput() {
             />
             <button
                 onClick={handleAdd}
-                disabled={!value.trim()}
+                disabled={!normalize(value)}
                 className="px-4 border rounded disabled:opacity-40"
             >
                 add
@@ -89,19 +92,19 @@ const TodoInput = memo(function TodoInput() {
 
 /* ================= ITEM ================= */
 
-const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
-    const { toggleTodo, deleteTodo, updateTodo } = useTodoStore(
+const TodoItem = memo(function TodoItem({ id, text, completed, pushHistory }: Todo & { pushHistory: () => void }) {
+    const { toggleTodo, deleteTodo, updateTodo, todos } = useTodoStore(
         (s) => ({
             toggleTodo: s.toggleTodo,
             deleteTodo: s.deleteTodo,
             updateTodo: s.updateTodo,
+            todos: s.todos
         }),
         shallow
     );
 
     const [editing, setEditing] = useState(false);
     const [editText, setEditText] = useState(text);
-    const [confirmDelete, setConfirmDelete] = useState(false);
 
     useEffect(() => {
         setEditText(text);
@@ -125,24 +128,19 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
     };
 
     const handleSave = useCallback(() => {
-        const v = editText.trim();
-        if (!v) return;
+        const v = normalize(editText);
+        if (!v) {
+            setEditing(false);
+            return;
+        }
 
-        if (v !== text) {
+        if (v !== text && !todos.some(t => t.text.toLowerCase() === v.toLowerCase())) {
+            pushHistory();
             updateTodo(id, v);
         }
 
         setEditing(false);
-    }, [editText, id, updateTodo, text]);
-
-    const handleDelete = () => {
-        if (!confirmDelete) {
-            setConfirmDelete(true);
-            setTimeout(() => setConfirmDelete(false), 1500);
-            return;
-        }
-        deleteTodo(id);
-    };
+    }, [editText, id, updateTodo, text, todos, pushHistory]);
 
     return (
         <div ref={setNodeRef} style={style}>
@@ -153,7 +151,10 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
                         <GripVertical size={18} />
                     </div>
 
-                    <button onClick={() => toggleTodo(id)}>
+                    <button onClick={() => {
+                        pushHistory();
+                        toggleTodo(id);
+                    }}>
                         <CheckCircle2 />
                     </button>
 
@@ -162,6 +163,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
                             autoFocus
                             value={editText}
                             onChange={(e) => setEditText(e.target.value)}
+                            onBlur={handleSave}
                             onKeyDown={(e) => {
                                 if (e.key === "Enter") handleSave();
                                 if (e.key === "Escape") setEditing(false);
@@ -177,7 +179,10 @@ const TodoItem = memo(function TodoItem({ id, text, completed }: Todo) {
                         </span>
                     )}
 
-                    <button onClick={handleDelete}>
+                    <button onClick={() => {
+                        pushHistory();
+                        deleteTodo(id);
+                    }}>
                         <Trash2 size={18} />
                     </button>
                 </CardContent>
@@ -208,6 +213,7 @@ export default function TodoList() {
 
     const pushHistory = () => {
         historyRef.current.push(structuredClone(todos));
+        if (historyRef.current.length > 50) historyRef.current.shift();
         redoRef.current = [];
     };
 
@@ -227,14 +233,14 @@ export default function TodoList() {
         }
     };
 
-    /* ========= localStorage ========= */
+    /* localStorage */
 
     useEffect(() => {
         try {
-            const saved = localStorage.getItem("todos_v4");
+            const saved = localStorage.getItem("todos_v5");
             if (saved) {
                 const parsed = JSON.parse(saved);
-                if (Array.isArray(parsed.data)) {
+                if (parsed.version === 1 && Array.isArray(parsed.data)) {
                     setTodos(parsed.data);
                 }
             }
@@ -243,12 +249,12 @@ export default function TodoList() {
 
     useEffect(() => {
         localStorage.setItem(
-            "todos_v4",
-            JSON.stringify({ data: todos })
+            "todos_v5",
+            JSON.stringify({ version: 1, data: todos })
         );
     }, [todos]);
 
-    /* ========= filter ========= */
+    /* filter */
 
     const filteredTodos = useMemo(() => {
         return todos
@@ -267,7 +273,7 @@ export default function TodoList() {
         [todos]
     );
 
-    /* ========= DND ========= */
+    /* DND */
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -299,8 +305,6 @@ export default function TodoList() {
 
     const activeTodo = todos.find(t => t.id === activeId);
 
-    /* ========= UI ========= */
-
     return (
         <DndContext
             sensors={sensors}
@@ -310,7 +314,7 @@ export default function TodoList() {
         >
             <div className="max-w-2xl mx-auto p-6 space-y-4">
 
-                <TodoInput />
+                <TodoInput pushHistory={pushHistory} />
 
                 <input
                     placeholder="search..."
@@ -325,7 +329,12 @@ export default function TodoList() {
                     <div className="flex gap-3">
                         <button onClick={undo}>undo</button>
                         <button onClick={redo}>redo</button>
-                        <button onClick={clearCompleted}>clear completed</button>
+                        <button onClick={() => {
+                            pushHistory();
+                            clearCompleted();
+                        }}>
+                            clear completed
+                        </button>
                     </div>
                 </div>
 
@@ -345,9 +354,15 @@ export default function TodoList() {
                     items={filteredTodos.map(t => t.id)}
                     strategy={verticalListSortingStrategy}
                 >
-                    {filteredTodos.map(todo => (
-                        <TodoItem key={todo.id} {...todo} />
-                    ))}
+                    {filteredTodos.length === 0 ? (
+                        <div className="text-center text-sm opacity-50">
+                            no tasks
+                        </div>
+                    ) : (
+                        filteredTodos.map(todo => (
+                            <TodoItem key={todo.id} {...todo} pushHistory={pushHistory} />
+                        ))
+                    )}
                 </SortableContext>
             </div>
 
