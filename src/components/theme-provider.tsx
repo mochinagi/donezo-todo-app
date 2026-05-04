@@ -46,17 +46,26 @@ export function useAppTheme() {
 
     const currentTheme: AppTheme = (theme ?? "system") as AppTheme;
 
+    const fallbackSystem = (() => {
+        if (typeof window === "undefined") return "light";
+        return window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+    })();
+
     const resolved: ResolvedTheme =
-        mounted && resolvedTheme ? (resolvedTheme as ResolvedTheme) : "light";
+        mounted && resolvedTheme
+            ? (resolvedTheme as ResolvedTheme)
+            : fallbackSystem;
 
     const system: ResolvedTheme =
-        mounted && systemTheme ? (systemTheme as ResolvedTheme) : "light";
+        mounted && systemTheme
+            ? (systemTheme as ResolvedTheme)
+            : fallbackSystem;
 
     const isDark = resolved === "dark";
     const isLight = resolved === "light";
     const isSystem = currentTheme === "system";
-
-    const isReady = mounted;
 
     const set = useCallback(
         (value: AppTheme) => {
@@ -66,16 +75,20 @@ export function useAppTheme() {
     );
 
     const toggle = useCallback(() => {
-        set(isDark ? "light" : "dark");
-    }, [isDark, set]);
+        if (currentTheme === "system") {
+            set(resolved === "dark" ? "light" : "dark");
+            return;
+        }
+        set(currentTheme === "dark" ? "light" : "dark");
+    }, [currentTheme, resolved, set]);
+
+    const order: AppTheme[] = ["light", "dark", "system"];
 
     const cycle = useCallback(() => {
-        if (currentTheme === "light") return set("dark");
-        if (currentTheme === "dark") return set("system");
-        return set("light");
+        const index = order.indexOf(currentTheme);
+        const next = order[(index + 1) % order.length];
+        set(next);
     }, [currentTheme, set]);
-
-    const availableThemes: AppTheme[] = ["light", "dark", "system"];
 
     return useMemo(
         () => ({
@@ -83,14 +96,13 @@ export function useAppTheme() {
             resolvedTheme: resolved,
             systemTheme: system,
 
-            availableThemes,
+            availableThemes: order,
 
             state: {
                 isDark,
                 isLight,
                 isSystem,
-                isMounted: mounted,
-                isReady,
+                isHydrated: mounted,
             },
 
             actions: {
@@ -107,7 +119,6 @@ export function useAppTheme() {
             isLight,
             isSystem,
             mounted,
-            isReady,
             set,
             toggle,
             cycle,
