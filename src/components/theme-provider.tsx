@@ -44,55 +44,46 @@ export function useAppTheme() {
         setMounted(true);
     }, []);
 
-    const currentTheme = (theme ?? "system") as AppTheme;
+    const currentTheme: AppTheme = (theme ?? "system") as AppTheme;
 
-    const safeResolvedTheme: ResolvedTheme =
+    const resolved: ResolvedTheme =
         mounted && resolvedTheme ? (resolvedTheme as ResolvedTheme) : "light";
 
-    const safeSystemTheme: ResolvedTheme =
+    const system: ResolvedTheme =
         mounted && systemTheme ? (systemTheme as ResolvedTheme) : "light";
 
-    const isDark = safeResolvedTheme === "dark";
-    const isLight = safeResolvedTheme === "light";
+    const isDark = resolved === "dark";
+    const isLight = resolved === "light";
     const isSystem = currentTheme === "system";
 
-    const isReady = mounted && !!resolvedTheme;
+    const isReady = mounted;
 
-    const applyTheme = useCallback(
+    const set = useCallback(
         (value: AppTheme) => {
             setTheme(value);
         },
         [setTheme]
     );
 
-    const toggleTheme = useCallback(() => {
-        applyTheme(isDark ? "light" : "dark");
-    }, [isDark, applyTheme]);
+    const toggle = useCallback(() => {
+        set(isDark ? "light" : "dark");
+    }, [isDark, set]);
 
-    const cycleTheme = useCallback(() => {
-        if (currentTheme === "light") return applyTheme("dark");
-        if (currentTheme === "dark") return applyTheme("system");
-        return applyTheme("light");
-    }, [currentTheme, applyTheme]);
+    const cycle = useCallback(() => {
+        if (currentTheme === "light") return set("dark");
+        if (currentTheme === "dark") return set("system");
+        return set("light");
+    }, [currentTheme, set]);
 
-    const setLight = useCallback(() => applyTheme("light"), [applyTheme]);
-    const setDark = useCallback(() => applyTheme("dark"), [applyTheme]);
-    const setSystem = useCallback(() => applyTheme("system"), [applyTheme]);
-
-    const preference = currentTheme;
-    const resolved = safeResolvedTheme;
-
-    const source = currentTheme === "system" ? "system" : "user";
+    const availableThemes: AppTheme[] = ["light", "dark", "system"];
 
     return useMemo(
         () => ({
             theme: currentTheme,
-            resolvedTheme: safeResolvedTheme,
-            systemTheme: safeSystemTheme,
+            resolvedTheme: resolved,
+            systemTheme: system,
 
-            preference,
-            resolved,
-            source,
+            availableThemes,
 
             state: {
                 isDark,
@@ -103,32 +94,23 @@ export function useAppTheme() {
             },
 
             actions: {
-                setTheme: applyTheme,
-                toggleTheme,
-                cycleTheme,
-                setLight,
-                setDark,
-                setSystem,
+                set,
+                toggle,
+                cycle,
             },
         }),
         [
             currentTheme,
-            safeResolvedTheme,
-            safeSystemTheme,
-            preference,
             resolved,
-            source,
+            system,
             isDark,
             isLight,
             isSystem,
             mounted,
             isReady,
-            applyTheme,
-            toggleTheme,
-            cycleTheme,
-            setLight,
-            setDark,
-            setSystem,
+            set,
+            toggle,
+            cycle,
         ]
     );
 }
