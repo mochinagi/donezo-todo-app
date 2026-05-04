@@ -175,79 +175,82 @@ export function useTodoState(initialTodos: Todo[] = []) {
         const value = text.trim();
         if (!value) return;
 
-        const normalized = normalizeText(value);
-
         const todo: Todo = {
             id: crypto.randomUUID(),
             text: value,
             completed: false,
             createdAt: Date.now(),
-            normalized,
+            normalized: normalizeText(value),
         };
 
         dispatch({ type: "add", todo });
     }, [dispatch]);
 
     const toggleTodo = useCallback((id: string) => {
-        setTodos(prev => {
-            const target = prev.find(t => t.id === id);
-            if (!target) return prev;
+        const target = todos.find(t => t.id === id);
+        if (!target) return;
 
-            dispatch({
-                type: "toggle",
-                before: safeClone(target),
-                after: { ...target, completed: !target.completed },
-            });
-
-            return prev;
+        dispatch({
+            type: "toggle",
+            before: safeClone(target),
+            after: { ...target, completed: !target.completed },
         });
-    }, [dispatch]);
+    }, [todos, dispatch]);
+
+    const editTodo = useCallback((id: string, text: string) => {
+        const value = text.trim();
+        if (!value) return;
+
+        const target = todos.find(t => t.id === id);
+        if (!target) return;
+
+        const updated: Todo = {
+            ...target,
+            text: value,
+            normalized: normalizeText(value),
+        };
+
+        dispatch({
+            type: "edit",
+            before: safeClone(target),
+            after: updated,
+        });
+    }, [todos, dispatch]);
 
     const deleteTodo = useCallback((id: string) => {
-        setTodos(prev => {
-            const index = prev.findIndex(t => t.id === id);
-            if (index === -1) return prev;
+        const index = todos.findIndex(t => t.id === id);
+        if (index === -1) return;
 
-            dispatch({
-                type: "delete",
-                removed: [{ todo: prev[index], index }],
-            });
-
-            return prev;
+        dispatch({
+            type: "delete",
+            removed: [{ todo: todos[index], index }],
         });
-    }, [dispatch]);
+    }, [todos, dispatch]);
 
     const clearCompleted = useCallback(() => {
-        setTodos(prev => {
-            const removed = prev
-                .map((t, i) => ({ todo: t, index: i }))
-                .filter(r => r.todo.completed);
+        const removed = todos
+            .map((t, i) => ({ todo: t, index: i }))
+            .filter(r => r.todo.completed);
 
-            if (!removed.length) return prev;
+        if (!removed.length) return;
 
-            dispatch({ type: "clearCompleted", removed });
-            return prev;
-        });
-    }, [dispatch]);
+        dispatch({ type: "clearCompleted", removed });
+    }, [todos, dispatch]);
 
     const toggleAll = useCallback(() => {
-        setTodos(prev => {
-            const allDone = prev.every(t => t.completed);
+        const allDone = todos.every(t => t.completed);
 
-            const after = prev.map(t => ({
-                ...t,
-                completed: !allDone,
-            }));
+        const after = todos.map(t => ({
+            ...t,
+            completed: !allDone,
+        }));
 
-            dispatch({
-                type: "toggleAll",
-                before: safeClone(prev),
-                after,
-            });
-
-            return prev;
+        dispatch({
+            type: "toggleAll",
+            before: safeClone(todos),
+            after,
         });
-    }, [dispatch]);
+    }, [todos, dispatch]);
 
     const undo = useCallback(() => {
         const action = undoRef.current.pop();
@@ -296,6 +299,7 @@ export function useTodoState(initialTodos: Todo[] = []) {
 
         addTodo,
         toggleTodo,
+        editTodo,
         deleteTodo,
         clearCompleted,
         toggleAll,
