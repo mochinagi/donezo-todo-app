@@ -19,14 +19,8 @@ interface AddTodoProps {
     onAdd: OnAdd;
 }
 
-/* ========= utils ========= */
-
 const normalize = (v: string) =>
-    v
-        .replace(/\u3000/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, MAX_LENGTH);
+    v.replace(/\u3000/g, " ").replace(/\s+/g, " ").trim().slice(0, MAX_LENGTH);
 
 export default function AddTodo({
     input,
@@ -39,67 +33,53 @@ export default function AddTodo({
     const inputRef = useRef<HTMLInputElement>(null);
     const isComposingRef = useRef(false);
 
-    const todos = useTodoStore((s) => s.todos);
+    const normalizedList = useTodoStore((s) =>
+        s.todos.map((t) => t.normalized)
+    );
 
-    /* ========= derived ========= */
+    const existingSet = useMemo(
+        () => new Set(normalizedList),
+        [normalizedList]
+    );
 
-    const existingSet = useMemo(() => {
-        return new Set(
-            todos.map((t) => normalize(t.text).toLowerCase())
-        );
-    }, [todos]);
+    const normalizedInput = useMemo(
+        () => normalize(input),
+        [input]
+    );
 
-    const validateCore = useCallback(
+    const validate = useCallback(
         (value: string, set: Set<string>) => {
-            const v = normalize(value);
-            const lower = v.toLowerCase();
-
-            if (!v) return "入力してください";
-            if (v.length > MAX_LENGTH) return `最大${MAX_LENGTH}文字`;
-            if (set.has(lower)) return "既に存在します";
-
+            if (!value) return "入力してください";
+            if (value.length > MAX_LENGTH) return `最大${MAX_LENGTH}文字`;
+            if (set.has(value.toLowerCase())) return "既に存在します";
             return "";
         },
         []
     );
 
-    const normalizedInput = useMemo(() => normalize(input), [input]);
-
     const error = useMemo(() => {
         if (!touched && !input) return "";
-        return validateCore(normalizedInput, existingSet);
-    }, [normalizedInput, touched, input, existingSet, validateCore]);
-
-    const length = normalizedInput.length;
-
-    /* ========= actions ========= */
+        return validate(normalizedInput, existingSet);
+    }, [normalizedInput, touched, input, existingSet, validate]);
 
     const handleAdd = useCallback(async () => {
         if (isSubmitting) return;
 
-        const value = normalize(input);
-        const err = validateCore(value, existingSet);
+        const value = normalizedInput;
+        const err = validate(value, existingSet);
 
         if (err) {
             setTouched(true);
             return;
         }
 
+        setIsSubmitting(true);
+
         try {
-            setIsSubmitting(true);
-
-            // 再校验（防 race）
-            if (existingSet.has(value.toLowerCase())) {
-                toast.error("既に存在します");
-                return;
-            }
-
             await onAdd(value);
 
             setInput("");
             setTouched(false);
-
-            toast.success("追加しました");
 
             requestAnimationFrame(() => {
                 inputRef.current?.focus();
@@ -109,7 +89,7 @@ export default function AddTodo({
         } finally {
             setIsSubmitting(false);
         }
-    }, [input, onAdd, setInput, isSubmitting, existingSet, validateCore]);
+    }, [normalizedInput, validate, existingSet, onAdd, setInput, isSubmitting]);
 
     const handlePaste = useCallback(
         async (e: React.ClipboardEvent<HTMLInputElement>) => {
@@ -118,40 +98,39 @@ export default function AddTodo({
 
             e.preventDefault();
 
-            const baseSet = new Set(existingSet);
-
             const lines = text
                 .split("\n")
                 .map(normalize)
                 .filter(Boolean)
                 .slice(0, MAX_PASTE);
 
-            let success = 0;
-            let fail = 0;
+            const baseSet = new Set(existingSet);
 
-            for (const line of lines) {
+            const tasks = lines.map(async (line) => {
                 const lower = line.toLowerCase();
 
-                const err = validateCore(line, baseSet);
-
-                if (err) {
-                    fail++;
-                    continue;
+                if (validate(line, baseSet)) {
+                    return { ok: false };
                 }
 
                 try {
                     await onAdd(line);
                     baseSet.add(lower);
-                    success++;
+                    return { ok: true };
                 } catch {
-                    fail++;
+                    return { ok: false };
                 }
-            }
+            });
+
+            const results = await Promise.all(tasks);
+
+            const success = results.filter(r => r.ok).length;
+            const fail = results.length - success;
 
             if (success) toast.success(`${success}件追加`);
             if (fail) toast.error(`${fail}件失敗`);
         },
-        [existingSet, onAdd, validateCore]
+        [existingSet, onAdd, validate]
     );
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -168,17 +147,7 @@ export default function AddTodo({
         }
     };
 
-    /* ========= ui ========= */
-
-    const disabled =
-        !normalizedInput || isSubmitting || !!error;
-
-    const lengthColor =
-        length > MAX_LENGTH
-            ? "text-red-500"
-            : length > MAX_LENGTH * 0.8
-                ? "text-yellow-500"
-                : "text-gray-400";
+    const disabled = isSubmitting || !!error || !normalizedInput;
 
     return (
         <div className="p-6 border-b space-y-2">
@@ -194,9 +163,6 @@ export default function AddTodo({
                         onBlur={() => setTouched(true)}
                         onPaste={handlePaste}
                         onKeyDown={handleKeyDown}
-                        placeholder={
-                            isSubmitting ? "追加中..." : "タスクを入力"
-                        }
                         disabled={isSubmitting}
                         aria-invalid={!!error}
                         className={clsx(
@@ -209,6 +175,7 @@ export default function AddTodo({
                         onCompositionEnd={() => {
                             isComposingRef.current = false;
                         }}
+                        placeholder="タスクを入力"
                         autoFocus
                     />
 
@@ -217,13 +184,8 @@ export default function AddTodo({
                         className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                     />
 
-                    <span
-                        className={clsx(
-                            "absolute right-3 top-1/2 -translate-y-1/2 text-xs",
-                            lengthColor
-                        )}
-                    >
-                        {length}/{MAX_LENGTH}
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                        {input.length}/{MAX_LENGTH}
                     </span>
                 </div>
 
