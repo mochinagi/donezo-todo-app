@@ -22,17 +22,10 @@ interface InputProps extends React.ComponentProps<"input"> {
 
   describedBy?: string;
   disableEscapeClear?: boolean;
-}
 
-const mergeRefs = <T,>(...refs: React.Ref<T>[]) => {
-  return (node: T) => {
-    refs.forEach((ref) => {
-      if (!ref) return;
-      if (typeof ref === "function") ref(node);
-      else (ref as React.MutableRefObject<T | null>).current = node;
-    });
-  };
-};
+  onEnter?: (value: string) => void;
+  onEscape?: () => void;
+}
 
 const Input = React.forwardRef<InputRef, InputProps>(function Input(
   {
@@ -51,54 +44,54 @@ const Input = React.forwardRef<InputRef, InputProps>(function Input(
     onChange,
     onKeyDown,
     disableEscapeClear,
+    onEnter,
+    onEscape,
     ...props
   },
   ref
 ) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
   const isControlled = value !== undefined;
-  const modeRef = React.useRef(isControlled);
 
   const [internalValue, setInternalValue] = React.useState(
     defaultValue ?? ""
   );
 
-  const inputRef = React.useRef<HTMLInputElement>(null);
+  const isComposingRef = React.useRef(false);
 
-  const currentValue = modeRef.current
-    ? value ?? ""
-    : internalValue;
+  const currentValue = isControlled ? value ?? "" : internalValue;
 
   const sizeStyles = {
-    sm: "h-8 text-sm px-2",
-    md: "h-9 text-sm px-3",
-    lg: "h-11 text-base px-4",
+    sm: "h-8 px-2 text-sm",
+    md: "h-9 px-3 text-sm",
+    lg: "h-11 px-4 text-base",
   };
 
-  const showClear = !!clearable && !!currentValue && !rightIcon;
+  const showClear = clearable && !!currentValue;
 
   const emitChange = (next: string) => {
     const el = inputRef.current;
     if (!el) return;
 
-    const prototype = Object.getPrototypeOf(el);
-    const descriptor = Object.getOwnPropertyDescriptor(
-      prototype,
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
       "value"
-    );
+    )?.set;
 
-    descriptor?.set?.call(el, next);
+    nativeSetter?.call(el, next);
     el.dispatchEvent(new Event("input", { bubbles: true }));
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!modeRef.current) {
+    if (!isControlled) {
       setInternalValue(e.target.value);
     }
     onChange?.(e);
   };
 
   const handleClear = () => {
-    if (!modeRef.current) {
+    if (!isControlled) {
       setInternalValue("");
     }
 
@@ -111,9 +104,19 @@ const Input = React.forwardRef<InputRef, InputProps>(function Input(
   const handleKeyDownInternal = (
     e: React.KeyboardEvent<HTMLInputElement>
   ) => {
-    if (!disableEscapeClear && e.key === "Escape" && currentValue) {
-      e.stopPropagation();
-      handleClear();
+    if (isComposingRef.current) return;
+
+    if (e.key === "Enter") {
+      onEnter?.(currentValue);
+    }
+
+    if (e.key === "Escape") {
+      onEscape?.();
+
+      if (!disableEscapeClear && currentValue) {
+        e.stopPropagation();
+        handleClear();
+      }
     }
 
     onKeyDown?.(e);
@@ -128,9 +131,8 @@ const Input = React.forwardRef<InputRef, InputProps>(function Input(
   return (
     <div
       className={cn(
-        "relative w-full group",
-        currentValue && "has-value",
-        error && "has-error"
+        "relative w-full",
+        error && "text-red-500"
       )}
     >
       {leftIcon && (
@@ -140,50 +142,56 @@ const Input = React.forwardRef<InputRef, InputProps>(function Input(
       )}
 
       <input
-        ref={mergeRefs(inputRef)}
+        ref={inputRef}
         type={type}
         value={currentValue}
         onChange={handleChange}
         onKeyDown={handleKeyDownInternal}
+        onCompositionStart={() => (isComposingRef.current = true)}
+        onCompositionEnd={() => (isComposingRef.current = false)}
         aria-invalid={error || undefined}
         aria-describedby={describedBy}
         className={cn(
-          "w-full min-w-0 rounded-md border bg-transparent outline-none transition-all",
-          "placeholder:text-muted-foreground",
+          "w-full rounded-md border bg-transparent outline-none transition",
+          "placeholder:text-gray-400",
           "disabled:cursor-not-allowed disabled:opacity-50",
           sizeStyles[size],
 
           leftIcon && "pl-10",
-          (rightIcon || showClear) && "pr-10",
+          (rightIcon || showClear) && "pr-16",
 
-          "border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200",
-
-          error && "border-red-500 focus:border-red-500 focus:ring-red-200",
+          error
+            ? "border-red-500 focus:ring-2 focus:ring-red-200"
+            : "border-gray-300 focus:ring-2 focus:ring-blue-200 focus:border-blue-400",
 
           className
         )}
         {...props}
       />
 
-      {rightIcon && (
-        <button
-          type="button"
-          onClick={onRightIconClick}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-        >
-          {rightIcon}
-        </button>
-      )}
+      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+        {showClear && (
+          <button
+            type="button"
+            onClick={handleClear}
+            aria-label="clear input"
+            className="text-gray-400 hover:text-gray-600 px-1"
+          >
+            ×
+          </button>
+        )}
 
-      {showClear && (
-        <button
-          type="button"
-          onClick={handleClear}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-        >
-          ×
-        </button>
-      )}
+        {rightIcon && (
+          <button
+            type="button"
+            onClick={onRightIconClick}
+            aria-label="action"
+            className="text-gray-400 hover:text-gray-600 px-1"
+          >
+            {rightIcon}
+          </button>
+        )}
+      </div>
     </div>
   );
 });
