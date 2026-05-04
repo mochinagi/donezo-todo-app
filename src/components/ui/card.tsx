@@ -8,24 +8,14 @@ import { cva, type VariantProps } from "class-variance-authority";
 /* ================= VARIANTS ================= */
 
 const cardVariants = cva(
-  "rounded-xl flex flex-col transition-all duration-200 outline-none",
+  "rounded-lg flex flex-col border outline-none transition",
   {
     variants: {
       variant: {
-        default:
-          "bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-700",
-        outline:
-          "border border-gray-300 bg-transparent dark:border-gray-700",
-        elevated:
-          "bg-white shadow-md border border-gray-100 dark:bg-gray-900 dark:border-gray-800",
-        ghost:
-          "bg-transparent border-none shadow-none",
-      },
-      padding: {
-        none: "p-0",
-        sm: "p-3",
-        md: "p-5",
-        lg: "p-6",
+        default: "bg-white border-gray-200",
+        outline: "border-gray-300 bg-transparent",
+        elevated: "bg-white border-gray-100 shadow-sm",
+        ghost: "bg-transparent border-none",
       },
       interactive: {
         true: "cursor-pointer",
@@ -35,20 +25,24 @@ const cardVariants = cva(
         true: "opacity-50 pointer-events-none",
         false: "",
       },
+      density: {
+        compact: "text-sm",
+        comfortable: "text-sm",
+        spacious: "text-base",
+      },
     },
     compoundVariants: [
       {
         interactive: true,
         disabled: false,
-        class:
-          "hover:shadow-lg hover:-translate-y-1 active:scale-[0.98]",
+        class: "hover:shadow-md",
       },
     ],
     defaultVariants: {
       variant: "default",
-      padding: "md",
       interactive: false,
       disabled: false,
+      density: "comfortable",
     },
   }
 );
@@ -65,9 +59,9 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
     {
       className,
       variant,
-      padding,
       interactive,
       disabled,
+      density,
       asChild = false,
       onClick,
       onKeyDown,
@@ -77,10 +71,12 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ) => {
     const Comp = asChild ? Slot : "div";
 
-    const isClickable = interactive && !disabled && !asChild;
+    const clickable = interactive && !disabled;
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (!isClickable) return;
+      if (!clickable) return;
+
+      if (e.currentTarget !== e.target) return;
 
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
@@ -103,18 +99,14 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
       <Comp
         ref={ref}
         data-slot="card"
-        data-variant={variant}
-        data-interactive={interactive ? "true" : "false"}
-        data-disabled={disabled ? "true" : "false"}
-        tabIndex={isClickable ? 0 : undefined}
-        role={isClickable ? "button" : undefined}
+        tabIndex={clickable && !asChild ? 0 : undefined}
+        role={clickable && !asChild ? "button" : undefined}
         aria-disabled={disabled || undefined}
         onKeyDown={handleKeyDown}
         onClick={handleClick}
         className={cn(
-          cardVariants({ variant, padding, interactive, disabled }),
-          isClickable &&
-          "focus-visible:ring-2 focus-visible:ring-blue-400",
+          cardVariants({ variant, interactive, disabled, density }),
+          clickable && "focus-visible:ring-2 focus-visible:ring-blue-400",
           className
         )}
         {...props}
@@ -125,7 +117,7 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
 
 Card.displayName = "Card";
 
-/* ================= SUB COMPONENTS ================= */
+/* ================= SUB ================= */
 
 const CardHeader = React.forwardRef<
   HTMLDivElement,
@@ -134,7 +126,7 @@ const CardHeader = React.forwardRef<
   <div
     ref={ref}
     data-slot="card-header"
-    className={cn("flex flex-col gap-1.5", className)}
+    className={cn("px-4 pt-4 pb-2 flex flex-col gap-1", className)}
     {...props}
   />
 ));
@@ -147,7 +139,7 @@ const CardTitle = React.forwardRef<
   <h3
     ref={ref}
     data-slot="card-title"
-    className={cn("font-semibold text-lg tracking-tight", className)}
+    className={cn("font-semibold leading-tight", className)}
     {...props}
   />
 ));
@@ -160,24 +152,11 @@ const CardDescription = React.forwardRef<
   <p
     ref={ref}
     data-slot="card-description"
-    className={cn("text-sm text-gray-500 dark:text-gray-400", className)}
+    className={cn("text-gray-500 text-sm", className)}
     {...props}
   />
 ));
 CardDescription.displayName = "CardDescription";
-
-const CardAction = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    data-slot="card-action"
-    className={cn("self-end", className)}
-    {...props}
-  />
-));
-CardAction.displayName = "CardAction";
 
 const CardContent = React.forwardRef<
   HTMLDivElement,
@@ -186,7 +165,7 @@ const CardContent = React.forwardRef<
   <div
     ref={ref}
     data-slot="card-content"
-    className={cn("text-sm", className)}
+    className={cn("px-4 py-2", className)}
     {...props}
   />
 ));
@@ -200,13 +179,26 @@ const CardFooter = React.forwardRef<
     ref={ref}
     data-slot="card-footer"
     className={cn(
-      "flex items-center justify-between pt-2",
+      "px-4 pt-2 pb-4 flex items-center justify-between border-t border-gray-100",
       className
     )}
     {...props}
   />
 ));
 CardFooter.displayName = "CardFooter";
+
+const CardAction = React.forwardRef<
+  HTMLDivElement,
+  React.ComponentProps<"div">
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    data-slot="card-action"
+    className={cn("ml-auto", className)}
+    {...props}
+  />
+));
+CardAction.displayName = "CardAction";
 
 /* ================= EXPORT ================= */
 
