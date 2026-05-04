@@ -21,7 +21,7 @@ type Action =
     | { type: "clearCompleted"; removed: { todo: Todo; index: number }[] }
     | { type: "toggleAll"; before: Todo[]; after: Todo[] };
 
-const STORAGE_KEY = "donezo-todos-v5";
+const STORAGE_KEY = "donezo-todos-v6";
 const FILTER_KEY = "donezo-filter";
 const SEARCH_KEY = "donezo-search";
 const MAX_STACK = 50;
@@ -66,14 +66,11 @@ const applyAction = (todos: Todo[], action: Action): Todo[] => {
 
         case "reorder": {
             if (action.from === action.to) return todos;
-
             const arr = [...todos];
             const from = clamp(action.from, 0, arr.length - 1);
             const to = clamp(action.to, 0, arr.length - 1);
-
             const [moved] = arr.splice(from, 1);
             arr.splice(to, 0, moved);
-
             return arr;
         }
 
@@ -111,10 +108,8 @@ const revertAction = (todos: Todo[], action: Action): Todo[] => {
             const arr = [...todos];
             const from = clamp(action.to, 0, arr.length - 1);
             const to = clamp(action.from, 0, arr.length - 1);
-
             const [moved] = arr.splice(from, 1);
             arr.splice(to, 0, moved);
-
             return arr;
         }
 
@@ -172,7 +167,6 @@ export function useTodoState(initialTodos: Todo[] = []) {
             }
 
             redoRef.current = [];
-
             return next;
         });
     }, []);
@@ -183,43 +177,77 @@ export function useTodoState(initialTodos: Todo[] = []) {
 
         const normalized = normalizeText(value);
 
-        setTodos(prev => {
-            if (prev.some(t => t.normalized === normalized)) return prev;
+        const todo: Todo = {
+            id: crypto.randomUUID(),
+            text: value,
+            completed: false,
+            createdAt: Date.now(),
+            normalized,
+        };
 
-            const todo: Todo = {
-                id: crypto.randomUUID(),
-                text: value,
-                completed: false,
-                createdAt: Date.now(),
-                normalized,
-            };
-
-            const action: Action = { type: "add", todo };
-
-            undoRef.current.push(safeClone(action));
-            redoRef.current = [];
-
-            return applyAction(prev, action);
-        });
-    }, []);
+        dispatch({ type: "add", todo });
+    }, [dispatch]);
 
     const toggleTodo = useCallback((id: string) => {
         setTodos(prev => {
             const target = prev.find(t => t.id === id);
             if (!target) return prev;
 
-            const action: Action = {
+            dispatch({
                 type: "toggle",
                 before: safeClone(target),
                 after: { ...target, completed: !target.completed },
-            };
+            });
 
-            undoRef.current.push(safeClone(action));
-            redoRef.current = [];
-
-            return applyAction(prev, action);
+            return prev;
         });
-    }, []);
+    }, [dispatch]);
+
+    const deleteTodo = useCallback((id: string) => {
+        setTodos(prev => {
+            const index = prev.findIndex(t => t.id === id);
+            if (index === -1) return prev;
+
+            dispatch({
+                type: "delete",
+                removed: [{ todo: prev[index], index }],
+            });
+
+            return prev;
+        });
+    }, [dispatch]);
+
+    const clearCompleted = useCallback(() => {
+        setTodos(prev => {
+            const removed = prev
+                .map((t, i) => ({ todo: t, index: i }))
+                .filter(r => r.todo.completed);
+
+            if (!removed.length) return prev;
+
+            dispatch({ type: "clearCompleted", removed });
+            return prev;
+        });
+    }, [dispatch]);
+
+    const toggleAll = useCallback(() => {
+        setTodos(prev => {
+            const allDone = prev.every(t => t.completed);
+
+            const after = prev.map(t => ({
+                ...t,
+                completed: !allDone,
+            }));
+
+            dispatch({
+                type: "toggleAll",
+                before: safeClone(prev),
+                after,
+            });
+
+            return prev;
+        });
+    }, [dispatch]);
 
     const undo = useCallback(() => {
         const action = undoRef.current.pop();
@@ -240,17 +268,27 @@ export function useTodoState(initialTodos: Todo[] = []) {
     const filteredTodos = useMemo(() => {
         return todos.filter(t => {
             if (!t.normalized.includes(normalizedSearch)) return false;
-
             if (filter === "completed") return t.completed;
             if (filter === "active") return !t.completed;
-
             return true;
         });
     }, [todos, filter, normalizedSearch]);
 
+    const stats = useMemo(() => {
+        const total = todos.length;
+        const completed = todos.filter(t => t.completed).length;
+        return {
+            total,
+            completed,
+            active: total - completed,
+        };
+    }, [todos]);
+
     return {
         todos,
         filteredTodos,
+        stats,
+
         filter,
         setFilter,
         search,
@@ -258,6 +296,9 @@ export function useTodoState(initialTodos: Todo[] = []) {
 
         addTodo,
         toggleTodo,
+        deleteTodo,
+        clearCompleted,
+        toggleAll,
 
         undo,
         redo,
