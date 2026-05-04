@@ -1,6 +1,4 @@
-# ===============================
 # dependencies
-# ===============================
 /node_modules
 /.pnp
 .pnp.*
@@ -9,67 +7,56 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+.pnpm-store/
+.npm/
 
-# ===============================
 # build / output
-# ===============================
-/.next/
-/out/
-/build
-/dist
+.next/
+out/
+build/
+dist/
+.turbo/
+.cache/
+.swc/
 
-# ===============================
 # testing
-# ===============================
-/coverage
+coverage/
 
-# ===============================
 # logs
-# ===============================
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-*.log
 
-# ===============================
-# env (do NOT ignore example)
-# ===============================
+# env
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# keep example
+.env.*.local
+.env.*.backup
 !.env.example
 
-# ===============================
 # vercel
-# ===============================
 .vercel
 
-# ===============================
 # typescript
-# ===============================
 *.tsbuildinfo
 next-env.d.ts
 
-# ===============================
+# caches
+.eslintcache
+.stylelintcache
+
 # OS
-# ===============================
 .DS_Store
 Thumbs.db
 
-# ===============================
 # IDE / editor
-# ===============================
-.vscode/
+.vscode/*
+!.vscode/settings.json
 .idea/
 
-# ===============================
 # misc
-# ===============================
 *.pem
 *.tmp
 *.temp
