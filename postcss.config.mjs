@@ -3,36 +3,41 @@ import autoprefixer from "autoprefixer";
 import cssnano from "cssnano";
 import postcssPresetEnv from "postcss-preset-env";
 
-const isProd = process.env.NODE_ENV === "production";
+const env = process.env.NODE_ENV ?? "development";
+const isProd = env === "production";
 
-const plugins = [
+const basePlugins = [
   tailwindcss(),
 
   postcssPresetEnv({
     stage: 3,
+    autoprefixer: false,
     features: {
       "nesting-rules": true,
+      "custom-properties": false,
     },
   }),
 
-  autoprefixer(),
+  autoprefixer({
+    flexbox: "no-2009",
+  }),
 ];
 
-if (isProd) {
-  plugins.push(
-    cssnano({
-      preset: [
-        "default",
-        {
-          discardComments: { removeAll: true },
-          normalizeWhitespace: true,
-          zindex: false,
-        },
-      ],
-    })
-  );
-}
+const prodPlugins = [
+  cssnano({
+    preset: [
+      "default",
+      {
+        discardComments: { removeAll: true },
+        normalizeWhitespace: true,
+        colormin: true,
+        calc: true,
+        zindex: false,
+      },
+    ],
+  }),
+];
 
 export default {
-  plugins,
+  plugins: isProd ? [...basePlugins, ...prodPlugins] : basePlugins,
 };
