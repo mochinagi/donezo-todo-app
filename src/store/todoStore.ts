@@ -121,6 +121,11 @@ const buildRemoved = (todos: Todo[], ids: string[]) => {
         .filter(Boolean) as { todo: Todo; index: number }[];
 };
 
+const computeStats = (todos: Todo[]) => ({
+    total: todos.length,
+    completed: todos.filter(t => t.completed).length,
+});
+
 type TodoStore = {
     todos: Todo[];
     search: string;
@@ -149,21 +154,30 @@ type TodoStore = {
 
     reorderTodos: (from: number, to: number) => void;
 
+    clearCompleted: () => void;
+    markAllCompleted: () => void;
+    markAllActive: () => void;
+
     setSearch: (v: string) => void;
     setActiveCategory: (v: FilterType) => void;
 };
 
-const push = (state: TodoStore, action: Action, nextTodos: Todo[]) => ({
-    todos: nextTodos,
-    undoStack: [...state.undoStack, action].slice(-MAX_HISTORY),
-    redoStack: [],
-    total: nextTodos.length,
-    completed: nextTodos.filter(t => t.completed).length,
-});
+const push = (state: TodoStore, action: Action, nextTodos: Todo[]) => {
+    const stats = computeStats(nextTodos);
+
+    return {
+        ...state,
+        todos: nextTodos,
+        undoStack: [...state.undoStack, action].slice(-MAX_HISTORY),
+        redoStack: [],
+        total: stats.total,
+        completed: stats.completed,
+    };
+};
 
 export const useTodoStore = create<TodoStore>()(
     persist(
-        (set, get) => ({
+        (set) => ({
             todos: [],
             search: "",
             searchNormalized: "",
@@ -175,13 +189,13 @@ export const useTodoStore = create<TodoStore>()(
             total: 0,
             completed: 0,
 
-            addTodo: (text) => {
-                const value = text.trim();
-                if (!value) return;
-
-                const normalized = normalizeText(value);
-
+            addTodo: (text) =>
                 set((state) => {
+                    const value = text.trim();
+                    if (!value) return state;
+
+                    const normalized = normalizeText(value);
+
                     if (state.todos.some(t => t.normalized === normalized)) return state;
 
                     const now = Date.now();
@@ -199,19 +213,16 @@ export const useTodoStore = create<TodoStore>()(
                     };
 
                     const action: Action = { type: "add", todo };
-                    const next = apply(state.todos, action);
+                    return push(state, action, apply(state.todos, action));
+                }),
 
-                    return push(state, action, next);
-                });
-            },
-
-            updateTodo: (id, text) => {
-                const value = text.trim();
-                if (!value) return;
-
+            updateTodo: (id, text) =>
                 set((state) => {
                     const t = state.todos.find(t => t.id === id);
                     if (!t) return state;
+
+                    const value = text.trim();
+                    if (!value) return state;
 
                     const nextTodo = {
                         ...t,
@@ -222,13 +233,10 @@ export const useTodoStore = create<TodoStore>()(
                     };
 
                     const action: Action = { type: "update", before: t, after: nextTodo };
-                    const next = apply(state.todos, action);
+                    return push(state, action, apply(state.todos, action));
+                }),
 
-                    return push(state, action, next);
-                });
-            },
-
-            toggleTodo: (id) => {
+            toggleTodo: (id) =>
                 set((state) => {
                     const t = state.todos.find(t => t.id === id);
                     if (!t) return state;
@@ -241,18 +249,15 @@ export const useTodoStore = create<TodoStore>()(
                     };
 
                     const action: Action = { type: "toggle", before: t, after: nextTodo };
-                    const next = apply(state.todos, action);
+                    return push(state, action, apply(state.todos, action));
+                }),
 
-                    return push(state, action, next);
-                });
-            },
-
-            toggleMany: (ids) => {
+            toggleMany: (ids) =>
                 set((state) => {
                     const setIds = new Set(ids);
                     const before = state.todos.filter(t => setIds.has(t.id));
 
-                    const afterTodos = state.todos.map(t =>
+                    const after = state.todos.map(t =>
                         setIds.has(t.id)
                             ? { ...t, completed: !t.completed, updatedAt: Date.now() }
                             : t
@@ -261,18 +266,17 @@ export const useTodoStore = create<TodoStore>()(
                     const action: Action = {
                         type: "toggleAll",
                         before,
-                        after: afterTodos,
+                        after,
                     };
 
-                    return push(state, action, afterTodos);
-                });
-            },
+                    return push(state, action, after);
+                }),
 
-            toggleAll: () => {
+            toggleAll: () =>
                 set((state) => {
                     const allDone = state.todos.every(t => t.completed);
 
-                    const nextTodos = state.todos.map(t => ({
+                    const next = state.todos.map(t => ({
                         ...t,
                         completed: !allDone,
                         updatedAt: Date.now(),
@@ -281,97 +285,130 @@ export const useTodoStore = create<TodoStore>()(
                     const action: Action = {
                         type: "toggleAll",
                         before: state.todos,
-                        after: nextTodos,
+                        after: next,
                     };
 
-                    return push(state, action, nextTodos);
-                });
-            },
+                    return push(state, action, next);
+                }),
 
-            deleteTodo: (id) => {
+            deleteTodo: (id) =>
                 set((state) => {
                     const removed = buildRemoved(state.todos, [id]);
                     if (!removed.length) return state;
 
                     const action: Action = { type: "delete", removed };
-                    const next = apply(state.todos, action);
+                    return push(state, action, apply(state.todos, action));
+                }),
 
-                    return push(state, action, next);
-                });
-            },
-
-            setPriority: (id, p) => {
+            setPriority: (id, p) =>
                 set((state) => {
                     const t = state.todos.find(t => t.id === id);
                     if (!t) return state;
 
-                    const nextTodo = { ...t, priority: p, updatedAt: Date.now() };
+                    const next = { ...t, priority: p, updatedAt: Date.now() };
+                    const action: Action = { type: "update", before: t, after: next };
 
-                    const action: Action = { type: "update", before: t, after: nextTodo };
-                    const next = apply(state.todos, action);
+                    return push(state, action, apply(state.todos, action));
+                }),
 
-                    return push(state, action, next);
-                });
-            },
-
-            togglePinned: (id) => {
+            togglePinned: (id) =>
                 set((state) => {
                     const t = state.todos.find(t => t.id === id);
                     if (!t) return state;
 
-                    const nextTodo = { ...t, pinned: !t.pinned, updatedAt: Date.now() };
+                    const next = { ...t, pinned: !t.pinned, updatedAt: Date.now() };
+                    const action: Action = { type: "update", before: t, after: next };
 
-                    const action: Action = { type: "update", before: t, after: nextTodo };
-                    const next = apply(state.todos, action);
+                    return push(state, action, apply(state.todos, action));
+                }),
 
-                    return push(state, action, next);
-                });
-            },
-
-            reorderTodos: (from, to) => {
+            reorderTodos: (from, to) =>
                 set((state) => {
                     const action: Action = { type: "reorder", from, to };
-                    const next = apply(state.todos, action);
+                    return push(state, action, apply(state.todos, action));
+                }),
 
-                    return push(state, action, next);
-                });
-            },
-
-            undo: () => {
+            undo: () =>
                 set((state) => {
                     const action = state.undoStack.at(-1);
                     if (!action) return state;
 
                     const next = revert(state.todos, action);
+                    const stats = computeStats(next);
 
                     return {
                         ...state,
                         todos: next,
                         undoStack: state.undoStack.slice(0, -1),
                         redoStack: [...state.redoStack, action].slice(-MAX_HISTORY),
-                        total: next.length,
-                        completed: next.filter(t => t.completed).length,
+                        total: stats.total,
+                        completed: stats.completed,
                     };
-                });
-            },
+                }),
 
-            redo: () => {
+            redo: () =>
                 set((state) => {
                     const action = state.redoStack.at(-1);
                     if (!action) return state;
 
                     const next = apply(state.todos, action);
+                    const stats = computeStats(next);
 
                     return {
                         ...state,
                         todos: next,
                         redoStack: state.redoStack.slice(0, -1),
                         undoStack: [...state.undoStack, action].slice(-MAX_HISTORY),
-                        total: next.length,
-                        completed: next.filter(t => t.completed).length,
+                        total: stats.total,
+                        completed: stats.completed,
                     };
-                });
-            },
+                }),
+
+            clearCompleted: () =>
+                set((state) => {
+                    const removed = buildRemoved(
+                        state.todos,
+                        state.todos.filter(t => t.completed).map(t => t.id)
+                    );
+                    if (!removed.length) return state;
+
+                    const action: Action = { type: "delete", removed };
+                    return push(state, action, apply(state.todos, action));
+                }),
+
+            markAllCompleted: () =>
+                set((state) => {
+                    const next = state.todos.map(t => ({
+                        ...t,
+                        completed: true,
+                        updatedAt: Date.now(),
+                    }));
+
+                    const action: Action = {
+                        type: "toggleAll",
+                        before: state.todos,
+                        after: next,
+                    };
+
+                    return push(state, action, next);
+                }),
+
+            markAllActive: () =>
+                set((state) => {
+                    const next = state.todos.map(t => ({
+                        ...t,
+                        completed: false,
+                        updatedAt: Date.now(),
+                    }));
+
+                    const action: Action = {
+                        type: "toggleAll",
+                        before: state.todos,
+                        after: next,
+                    };
+
+                    return push(state, action, next);
+                }),
 
             setSearch: (v) =>
                 set({
@@ -383,7 +420,7 @@ export const useTodoStore = create<TodoStore>()(
         }),
         {
             name: "todo-storage",
-            version: 20,
+            version: 21,
             storage: createJSONStorage(() => localStorage),
             partialize: (state) => ({
                 todos: state.todos,
