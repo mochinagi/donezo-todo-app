@@ -4,8 +4,10 @@ import { useMemo, useCallback, useState } from "react";
 import { toast } from "@/components/ui/toaster";
 import { Loader2 } from "lucide-react";
 
+/* ================= types ================= */
+
 type Todo = {
-    id: number;
+    id: string;
     text: string;
     completed: boolean;
 };
@@ -13,22 +15,31 @@ type Todo = {
 interface FooterProps {
     total: number;
     completed: number;
-    onClearCompleted: () => Todo[] | Promise<Todo[]>;
+    onClearCompleted: () => Promise<Todo[]>;
     onRestore?: (todos: Todo[]) => void;
     showPercentage?: boolean;
 }
 
-const TEXT = {
-    empty: "タスクがありません",
-    done: "すべて完了",
-    almost: "もう少し",
-    good: "進行中",
-    started: "開始済み",
-    notStarted: "未開始",
-};
+/* ================= utils ================= */
 
 const clamp = (n: number, min: number, max: number) =>
     Math.max(min, Math.min(max, n));
+
+const computeProgress = (total: number, completed: number) => {
+    if (total === 0) return 0;
+    return clamp(Math.round((completed / total) * 100), 0, 100);
+};
+
+const getStatus = (total: number, progress: number) => {
+    if (total === 0) return { text: "タスクがありません", color: "bg-gray-400" };
+    if (progress === 100) return { text: "すべて完了", color: "bg-green-500" };
+    if (progress >= 80) return { text: "もう少し", color: "bg-purple-500" };
+    if (progress >= 50) return { text: "進行中", color: "bg-blue-500" };
+    if (progress > 0) return { text: "開始済み", color: "bg-blue-400" };
+    return { text: "未開始", color: "bg-gray-400" };
+};
+
+/* ================= component ================= */
 
 export default function Footer({
     total,
@@ -41,61 +52,53 @@ export default function Footer({
 
     const remaining = total - completed;
 
-    const progress = useMemo(() => {
-        if (total === 0) return 0;
-        return clamp(Math.round((completed / total) * 100), 0, 100);
-    }, [total, completed]);
+    const progress = useMemo(
+        () => computeProgress(total, completed),
+        [total, completed]
+    );
 
-    const status = useMemo(() => {
-        if (total === 0) return { text: TEXT.empty, color: "bg-gray-400" };
+    const status = useMemo(
+        () => getStatus(total, progress),
+        [total, progress]
+    );
 
-        if (progress === 100) return { text: TEXT.done, color: "bg-green-500" };
-        if (progress >= 80) return { text: TEXT.almost, color: "bg-purple-500" };
-        if (progress >= 50) return { text: TEXT.good, color: "bg-blue-500" };
-        if (progress > 0) return { text: TEXT.started, color: "bg-blue-400" };
-
-        return { text: TEXT.notStarted, color: "bg-gray-400" };
-    }, [total, progress]);
-
-    const handleClear = useCallback(() => {
+    const handleClear = useCallback(async () => {
         if (completed === 0 || loading) {
             toast.info("削除対象なし");
             return;
         }
 
-        toast.action(
-            "完了済みタスクを削除しますか？",
-            "削除",
-            async () => {
-                try {
-                    setLoading(true);
+        toast.action("完了済みタスクを削除しますか？", "削除", async () => {
+            try {
+                setLoading(true);
 
-                    const result = await onClearCompleted();
-                    const removedTodos = result ?? [];
+                const removed = await onClearCompleted();
 
-                    toast.success("削除しました", `${removedTodos.length}件`, {
-                        id: "clear-success",
-                    });
+                toast.success(
+                    "削除しました",
+                    `${removed.length}件`,
+                    { id: "clear-success" }
+                );
 
-                    if (onRestore && removedTodos.length) {
-                        toast.action(
-                            "元に戻せます",
-                            "戻す",
-                            () => onRestore(removedTodos),
-                            { id: "restore-action" }
-                        );
-                    }
-                } catch {
-                    toast.error("失敗しました");
-                } finally {
-                    setLoading(false);
+                if (onRestore && removed.length > 0) {
+                    toast.action(
+                        "元に戻す",
+                        "戻す",
+                        () => onRestore(removed),
+                        { id: "restore-action" }
+                    );
                 }
+            } catch {
+                toast.error("削除に失敗しました");
+            } finally {
+                setLoading(false);
             }
-        );
+        });
     }, [completed, loading, onClearCompleted, onRestore]);
 
     return (
         <footer className="bg-white/80 dark:bg-gray-900/80 backdrop-blur border-t border-gray-200 dark:border-gray-700 px-6 py-4 space-y-4 max-w-2xl mx-auto">
+
             <div className="flex justify-between items-center text-sm text-gray-600 dark:text-gray-300">
                 <span aria-live="polite">
                     {total}件中 {completed}件（残り {remaining}件）
