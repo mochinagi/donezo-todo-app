@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useCallback, useRef } from "react";
+import { memo, useMemo, useCallback, useRef, useEffect } from "react";
 import {
     CheckCircle2,
     Circle,
@@ -26,7 +26,7 @@ interface SidebarItemProps {
     active: boolean;
     count: number;
     onSelect: (id: CategoryId) => void;
-    setRef: (el: HTMLButtonElement | null) => void;
+    onRef: (el: HTMLButtonElement | null) => void;
 }
 
 const SidebarItem = memo(function SidebarItem({
@@ -36,11 +36,11 @@ const SidebarItem = memo(function SidebarItem({
     active,
     count,
     onSelect,
-    setRef,
+    onRef,
 }: SidebarItemProps) {
     return (
         <button
-            ref={setRef}
+            ref={onRef}
             type="button"
             role="tab"
             aria-selected={active}
@@ -74,31 +74,37 @@ const SidebarItem = memo(function SidebarItem({
 });
 
 export default function Sidebar() {
-    const { total, completed, activeCategory, setActiveCategory } =
+    const { todos, activeCategory, setActiveCategory } =
         useTodoStore(
             (s) => ({
-                total: s.total,
-                completed: s.completed,
+                todos: s.todos,
                 activeCategory: s.activeCategory,
                 setActiveCategory: s.setActiveCategory,
             }),
             shallow
         );
 
-    const counts = useMemo(
-        () => ({
+    const counts = useMemo(() => {
+        const total = todos.length;
+        const completed = todos.filter(t => t.completed).length;
+
+        return {
             tasks: total,
             active: total - completed,
             completed,
-        }),
-        [total, completed]
-    );
+        };
+    }, [todos]);
 
     const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-    const focusIndex = categories.findIndex(
-        (c) => c.id === activeCategory
+    const focusIndex = useMemo(
+        () => categories.findIndex(c => c.id === activeCategory),
+        [activeCategory]
     );
+
+    useEffect(() => {
+        itemRefs.current[focusIndex]?.focus();
+    }, [focusIndex]);
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent) => {
@@ -126,14 +132,16 @@ export default function Sidebar() {
                 return;
             }
 
-            const el = itemRefs.current[nextIndex];
-            el?.focus();
+            itemRefs.current[nextIndex]?.focus();
         },
         [focusIndex, setActiveCategory]
     );
 
     return (
-        <aside className="w-60 border-r border-gray-200 bg-white flex flex-col">
+        <aside
+            className="w-60 border-r border-gray-200 bg-white flex flex-col"
+            aria-label="sidebar"
+        >
             <div className="px-5 py-4 border-b text-xl font-semibold">
                 Donezo
             </div>
@@ -153,7 +161,9 @@ export default function Sidebar() {
                         active={activeCategory === cat.id}
                         count={counts[cat.id]}
                         onSelect={setActiveCategory}
-                        setRef={(el) => (itemRefs.current[index] = el)}
+                        onRef={(el) => {
+                            itemRefs.current[index] = el;
+                        }}
                     />
                 ))}
             </nav>
