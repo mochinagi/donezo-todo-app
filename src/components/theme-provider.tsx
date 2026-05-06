@@ -4,6 +4,7 @@ import {
     ThemeProvider as NextThemesProvider,
     useTheme,
 } from "next-themes";
+
 import {
     useEffect,
     useState,
@@ -36,35 +37,19 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 }
 
 export function useAppTheme() {
-    const { theme, setTheme, resolvedTheme, systemTheme } = useTheme();
-
+    const { theme, setTheme, resolvedTheme } = useTheme();
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
         setMounted(true);
     }, []);
 
-    const currentTheme: AppTheme = (theme ?? "system") as AppTheme;
+    const currentTheme = (theme ?? "system") as AppTheme;
 
-    const fallbackSystem = (() => {
-        if (typeof window === "undefined") return "light";
-        return window.matchMedia("(prefers-color-scheme: dark)").matches
-            ? "dark"
-            : "light";
-    })();
+    const resolved = (resolvedTheme ?? "light") as ResolvedTheme;
 
-    const resolved: ResolvedTheme =
-        mounted && resolvedTheme
-            ? (resolvedTheme as ResolvedTheme)
-            : fallbackSystem;
-
-    const system: ResolvedTheme =
-        mounted && systemTheme
-            ? (systemTheme as ResolvedTheme)
-            : fallbackSystem;
-
-    const isDark = resolved === "dark";
-    const isLight = resolved === "light";
+    const isDark = mounted && resolved === "dark";
+    const isLight = mounted && resolved === "light";
     const isSystem = currentTheme === "system";
 
     const set = useCallback(
@@ -74,17 +59,12 @@ export function useAppTheme() {
         [setTheme]
     );
 
-    const toggle = useCallback(() => {
-        if (currentTheme === "system") {
-            set(resolved === "dark" ? "light" : "dark");
-            return;
-        }
-        set(currentTheme === "dark" ? "light" : "dark");
-    }, [currentTheme, resolved, set]);
-
-    const order: AppTheme[] = ["light", "dark", "system"];
+    const toggleDarkLight = useCallback(() => {
+        set(resolved === "dark" ? "light" : "dark");
+    }, [resolved, set]);
 
     const cycle = useCallback(() => {
+        const order: AppTheme[] = ["light", "dark", "system"];
         const index = order.indexOf(currentTheme);
         const next = order[(index + 1) % order.length];
         set(next);
@@ -94,33 +74,29 @@ export function useAppTheme() {
         () => ({
             theme: currentTheme,
             resolvedTheme: resolved,
-            systemTheme: system,
-
-            availableThemes: order,
+            isHydrated: mounted,
 
             state: {
                 isDark,
                 isLight,
                 isSystem,
-                isHydrated: mounted,
             },
 
             actions: {
                 set,
-                toggle,
+                toggleDarkLight,
                 cycle,
             },
         }),
         [
             currentTheme,
             resolved,
-            system,
+            mounted,
             isDark,
             isLight,
             isSystem,
-            mounted,
             set,
-            toggle,
+            toggleDarkLight,
             cycle,
         ]
     );
