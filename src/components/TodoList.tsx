@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Trash2, CheckCircle2, GripVertical } from "lucide-react";
 import { useTodoStore } from "@/store/todoStore";
@@ -26,33 +26,16 @@ import {
 
 import { CSS } from "@dnd-kit/utilities";
 
-/* ================= TYPES ================= */
-
-type Filter = "all" | "active" | "completed";
-
-type Todo = {
-    id: number;
-    text: string;
-    completed: boolean;
-    createdAt: number;
-};
-
-/* ================= UTILS ================= */
-
-const normalize = (v: string) =>
-    v.trim().replace(/\s+/g, " ").slice(0, 200);
-
 /* ================= INPUT ================= */
 
-const TodoInput = memo(function TodoInput({ pushHistory }: { pushHistory: () => void }) {
+const TodoInput = memo(function TodoInput() {
     const addTodo = useTodoStore(s => s.addTodo);
     const todos = useTodoStore(s => s.todos);
 
     const [value, setValue] = useState("");
-    const inputRef = useRef<HTMLInputElement>(null);
 
     const handleAdd = useCallback(() => {
-        const v = normalize(value);
+        const v = value.trim();
         if (!v) return;
 
         if (todos.some(t => t.text.toLowerCase() === v.toLowerCase())) {
@@ -60,16 +43,13 @@ const TodoInput = memo(function TodoInput({ pushHistory }: { pushHistory: () => 
             return;
         }
 
-        pushHistory();
         addTodo(v);
         setValue("");
-        inputRef.current?.focus();
-    }, [value, addTodo, todos, pushHistory]);
+    }, [value, addTodo, todos]);
 
     return (
         <div className="flex gap-2">
             <input
-                ref={inputRef}
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 onKeyDown={(e) => {
@@ -81,7 +61,7 @@ const TodoInput = memo(function TodoInput({ pushHistory }: { pushHistory: () => 
             />
             <button
                 onClick={handleAdd}
-                disabled={!normalize(value)}
+                disabled={!value.trim()}
                 className="px-4 border rounded disabled:opacity-40"
             >
                 add
@@ -92,13 +72,20 @@ const TodoInput = memo(function TodoInput({ pushHistory }: { pushHistory: () => 
 
 /* ================= ITEM ================= */
 
-const TodoItem = memo(function TodoItem({ id, text, completed, pushHistory }: Todo & { pushHistory: () => void }) {
-    const { toggleTodo, deleteTodo, updateTodo, todos } = useTodoStore(
+const TodoItem = memo(function TodoItem({
+    id,
+    text,
+    completed,
+}: {
+    id: string;
+    text: string;
+    completed: boolean;
+}) {
+    const { toggleTodo, deleteTodo, updateTodo } = useTodoStore(
         (s) => ({
             toggleTodo: s.toggleTodo,
             deleteTodo: s.deleteTodo,
             updateTodo: s.updateTodo,
-            todos: s.todos
         }),
         shallow
     );
@@ -127,20 +114,13 @@ const TodoItem = memo(function TodoItem({ id, text, completed, pushHistory }: To
         transition,
     };
 
-    const handleSave = useCallback(() => {
-        const v = normalize(editText);
-        if (!v) {
-            setEditing(false);
-            return;
-        }
-
-        if (v !== text && !todos.some(t => t.text.toLowerCase() === v.toLowerCase())) {
-            pushHistory();
+    const save = useCallback(() => {
+        const v = editText.trim();
+        if (v && v !== text) {
             updateTodo(id, v);
         }
-
         setEditing(false);
-    }, [editText, id, updateTodo, text, todos, pushHistory]);
+    }, [editText, id, text, updateTodo]);
 
     return (
         <div ref={setNodeRef} style={style}>
@@ -151,10 +131,7 @@ const TodoItem = memo(function TodoItem({ id, text, completed, pushHistory }: To
                         <GripVertical size={18} />
                     </div>
 
-                    <button onClick={() => {
-                        pushHistory();
-                        toggleTodo(id);
-                    }}>
+                    <button onClick={() => toggleTodo(id)}>
                         <CheckCircle2 />
                     </button>
 
@@ -163,9 +140,9 @@ const TodoItem = memo(function TodoItem({ id, text, completed, pushHistory }: To
                             autoFocus
                             value={editText}
                             onChange={(e) => setEditText(e.target.value)}
-                            onBlur={handleSave}
+                            onBlur={save}
                             onKeyDown={(e) => {
-                                if (e.key === "Enter") handleSave();
+                                if (e.key === "Enter") save();
                                 if (e.key === "Escape") setEditing(false);
                             }}
                             className="flex-1 border-b outline-none"
@@ -179,12 +156,10 @@ const TodoItem = memo(function TodoItem({ id, text, completed, pushHistory }: To
                         </span>
                     )}
 
-                    <button onClick={() => {
-                        pushHistory();
-                        deleteTodo(id);
-                    }}>
+                    <button onClick={() => deleteTodo(id)}>
                         <Trash2 size={18} />
                     </button>
+
                 </CardContent>
             </Card>
         </div>
@@ -194,67 +169,31 @@ const TodoItem = memo(function TodoItem({ id, text, completed, pushHistory }: To
 /* ================= MAIN ================= */
 
 export default function TodoList() {
-    const { todos, setTodos, clearCompleted } =
-        useTodoStore(
-            (s) => ({
-                todos: s.todos,
-                setTodos: s.setTodos,
-                clearCompleted: s.clearCompleted,
-            }),
-            shallow
-        );
+    const {
+        todos,
+        reorderTodos,
+        clearCompleted,
+        undo,
+        redo,
+    } = useTodoStore(
+        (s) => ({
+            todos: s.todos,
+            reorderTodos: s.reorderTodos,
+            clearCompleted: s.clearCompleted,
+            undo: s.undo,
+            redo: s.redo,
+        }),
+        shallow
+    );
 
-    const [activeId, setActiveId] = useState<number | null>(null);
-    const [filter, setFilter] = useState<Filter>("all");
+    const [activeId, setActiveId] = useState<string | null>(null);
+    const [filter, setFilter] = useState<"all" | "active" | "completed">("all");
     const [search, setSearch] = useState("");
 
-    const historyRef = useRef<Todo[][]>([]);
-    const redoRef = useRef<Todo[][]>([]);
-
-    const pushHistory = () => {
-        historyRef.current.push(structuredClone(todos));
-        if (historyRef.current.length > 50) historyRef.current.shift();
-        redoRef.current = [];
-    };
-
-    const undo = () => {
-        const prev = historyRef.current.pop();
-        if (prev) {
-            redoRef.current.push(structuredClone(todos));
-            setTodos(prev);
-        }
-    };
-
-    const redo = () => {
-        const next = redoRef.current.pop();
-        if (next) {
-            historyRef.current.push(structuredClone(todos));
-            setTodos(next);
-        }
-    };
-
-    /* localStorage */
-
-    useEffect(() => {
-        try {
-            const saved = localStorage.getItem("todos_v5");
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                if (parsed.version === 1 && Array.isArray(parsed.data)) {
-                    setTodos(parsed.data);
-                }
-            }
-        } catch { }
-    }, [setTodos]);
-
-    useEffect(() => {
-        localStorage.setItem(
-            "todos_v5",
-            JSON.stringify({ version: 1, data: todos })
-        );
-    }, [todos]);
-
-    /* filter */
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+        useSensor(KeyboardSensor)
+    );
 
     const filteredTodos = useMemo(() => {
         return todos
@@ -268,25 +207,14 @@ export default function TodoList() {
             );
     }, [todos, filter, search]);
 
-    const remaining = useMemo(
-        () => todos.filter(t => !t.completed).length,
-        [todos]
-    );
+    const activeTodo = todos.find(t => t.id === activeId);
 
-    /* DND */
-
-    const sensors = useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-        useSensor(KeyboardSensor)
-    );
-
-    const handleDragStart = (event: DragStartEvent) => {
-        setActiveId(event.active.id as number);
+    const onDragStart = (event: DragStartEvent) => {
+        setActiveId(event.active.id as string);
     };
 
-    const handleDragEnd = (event: DragEndEvent) => {
+    const onDragEnd = (event: DragEndEvent) => {
         setActiveId(null);
-        if (filter !== "all") return;
 
         const { active, over } = event;
         if (!over || active.id === over.id) return;
@@ -294,27 +222,19 @@ export default function TodoList() {
         const oldIndex = todos.findIndex(t => t.id === active.id);
         const newIndex = todos.findIndex(t => t.id === over.id);
 
-        pushHistory();
-
-        const newTodos = [...todos];
-        const [moved] = newTodos.splice(oldIndex, 1);
-        newTodos.splice(newIndex, 0, moved);
-
-        setTodos(newTodos);
+        reorderTodos(oldIndex, newIndex);
     };
-
-    const activeTodo = todos.find(t => t.id === activeId);
 
     return (
         <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
         >
             <div className="max-w-2xl mx-auto p-6 space-y-4">
 
-                <TodoInput pushHistory={pushHistory} />
+                <TodoInput />
 
                 <input
                     placeholder="search..."
@@ -324,22 +244,17 @@ export default function TodoList() {
                 />
 
                 <div className="flex justify-between text-sm">
-                    <span>{remaining} items left</span>
+                    <span>{todos.filter(t => !t.completed).length} items left</span>
 
                     <div className="flex gap-3">
                         <button onClick={undo}>undo</button>
                         <button onClick={redo}>redo</button>
-                        <button onClick={() => {
-                            pushHistory();
-                            clearCompleted();
-                        }}>
-                            clear completed
-                        </button>
+                        <button onClick={clearCompleted}>clear completed</button>
                     </div>
                 </div>
 
                 <div className="flex gap-2">
-                    {(["all", "active", "completed"] as Filter[]).map(f => (
+                    {(["all", "active", "completed"] as const).map(f => (
                         <button
                             key={f}
                             onClick={() => setFilter(f)}
@@ -360,7 +275,7 @@ export default function TodoList() {
                         </div>
                     ) : (
                         filteredTodos.map(todo => (
-                            <TodoItem key={todo.id} {...todo} pushHistory={pushHistory} />
+                            <TodoItem key={todo.id} {...todo} />
                         ))
                     )}
                 </SortableContext>
