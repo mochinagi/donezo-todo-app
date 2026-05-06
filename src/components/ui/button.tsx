@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
-/* styles */
+/* ================= styles ================= */
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none",
@@ -36,7 +36,7 @@ const buttonVariants = cva(
   }
 );
 
-/* types */
+/* ================= types ================= */
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
@@ -45,9 +45,50 @@ export interface ButtonProps
   loading?: boolean;
   loadingText?: string;
   icon?: React.ReactNode;
+  iconOnly?: boolean;
 }
 
-/* component */
+/* ================= internal ================= */
+
+function ButtonContent({
+  loading,
+  loadingText,
+  icon,
+  iconOnly,
+  children,
+}: {
+  loading?: boolean;
+  loadingText?: string;
+  icon?: React.ReactNode;
+  iconOnly?: boolean;
+  children?: React.ReactNode;
+}) {
+  if (loading) {
+    return (
+      <>
+        <Loader2 className="animate-spin shrink-0" size={16} />
+        {!iconOnly && (
+          <span className="truncate">
+            {loadingText ?? children}
+          </span>
+        )}
+      </>
+    );
+  }
+
+  if (iconOnly) {
+    return icon ?? children;
+  }
+
+  return (
+    <>
+      {icon}
+      <span className="truncate">{children}</span>
+    </>
+  );
+}
+
+/* ================= component ================= */
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
@@ -59,9 +100,9 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       loading = false,
       loadingText,
       icon,
+      iconOnly = false,
       children,
       disabled,
-      onClick,
       type,
       ...props
     },
@@ -70,42 +111,6 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const Comp = asChild ? Slot : "button";
 
     const isDisabled = disabled || loading;
-    const isIconOnly = size === "icon";
-
-    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-      if (isDisabled) {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
-      onClick?.(e);
-    };
-
-    const content = (() => {
-      if (loading) {
-        return (
-          <>
-            <Loader2 className="animate-spin shrink-0" size={16} />
-            {!isIconOnly && (
-              <span className="truncate">
-                {loadingText ?? children}
-              </span>
-            )}
-          </>
-        );
-      }
-
-      if (isIconOnly) {
-        return icon ?? children;
-      }
-
-      return (
-        <>
-          {icon}
-          <span className="truncate">{children}</span>
-        </>
-      );
-    })();
 
     return (
       <Comp
@@ -119,10 +124,16 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           className
         )}
         disabled={!asChild ? isDisabled : undefined}
-        onClick={handleClick}
         {...props}
       >
-        {content}
+        <ButtonContent
+          loading={loading}
+          loadingText={loadingText}
+          icon={icon}
+          iconOnly={iconOnly}
+        >
+          {children}
+        </ButtonContent>
       </Comp>
     );
   }
