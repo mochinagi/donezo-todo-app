@@ -13,17 +13,19 @@ export interface Todo {
     completed: boolean;
     priority: Priority;
     pinned: boolean;
+    order: number;
     createdAt: number;
     updatedAt: number;
-    lastViewedAt: number;
 }
 
 export type FilterType = "tasks" | "completed" | "active";
 
 const MAX_HISTORY = 50;
 
-const normalizeText = (v: string) =>
-    v.trim().replace(/\s+/g, " ").toLowerCase();
+const normalizeText = (value: string) =>
+    value.trim().replace(/\s+/g, " ").toLowerCase();
+
+const now = () => Date.now();
 
 const priorityRank: Record<Priority, number> = {
     high: 3,
@@ -31,20 +33,35 @@ const priorityRank: Record<Priority, number> = {
     low: 1,
 };
 
-const sortTodos = (todos: Todo[]) =>
-    [...todos].sort((a, b) => {
-        if (a.pinned !== b.pinned) return Number(b.pinned) - Number(a.pinned);
-        if (a.priority !== b.priority) return priorityRank[b.priority] - priorityRank[a.priority];
-        return b.lastViewedAt - a.lastViewedAt;
+const sortTodos = (todos: Todo[]) => {
+    return [...todos].sort((a, b) => {
+        if (a.pinned !== b.pinned) {
+            return Number(b.pinned) - Number(a.pinned);
+        }
+
+        if (a.priority !== b.priority) {
+            return priorityRank[b.priority] - priorityRank[a.priority];
+        }
+
+        if (a.order !== b.order) {
+            return a.order - b.order;
+        }
+
+        return b.updatedAt - a.updatedAt;
     });
+};
+
+type RemovedItem = {
+    todo: Todo;
+    index: number;
+};
 
 type Action =
     | { type: "add"; todo: Todo }
-    | { type: "delete"; removed: { todo: Todo; index: number }[] }
+    | { type: "delete"; removed: RemovedItem[] }
     | { type: "update"; before: Todo; after: Todo }
-    | { type: "toggle"; before: Todo; after: Todo }
-    | { type: "toggleAll"; before: Todo[]; after: Todo[] }
-    | { type: "reorder"; from: number; to: number };
+    | { type: "batch-toggle"; before: Todo[]; after: Todo[] }
+    | { type: "reorder"; before: Todo[]; after: Todo[] };
 
 const apply = (todos: Todo[], action: Action): Todo[] => {
     switch (action.type) {
@@ -52,26 +69,18 @@ const apply = (todos: Todo[], action: Action): Todo[] => {
             return [action.todo, ...todos];
 
         case "delete": {
-            const ids = new Set(action.removed.map(r => r.todo.id));
-            return todos.filter(t => !ids.has(t.id));
+            const ids = new Set(action.removed.map((v) => v.todo.id));
+            return todos.filter((t) => !ids.has(t.id));
         }
 
         case "update":
-        case "toggle":
-            return todos.map(t =>
+            return todos.map((t) =>
                 t.id === action.after.id ? action.after : t
             );
 
-        case "toggleAll":
+        case "batch-toggle":
+        case "reorder":
             return action.after;
-
-        case "reorder": {
-            if (action.from === action.to) return todos;
-            const arr = [...todos];
-            const [moved] = arr.splice(action.from, 1);
-            arr.splice(action.to, 0, moved);
-            return arr;
-        }
 
         default:
             return todos;
@@ -81,88 +90,111 @@ const apply = (todos: Todo[], action: Action): Todo[] => {
 const revert = (todos: Todo[], action: Action): Todo[] => {
     switch (action.type) {
         case "add":
-            return todos.filter(t => t.id !== action.todo.id);
+            return todos.filter((t) => t.id !== action.todo.id);
 
         case "delete": {
-            const arr = [...todos];
+            const restored = [...todos];
+
             [...action.removed]
                 .sort((a, b) => a.index - b.index)
                 .forEach(({ todo, index }) => {
-                    arr.splice(index, 0, todo);
+                    restored.splice(index, 0, todo);
                 });
-            return arr;
+
+            return restored;
         }
 
         case "update":
-        case "toggle":
-            return todos.map(t =>
+            return todos.map((t) =>
                 t.id === action.before.id ? action.before : t
             );
 
-        case "toggleAll":
+        case "batch-toggle":
+        case "reorder":
             return action.before;
-
-        case "reorder": {
-            const arr = [...todos];
-            const [moved] = arr.splice(action.to, 1);
-            arr.splice(action.from, 0, moved);
-            return arr;
-        }
 
         default:
             return todos;
     }
 };
 
-const buildRemoved = (todos: Todo[], ids: string[]) => {
-    const set = new Set(ids);
+const buildRemoved = (todos: Todo[], ids: string[]): RemovedItem[] => {
+    const target = new Set(ids);
+
     return todos
-        .map((t, i) => (set.has(t.id) ? { todo: t, index: i } : null))
-        .filter(Boolean) as { todo: Todo; index: number }[];
+        .map((todo, index) =>
+            target.has(todo.id) ? { todo, index } : null
+        )
+        .filter(Boolean) as RemovedItem[];
 };
 
-const computeStats = (todos: Todo[]) => ({
-    total: todos.length,
-    completed: todos.filter(t => t.completed).length,
-});
+const computeStats = (todos: Todo[]) => {
+    const completed = todos.filter((t) => t.completed).length;
+
+    return {
+        total: todos.length,
+        completed,
+        active: todos.length - completed,
+    };
+};
 
 type TodoStore = {
     todos: Todo[];
+
     search: string;
     searchNormalized: string;
+
     activeCategory: FilterType;
+
+    hydrated: boolean;
 
     undoStack: Action[];
     redoStack: Action[];
 
     total: number;
     completed: number;
+    active: number;
 
     addTodo: (text: string) => void;
+
     updateTodo: (id: string, text: string) => void;
+
     toggleTodo: (id: string) => void;
+
     toggleMany: (ids: string[]) => void;
+
     toggleAll: () => void;
 
     deleteTodo: (id: string) => void;
 
-    setPriority: (id: string, p: Priority) => void;
-    togglePinned: (id: string) => void;
+    clearCompleted: () => void;
 
-    undo: () => void;
-    redo: () => void;
+    setPriority: (id: string, priority: Priority) => void;
+
+    togglePinned: (id: string) => void;
 
     reorderTodos: (from: number, to: number) => void;
 
-    clearCompleted: () => void;
     markAllCompleted: () => void;
+
     markAllActive: () => void;
 
-    setSearch: (v: string) => void;
-    setActiveCategory: (v: FilterType) => void;
+    undo: () => void;
+
+    redo: () => void;
+
+    setSearch: (value: string) => void;
+
+    setActiveCategory: (value: FilterType) => void;
+
+    setHydrated: (value: boolean) => void;
 };
 
-const push = (state: TodoStore, action: Action, nextTodos: Todo[]) => {
+const push = (
+    state: TodoStore,
+    action: Action,
+    nextTodos: Todo[]
+) => {
     const stats = computeStats(nextTodos);
 
     return {
@@ -170,35 +202,46 @@ const push = (state: TodoStore, action: Action, nextTodos: Todo[]) => {
         todos: nextTodos,
         undoStack: [...state.undoStack, action].slice(-MAX_HISTORY),
         redoStack: [],
-        total: stats.total,
-        completed: stats.completed,
+        ...stats,
     };
 };
 
 export const useTodoStore = create<TodoStore>()(
     persist(
-        (set) => ({
+        (set, get) => ({
             todos: [],
+
             search: "",
             searchNormalized: "",
+
             activeCategory: "tasks",
+
+            hydrated: false,
 
             undoStack: [],
             redoStack: [],
 
             total: 0,
             completed: 0,
+            active: 0,
 
             addTodo: (text) =>
                 set((state) => {
                     const value = text.trim();
+
                     if (!value) return state;
 
                     const normalized = normalizeText(value);
 
-                    if (state.todos.some(t => t.normalized === normalized)) return state;
+                    if (
+                        state.todos.some(
+                            (t) => t.normalized === normalized
+                        )
+                    ) {
+                        return state;
+                    }
 
-                    const now = Date.now();
+                    const timestamp = now();
 
                     const todo: Todo = {
                         id: crypto.randomUUID(),
@@ -207,65 +250,117 @@ export const useTodoStore = create<TodoStore>()(
                         completed: false,
                         priority: "medium",
                         pinned: false,
-                        createdAt: now,
-                        updatedAt: now,
-                        lastViewedAt: now,
+                        order: state.todos.length,
+                        createdAt: timestamp,
+                        updatedAt: timestamp,
                     };
 
-                    const action: Action = { type: "add", todo };
-                    return push(state, action, apply(state.todos, action));
+                    const action: Action = {
+                        type: "add",
+                        todo,
+                    };
+
+                    return push(
+                        state,
+                        action,
+                        apply(state.todos, action)
+                    );
                 }),
 
             updateTodo: (id, text) =>
                 set((state) => {
-                    const t = state.todos.find(t => t.id === id);
-                    if (!t) return state;
+                    const current = state.todos.find(
+                        (t) => t.id === id
+                    );
+
+                    if (!current) return state;
 
                     const value = text.trim();
+
                     if (!value) return state;
 
-                    const nextTodo = {
-                        ...t,
+                    const normalized = normalizeText(value);
+
+                    const duplicated = state.todos.some(
+                        (t) =>
+                            t.id !== id &&
+                            t.normalized === normalized
+                    );
+
+                    if (duplicated) return state;
+
+                    const nextTodo: Todo = {
+                        ...current,
                         text: value,
-                        normalized: normalizeText(value),
-                        updatedAt: Date.now(),
-                        lastViewedAt: Date.now(),
+                        normalized,
+                        updatedAt: now(),
                     };
 
-                    const action: Action = { type: "update", before: t, after: nextTodo };
-                    return push(state, action, apply(state.todos, action));
+                    const action: Action = {
+                        type: "update",
+                        before: current,
+                        after: nextTodo,
+                    };
+
+                    return push(
+                        state,
+                        action,
+                        apply(state.todos, action)
+                    );
                 }),
 
             toggleTodo: (id) =>
                 set((state) => {
-                    const t = state.todos.find(t => t.id === id);
-                    if (!t) return state;
+                    const current = state.todos.find(
+                        (t) => t.id === id
+                    );
 
-                    const nextTodo = {
-                        ...t,
-                        completed: !t.completed,
-                        updatedAt: Date.now(),
-                        lastViewedAt: Date.now(),
+                    if (!current) return state;
+
+                    const nextTodo: Todo = {
+                        ...current,
+                        completed: !current.completed,
+                        updatedAt: now(),
                     };
 
-                    const action: Action = { type: "toggle", before: t, after: nextTodo };
-                    return push(state, action, apply(state.todos, action));
+                    const action: Action = {
+                        type: "update",
+                        before: current,
+                        after: nextTodo,
+                    };
+
+                    return push(
+                        state,
+                        action,
+                        apply(state.todos, action)
+                    );
                 }),
 
             toggleMany: (ids) =>
                 set((state) => {
-                    const setIds = new Set(ids);
-                    const before = state.todos.filter(t => setIds.has(t.id));
+                    const target = new Set(ids);
 
-                    const after = state.todos.map(t =>
-                        setIds.has(t.id)
-                            ? { ...t, completed: !t.completed, updatedAt: Date.now() }
-                            : t
+                    const before = state.todos.filter((t) =>
+                        target.has(t.id)
                     );
 
+                    if (!before.length) return state;
+
+                    const after = state.todos.map((t) => {
+                        if (!target.has(t.id)) {
+                            return t;
+                        }
+
+                        return {
+                            ...t,
+                            completed: !t.completed,
+                            updatedAt: now(),
+                        };
+                    });
+
                     const action: Action = {
-                        type: "toggleAll",
-                        before,
+                        type: "batch-toggle",
+                        before: state.todos,
                         after,
                     };
 
@@ -274,174 +369,274 @@ export const useTodoStore = create<TodoStore>()(
 
             toggleAll: () =>
                 set((state) => {
-                    const allDone = state.todos.every(t => t.completed);
+                    const shouldComplete = state.todos.some(
+                        (t) => !t.completed
+                    );
 
-                    const next = state.todos.map(t => ({
+                    const nextTodos = state.todos.map((t) => ({
                         ...t,
-                        completed: !allDone,
-                        updatedAt: Date.now(),
+                        completed: shouldComplete,
+                        updatedAt: now(),
                     }));
 
                     const action: Action = {
-                        type: "toggleAll",
+                        type: "batch-toggle",
                         before: state.todos,
-                        after: next,
+                        after: nextTodos,
                     };
 
-                    return push(state, action, next);
+                    return push(state, action, nextTodos);
                 }),
 
             deleteTodo: (id) =>
                 set((state) => {
-                    const removed = buildRemoved(state.todos, [id]);
+                    const removed = buildRemoved(
+                        state.todos,
+                        [id]
+                    );
+
                     if (!removed.length) return state;
 
-                    const action: Action = { type: "delete", removed };
-                    return push(state, action, apply(state.todos, action));
+                    const action: Action = {
+                        type: "delete",
+                        removed,
+                    };
+
+                    return push(
+                        state,
+                        action,
+                        apply(state.todos, action)
+                    );
                 }),
 
-            setPriority: (id, p) =>
+            clearCompleted: () =>
                 set((state) => {
-                    const t = state.todos.find(t => t.id === id);
-                    if (!t) return state;
+                    const ids = state.todos
+                        .filter((t) => t.completed)
+                        .map((t) => t.id);
 
-                    const next = { ...t, priority: p, updatedAt: Date.now() };
-                    const action: Action = { type: "update", before: t, after: next };
+                    const removed = buildRemoved(
+                        state.todos,
+                        ids
+                    );
 
-                    return push(state, action, apply(state.todos, action));
+                    if (!removed.length) return state;
+
+                    const action: Action = {
+                        type: "delete",
+                        removed,
+                    };
+
+                    return push(
+                        state,
+                        action,
+                        apply(state.todos, action)
+                    );
+                }),
+
+            setPriority: (id, priority) =>
+                set((state) => {
+                    const current = state.todos.find(
+                        (t) => t.id === id
+                    );
+
+                    if (!current) return state;
+
+                    const nextTodo: Todo = {
+                        ...current,
+                        priority,
+                        updatedAt: now(),
+                    };
+
+                    const action: Action = {
+                        type: "update",
+                        before: current,
+                        after: nextTodo,
+                    };
+
+                    return push(
+                        state,
+                        action,
+                        apply(state.todos, action)
+                    );
                 }),
 
             togglePinned: (id) =>
                 set((state) => {
-                    const t = state.todos.find(t => t.id === id);
-                    if (!t) return state;
+                    const current = state.todos.find(
+                        (t) => t.id === id
+                    );
 
-                    const next = { ...t, pinned: !t.pinned, updatedAt: Date.now() };
-                    const action: Action = { type: "update", before: t, after: next };
+                    if (!current) return state;
 
-                    return push(state, action, apply(state.todos, action));
+                    const nextTodo: Todo = {
+                        ...current,
+                        pinned: !current.pinned,
+                        updatedAt: now(),
+                    };
+
+                    const action: Action = {
+                        type: "update",
+                        before: current,
+                        after: nextTodo,
+                    };
+
+                    return push(
+                        state,
+                        action,
+                        apply(state.todos, action)
+                    );
                 }),
 
             reorderTodos: (from, to) =>
                 set((state) => {
-                    const action: Action = { type: "reorder", from, to };
-                    return push(state, action, apply(state.todos, action));
+                    if (from === to) return state;
+
+                    const reordered = [...state.todos];
+
+                    const [moved] = reordered.splice(from, 1);
+
+                    reordered.splice(to, 0, moved);
+
+                    const nextTodos = reordered.map((todo, index) => ({
+                        ...todo,
+                        order: index,
+                    }));
+
+                    const action: Action = {
+                        type: "reorder",
+                        before: state.todos,
+                        after: nextTodos,
+                    };
+
+                    return push(state, action, nextTodos);
+                }),
+
+            markAllCompleted: () => {
+                get().toggleAll();
+            },
+
+            markAllActive: () =>
+                set((state) => {
+                    const nextTodos = state.todos.map((t) => ({
+                        ...t,
+                        completed: false,
+                        updatedAt: now(),
+                    }));
+
+                    const action: Action = {
+                        type: "batch-toggle",
+                        before: state.todos,
+                        after: nextTodos,
+                    };
+
+                    return push(state, action, nextTodos);
                 }),
 
             undo: () =>
                 set((state) => {
                     const action = state.undoStack.at(-1);
+
                     if (!action) return state;
 
-                    const next = revert(state.todos, action);
-                    const stats = computeStats(next);
+                    const nextTodos = revert(
+                        state.todos,
+                        action
+                    );
 
                     return {
                         ...state,
-                        todos: next,
+                        todos: nextTodos,
                         undoStack: state.undoStack.slice(0, -1),
-                        redoStack: [...state.redoStack, action].slice(-MAX_HISTORY),
-                        total: stats.total,
-                        completed: stats.completed,
+                        redoStack: [
+                            ...state.redoStack,
+                            action,
+                        ].slice(-MAX_HISTORY),
+                        ...computeStats(nextTodos),
                     };
                 }),
 
             redo: () =>
                 set((state) => {
                     const action = state.redoStack.at(-1);
+
                     if (!action) return state;
 
-                    const next = apply(state.todos, action);
-                    const stats = computeStats(next);
+                    const nextTodos = apply(
+                        state.todos,
+                        action
+                    );
 
                     return {
                         ...state,
-                        todos: next,
+                        todos: nextTodos,
                         redoStack: state.redoStack.slice(0, -1),
-                        undoStack: [...state.undoStack, action].slice(-MAX_HISTORY),
-                        total: stats.total,
-                        completed: stats.completed,
+                        undoStack: [
+                            ...state.undoStack,
+                            action,
+                        ].slice(-MAX_HISTORY),
+                        ...computeStats(nextTodos),
                     };
                 }),
 
-            clearCompleted: () =>
-                set((state) => {
-                    const removed = buildRemoved(
-                        state.todos,
-                        state.todos.filter(t => t.completed).map(t => t.id)
-                    );
-                    if (!removed.length) return state;
-
-                    const action: Action = { type: "delete", removed };
-                    return push(state, action, apply(state.todos, action));
-                }),
-
-            markAllCompleted: () =>
-                set((state) => {
-                    const next = state.todos.map(t => ({
-                        ...t,
-                        completed: true,
-                        updatedAt: Date.now(),
-                    }));
-
-                    const action: Action = {
-                        type: "toggleAll",
-                        before: state.todos,
-                        after: next,
-                    };
-
-                    return push(state, action, next);
-                }),
-
-            markAllActive: () =>
-                set((state) => {
-                    const next = state.todos.map(t => ({
-                        ...t,
-                        completed: false,
-                        updatedAt: Date.now(),
-                    }));
-
-                    const action: Action = {
-                        type: "toggleAll",
-                        before: state.todos,
-                        after: next,
-                    };
-
-                    return push(state, action, next);
-                }),
-
-            setSearch: (v) =>
+            setSearch: (value) =>
                 set({
-                    search: v,
-                    searchNormalized: normalizeText(v),
+                    search: value,
+                    searchNormalized: normalizeText(value),
                 }),
 
-            setActiveCategory: (v) => set({ activeCategory: v }),
+            setActiveCategory: (value) =>
+                set({
+                    activeCategory: value,
+                }),
+
+            setHydrated: (value) =>
+                set({
+                    hydrated: value,
+                }),
         }),
         {
             name: "todo-storage",
-            version: 21,
+            version: 22,
             storage: createJSONStorage(() => localStorage),
+
             partialize: (state) => ({
                 todos: state.todos,
                 search: state.search,
                 activeCategory: state.activeCategory,
             }),
+
+            onRehydrateStorage: () => (state) => {
+                state?.setHydrated(true);
+            },
         }
     )
 );
 
 export const useFilteredTodos = () =>
     useTodoStore(
-        (s) => {
-            return sortTodos(s.todos).filter((t) => {
-                if (!t.normalized.includes(s.searchNormalized)) return false;
+        (state) => {
+            const filtered = state.todos.filter((todo) => {
+                if (
+                    !todo.normalized.includes(
+                        state.searchNormalized
+                    )
+                ) {
+                    return false;
+                }
 
-                if (s.activeCategory === "active") return !t.completed;
-                if (s.activeCategory === "completed") return t.completed;
+                if (state.activeCategory === "active") {
+                    return !todo.completed;
+                }
+
+                if (state.activeCategory === "completed") {
+                    return todo.completed;
+                }
 
                 return true;
             });
+
+            return sortTodos(filtered);
         },
         shallow
     );
