@@ -1,9 +1,29 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Trash2, CheckCircle2, GripVertical } from "lucide-react";
-import { useTodoStore } from "@/store/todoStore";
+import {
+    memo,
+    useCallback,
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
+
+import {
+    Card,
+    CardContent,
+} from "@/components/ui/card";
+
+import {
+    Trash2,
+    CheckCircle2,
+    GripVertical,
+} from "lucide-react";
+
+import {
+    useTodoStore,
+    useFilteredTodos,
+} from "@/store/todoStore";
+
 import { shallow } from "zustand/shallow";
 
 import {
@@ -26,75 +46,106 @@ import {
 
 import { CSS } from "@dnd-kit/utilities";
 
-/* ================= INPUT ================= */
-
 const TodoInput = memo(function TodoInput() {
-    const addTodo = useTodoStore(s => s.addTodo);
-    const todos = useTodoStore(s => s.todos);
+    const addTodo = useTodoStore(
+        (s) => s.addTodo
+    );
+
+    const todos = useTodoStore(
+        (s) => s.todos
+    );
 
     const [value, setValue] = useState("");
 
-    const handleAdd = useCallback(() => {
-        const v = value.trim();
-        if (!v) return;
+    const handleSubmit = useCallback(() => {
+        const text = value.trim();
 
-        if (todos.some(t => t.text.toLowerCase() === v.toLowerCase())) {
+        if (!text) {
+            return;
+        }
+
+        const duplicated = todos.some(
+            (todo) =>
+                todo.normalized ===
+                text
+                    .trim()
+                    .replace(/\s+/g, " ")
+                    .toLowerCase()
+        );
+
+        if (duplicated) {
             setValue("");
             return;
         }
 
-        addTodo(v);
+        addTodo(text);
+
         setValue("");
-    }, [value, addTodo, todos]);
+    }, [value, todos, addTodo]);
 
     return (
         <div className="flex gap-2">
             <input
                 value={value}
-                onChange={(e) => setValue(e.target.value)}
+                onChange={(e) =>
+                    setValue(e.target.value)
+                }
                 onKeyDown={(e) => {
-                    if (e.key === "Enter") handleAdd();
-                    if (e.key === "Escape") setValue("");
+                    if (e.key === "Enter") {
+                        handleSubmit();
+                    }
+
+                    if (e.key === "Escape") {
+                        setValue("");
+                    }
                 }}
-                placeholder="Add a new task"
-                className="flex-1 border rounded px-4 py-2 outline-none"
+                placeholder="Add task"
+                className="flex-1 rounded-md border bg-background px-3 py-2 outline-none transition"
             />
+
             <button
-                onClick={handleAdd}
+                onClick={handleSubmit}
                 disabled={!value.trim()}
-                className="px-4 border rounded disabled:opacity-40"
+                className="rounded-md border px-4 text-sm transition disabled:opacity-40"
             >
-                add
+                Add
             </button>
         </div>
     );
 });
 
-/* ================= ITEM ================= */
+type TodoItemProps = {
+    id: string;
+    text: string;
+    completed: boolean;
+};
 
 const TodoItem = memo(function TodoItem({
     id,
     text,
     completed,
-}: {
-    id: string;
-    text: string;
-    completed: boolean;
-}) {
-    const { toggleTodo, deleteTodo, updateTodo } = useTodoStore(
-        (s) => ({
-            toggleTodo: s.toggleTodo,
-            deleteTodo: s.deleteTodo,
-            updateTodo: s.updateTodo,
+}: TodoItemProps) {
+    const {
+        toggleTodo,
+        deleteTodo,
+        updateTodo,
+    } = useTodoStore(
+        (state) => ({
+            toggleTodo: state.toggleTodo,
+            deleteTodo: state.deleteTodo,
+            updateTodo: state.updateTodo,
         }),
         shallow
     );
 
-    const [editing, setEditing] = useState(false);
-    const [editText, setEditText] = useState(text);
+    const [editing, setEditing] =
+        useState(false);
+
+    const [value, setValue] =
+        useState(text);
 
     useEffect(() => {
-        setEditText(text);
+        setValue(text);
     }, [text]);
 
     const {
@@ -110,183 +161,386 @@ const TodoItem = memo(function TodoItem({
     });
 
     const style = {
-        transform: CSS.Transform.toString(transform),
+        transform:
+            CSS.Transform.toString(transform),
         transition,
     };
 
     const save = useCallback(() => {
-        const v = editText.trim();
-        if (v && v !== text) {
-            updateTodo(id, v);
+        const next = value.trim();
+
+        if (
+            next &&
+            next !== text
+        ) {
+            updateTodo(id, next);
         }
+
         setEditing(false);
-    }, [editText, id, text, updateTodo]);
+    }, [value, text, id, updateTodo]);
 
     return (
-        <div ref={setNodeRef} style={style}>
-            <Card className={`flex items-center ${isDragging ? "opacity-50" : ""}`}>
-                <CardContent className="flex items-center gap-3 w-full">
-
-                    <div {...attributes} {...listeners} className="cursor-grab">
+        <div
+            ref={setNodeRef}
+            style={style}
+        >
+            <Card
+                className={
+                    isDragging
+                        ? "opacity-60"
+                        : ""
+                }
+            >
+                <CardContent className="flex items-center gap-3 p-4">
+                    <button
+                        {...attributes}
+                        {...listeners}
+                        className="cursor-grab text-muted-foreground"
+                    >
                         <GripVertical size={18} />
-                    </div>
+                    </button>
 
-                    <button onClick={() => toggleTodo(id)}>
-                        <CheckCircle2 />
+                    <button
+                        onClick={() =>
+                            toggleTodo(id)
+                        }
+                        className={
+                            completed
+                                ? "text-green-600"
+                                : "text-muted-foreground"
+                        }
+                    >
+                        <CheckCircle2 size={18} />
                     </button>
 
                     {editing ? (
                         <input
                             autoFocus
-                            value={editText}
-                            onChange={(e) => setEditText(e.target.value)}
+                            value={value}
+                            onChange={(e) =>
+                                setValue(
+                                    e.target.value
+                                )
+                            }
                             onBlur={save}
                             onKeyDown={(e) => {
-                                if (e.key === "Enter") save();
-                                if (e.key === "Escape") setEditing(false);
+                                if (
+                                    e.key ===
+                                    "Enter"
+                                ) {
+                                    save();
+                                }
+
+                                if (
+                                    e.key ===
+                                    "Escape"
+                                ) {
+                                    setEditing(
+                                        false
+                                    );
+
+                                    setValue(
+                                        text
+                                    );
+                                }
                             }}
-                            className="flex-1 border-b outline-none"
+                            className="flex-1 border-b bg-transparent outline-none"
                         />
                     ) : (
-                        <span
-                            onDoubleClick={() => setEditing(true)}
-                            className={`flex-1 cursor-text ${completed ? "line-through text-gray-400" : ""}`}
+                        <button
+                            onDoubleClick={() =>
+                                setEditing(
+                                    true
+                                )
+                            }
+                            className={`flex-1 text-left ${completed
+                                ? "text-muted-foreground line-through"
+                                : ""
+                                }`}
                         >
                             {text}
-                        </span>
+                        </button>
                     )}
 
-                    <button onClick={() => deleteTodo(id)}>
+                    <button
+                        onClick={() =>
+                            deleteTodo(id)
+                        }
+                        className="text-muted-foreground transition hover:text-red-500"
+                    >
                         <Trash2 size={18} />
                     </button>
-
                 </CardContent>
             </Card>
         </div>
     );
 });
 
-/* ================= MAIN ================= */
-
 export default function TodoList() {
+    const todos = useFilteredTodos();
+
     const {
-        todos,
         reorderTodos,
         clearCompleted,
         undo,
         redo,
+        completed,
+        total,
+        search,
+        setSearch,
+        activeCategory,
+        setActiveCategory,
     } = useTodoStore(
-        (s) => ({
-            todos: s.todos,
-            reorderTodos: s.reorderTodos,
-            clearCompleted: s.clearCompleted,
-            undo: s.undo,
-            redo: s.redo,
+        (state) => ({
+            reorderTodos:
+                state.reorderTodos,
+            clearCompleted:
+                state.clearCompleted,
+            undo: state.undo,
+            redo: state.redo,
+            completed: state.completed,
+            total: state.total,
+            search: state.search,
+            setSearch:
+                state.setSearch,
+            activeCategory:
+                state.activeCategory,
+            setActiveCategory:
+                state.setActiveCategory,
         }),
         shallow
     );
 
-    const [activeId, setActiveId] = useState<string | null>(null);
-    const [filter, setFilter] = useState<"all" | "active" | "completed">("all");
-    const [search, setSearch] = useState("");
+    const [activeId, setActiveId] =
+        useState<string | null>(null);
 
     const sensors = useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+        useSensor(PointerSensor, {
+            activationConstraint: {
+                distance: 6,
+            },
+        }),
         useSensor(KeyboardSensor)
     );
 
-    const filteredTodos = useMemo(() => {
-        return todos
-            .filter(t => {
-                if (filter === "active") return !t.completed;
-                if (filter === "completed") return t.completed;
-                return true;
-            })
-            .filter(t =>
-                t.text.toLowerCase().includes(search.toLowerCase())
+    useEffect(() => {
+        const onKeyDown = (
+            e: KeyboardEvent
+        ) => {
+            const isUndo =
+                (e.metaKey || e.ctrlKey) &&
+                e.key.toLowerCase() === "z";
+
+            const isRedo =
+                (e.metaKey || e.ctrlKey) &&
+                e.key.toLowerCase() === "y";
+
+            if (isUndo) {
+                e.preventDefault();
+                undo();
+            }
+
+            if (isRedo) {
+                e.preventDefault();
+                redo();
+            }
+        };
+
+        window.addEventListener(
+            "keydown",
+            onKeyDown
+        );
+
+        return () => {
+            window.removeEventListener(
+                "keydown",
+                onKeyDown
             );
-    }, [todos, filter, search]);
+        };
+    }, [undo, redo]);
 
-    const activeTodo = todos.find(t => t.id === activeId);
+    const activeTodo = useMemo(
+        () =>
+            activeId
+                ? todos.find(
+                    (todo) =>
+                        todo.id === activeId
+                )
+                : null,
+        [activeId, todos]
+    );
 
-    const onDragStart = (event: DragStartEvent) => {
-        setActiveId(event.active.id as string);
+    const onDragStart = (
+        event: DragStartEvent
+    ) => {
+        setActiveId(
+            event.active.id as string
+        );
     };
 
-    const onDragEnd = (event: DragEndEvent) => {
+    const onDragEnd = (
+        event: DragEndEvent
+    ) => {
         setActiveId(null);
 
-        const { active, over } = event;
-        if (!over || active.id === over.id) return;
+        const { active, over } =
+            event;
 
-        const oldIndex = todos.findIndex(t => t.id === active.id);
-        const newIndex = todos.findIndex(t => t.id === over.id);
+        if (
+            !over ||
+            active.id === over.id
+        ) {
+            return;
+        }
 
-        reorderTodos(oldIndex, newIndex);
+        const oldIndex =
+            todos.findIndex(
+                (todo) =>
+                    todo.id === active.id
+            );
+
+        const newIndex =
+            todos.findIndex(
+                (todo) =>
+                    todo.id === over.id
+            );
+
+        if (
+            oldIndex === -1 ||
+            newIndex === -1
+        ) {
+            return;
+        }
+
+        reorderTodos(
+            oldIndex,
+            newIndex
+        );
     };
+
+    const remainingCount =
+        total - completed;
 
     return (
         <DndContext
             sensors={sensors}
-            collisionDetection={closestCenter}
+            collisionDetection={
+                closestCenter
+            }
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
         >
-            <div className="max-w-2xl mx-auto p-6 space-y-4">
-
+            <div className="mx-auto max-w-2xl space-y-4 p-6">
                 <TodoInput />
 
                 <input
-                    placeholder="search..."
+                    placeholder="Search tasks"
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-full border px-3 py-2 rounded"
+                    onChange={(e) =>
+                        setSearch(
+                            e.target.value
+                        )
+                    }
+                    className="w-full rounded-md border bg-background px-3 py-2 outline-none"
                 />
 
-                <div className="flex justify-between text-sm">
-                    <span>{todos.filter(t => !t.completed).length} items left</span>
+                <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                        {remainingCount} left
+                    </span>
 
-                    <div className="flex gap-3">
-                        <button onClick={undo}>undo</button>
-                        <button onClick={redo}>redo</button>
-                        <button onClick={clearCompleted}>clear completed</button>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={undo}
+                            className="transition hover:opacity-70"
+                        >
+                            Undo
+                        </button>
+
+                        <button
+                            onClick={redo}
+                            className="transition hover:opacity-70"
+                        >
+                            Redo
+                        </button>
+
+                        <button
+                            onClick={
+                                clearCompleted
+                            }
+                            className="transition hover:opacity-70"
+                        >
+                            Clear completed
+                        </button>
                     </div>
                 </div>
 
-                <div className="flex gap-2">
-                    {(["all", "active", "completed"] as const).map(f => (
+                <div className="flex gap-2 text-sm">
+                    {(
+                        [
+                            "tasks",
+                            "active",
+                            "completed",
+                        ] as const
+                    ).map((value) => (
                         <button
-                            key={f}
-                            onClick={() => setFilter(f)}
-                            className={filter === f ? "font-bold underline" : "opacity-60"}
+                            key={value}
+                            onClick={() =>
+                                setActiveCategory(
+                                    value
+                                )
+                            }
+                            className={
+                                activeCategory ===
+                                    value
+                                    ? "font-medium"
+                                    : "text-muted-foreground"
+                            }
                         >
-                            {f}
+                            {value}
                         </button>
                     ))}
                 </div>
 
                 <SortableContext
-                    items={filteredTodos.map(t => t.id)}
-                    strategy={verticalListSortingStrategy}
+                    items={todos.map(
+                        (todo) => todo.id
+                    )}
+                    strategy={
+                        verticalListSortingStrategy
+                    }
                 >
-                    {filteredTodos.length === 0 ? (
-                        <div className="text-center text-sm opacity-50">
-                            no tasks
+                    {todos.length === 0 ? (
+                        <div className="rounded-md border py-10 text-center text-sm text-muted-foreground">
+                            No tasks found
                         </div>
                     ) : (
-                        filteredTodos.map(todo => (
-                            <TodoItem key={todo.id} {...todo} />
-                        ))
+                        <div className="space-y-3">
+                            {todos.map((todo) => (
+                                <TodoItem
+                                    key={todo.id}
+                                    id={todo.id}
+                                    text={todo.text}
+                                    completed={
+                                        todo.completed
+                                    }
+                                />
+                            ))}
+                        </div>
                     )}
                 </SortableContext>
             </div>
 
             <DragOverlay>
-                {activeTodo && (
-                    <Card className="p-4">
-                        {activeTodo.text}
+                {activeTodo ? (
+                    <Card className="border shadow-lg">
+                        <CardContent className="p-4">
+                            {
+                                activeTodo.text
+                            }
+                        </CardContent>
                     </Card>
-                )}
+                ) : null}
             </DragOverlay>
         </DndContext>
     );
