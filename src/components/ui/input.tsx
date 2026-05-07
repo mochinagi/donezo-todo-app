@@ -1,197 +1,204 @@
 "use client";
 
 import * as React from "react";
+
 import { cn } from "@/lib/utils";
 
-export interface InputRef {
-  focus: () => void;
-  clear: () => void;
-  value: string;
-}
+type InputProps =
+  React.InputHTMLAttributes<HTMLInputElement> & {
+    leftIcon?: React.ReactNode;
 
-interface InputProps extends React.ComponentProps<"input"> {
-  leftIcon?: React.ReactNode;
-  rightIcon?: React.ReactNode;
-  onRightIconClick?: () => void;
+    rightIcon?: React.ReactNode;
 
-  clearable?: boolean;
-  onClear?: () => void;
+    onRightIconClick?: () => void;
 
-  error?: boolean;
-  size?: "sm" | "md" | "lg";
+    clearable?: boolean;
 
-  describedBy?: string;
-  disableEscapeClear?: boolean;
+    error?: boolean;
 
-  onEnter?: (value: string) => void;
-  onEscape?: () => void;
-}
+    size?: "sm" | "md" | "lg";
+  };
 
-const Input = React.forwardRef<InputRef, InputProps>(function Input(
+const sizeClassMap = {
+  sm: "h-8 px-2 text-sm",
+
+  md: "h-10 px-3 text-sm",
+
+  lg: "h-12 px-4 text-base",
+};
+
+const Input = React.forwardRef<
+  HTMLInputElement,
+  InputProps
+>(function Input(
   {
     className,
+
     type = "text",
+
     leftIcon,
+
     rightIcon,
+
     onRightIconClick,
+
     clearable,
-    onClear,
+
     error,
+
     size = "md",
-    describedBy,
+
     value,
-    defaultValue,
+
     onChange,
-    onKeyDown,
-    disableEscapeClear,
-    onEnter,
-    onEscape,
+
+    disabled,
+
     ...props
   },
   ref
 ) {
-  const inputRef = React.useRef<HTMLInputElement>(null);
+  const innerRef =
+    React.useRef<HTMLInputElement>(
+      null
+    );
 
-  const isControlled = value !== undefined;
+  const mergedRef =
+    React.useCallback(
+      (
+        node: HTMLInputElement | null
+      ) => {
+        innerRef.current = node;
 
-  const [internalValue, setInternalValue] = React.useState(
-    defaultValue ?? ""
-  );
+        if (
+          typeof ref ===
+          "function"
+        ) {
+          ref(node);
 
-  const isComposingRef = React.useRef(false);
+          return;
+        }
 
-  const currentValue = isControlled ? value ?? "" : internalValue;
+        if (ref) {
+          ref.current = node;
+        }
+      },
+      [ref]
+    );
 
-  const sizeStyles = {
-    sm: "h-8 px-2 text-sm",
-    md: "h-9 px-3 text-sm",
-    lg: "h-11 px-4 text-base",
-  };
-
-  const showClear = clearable && !!currentValue;
-
-  const emitChange = (next: string) => {
-    const el = inputRef.current;
-    if (!el) return;
-
-    const nativeSetter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      "value"
-    )?.set;
-
-    nativeSetter?.call(el, next);
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!isControlled) {
-      setInternalValue(e.target.value);
-    }
-    onChange?.(e);
-  };
+  const currentValue =
+    typeof value === "string"
+      ? value
+      : "";
 
   const handleClear = () => {
-    if (!isControlled) {
-      setInternalValue("");
+    if (
+      disabled ||
+      !innerRef.current
+    ) {
+      return;
     }
 
-    emitChange("");
+    const event =
+      Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement
+          .prototype,
+        "value"
+      )?.set;
 
-    onClear?.();
-    inputRef.current?.focus();
+    event?.call(
+      innerRef.current,
+      ""
+    );
+
+    innerRef.current.dispatchEvent(
+      new Event("input", {
+        bubbles: true,
+      })
+    );
+
+    innerRef.current.focus();
   };
 
-  const handleKeyDownInternal = (
-    e: React.KeyboardEvent<HTMLInputElement>
-  ) => {
-    if (isComposingRef.current) return;
-
-    if (e.key === "Enter") {
-      onEnter?.(currentValue);
-    }
-
-    if (e.key === "Escape") {
-      onEscape?.();
-
-      if (!disableEscapeClear && currentValue) {
-        e.stopPropagation();
-        handleClear();
-      }
-    }
-
-    onKeyDown?.(e);
-  };
-
-  React.useImperativeHandle(ref, () => ({
-    focus: () => inputRef.current?.focus(),
-    clear: handleClear,
-    value: String(currentValue ?? ""),
-  }));
+  const showClear =
+    clearable &&
+    !!currentValue &&
+    !disabled;
 
   return (
-    <div
-      className={cn(
-        "relative w-full",
-        error && "text-red-500"
-      )}
-    >
-      {leftIcon && (
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+    <div className="relative w-full">
+      {leftIcon ? (
+        <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
           {leftIcon}
         </div>
-      )}
+      ) : null}
 
       <input
-        ref={inputRef}
+        ref={mergedRef}
         type={type}
-        value={currentValue}
-        onChange={handleChange}
-        onKeyDown={handleKeyDownInternal}
-        onCompositionStart={() => (isComposingRef.current = true)}
-        onCompositionEnd={() => (isComposingRef.current = false)}
-        aria-invalid={error || undefined}
-        aria-describedby={describedBy}
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        aria-invalid={
+          error || undefined
+        }
         className={cn(
-          "w-full rounded-md border bg-transparent outline-none transition",
-          "placeholder:text-gray-400",
+          "w-full rounded-md border bg-background outline-none transition",
+          "placeholder:text-muted-foreground",
           "disabled:cursor-not-allowed disabled:opacity-50",
-          sizeStyles[size],
+          "focus-visible:ring-2 focus-visible:ring-ring",
+          sizeClassMap[size],
 
-          leftIcon && "pl-10",
-          (rightIcon || showClear) && "pr-16",
+          leftIcon &&
+          "pl-10",
+
+          (rightIcon ||
+            showClear) &&
+          "pr-16",
 
           error
-            ? "border-red-500 focus:ring-2 focus:ring-red-200"
-            : "border-gray-300 focus:ring-2 focus:ring-blue-200 focus:border-blue-400",
+            ? "border-destructive"
+            : "border-input",
 
           className
         )}
         {...props}
       />
 
-      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-        {showClear && (
-          <button
-            type="button"
-            onClick={handleClear}
-            aria-label="clear input"
-            className="text-gray-400 hover:text-gray-600 px-1"
-          >
-            ×
-          </button>
-        )}
+      {(showClear ||
+        rightIcon) && (
+          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+            {showClear ? (
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={
+                  handleClear
+                }
+                className="px-1 text-muted-foreground transition hover:opacity-70"
+                aria-label="Clear input"
+              >
+                ×
+              </button>
+            ) : null}
 
-        {rightIcon && (
-          <button
-            type="button"
-            onClick={onRightIconClick}
-            aria-label="action"
-            className="text-gray-400 hover:text-gray-600 px-1"
-          >
-            {rightIcon}
-          </button>
+            {rightIcon ? (
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={
+                  onRightIconClick
+                }
+                className="px-1 text-muted-foreground transition hover:opacity-70"
+                aria-label="Input action"
+              >
+                {
+                  rightIcon
+                }
+              </button>
+            ) : null}
+          </div>
         )}
-      </div>
     </div>
   );
 });
