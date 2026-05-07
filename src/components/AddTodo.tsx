@@ -1,217 +1,329 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Plus, AlertCircle, Loader2 } from "lucide-react";
-import { useState, useRef, useCallback, useMemo } from "react";
+import {
+    useState,
+    useRef,
+    useEffect,
+} from "react";
+
 import clsx from "clsx";
+
+import {
+    Plus,
+    Loader2,
+} from "lucide-react";
+
+import { Input } from "@/components/ui/input";
+
+import { Button } from "@/components/ui/button";
+
 import { toast } from "@/components/ui/toaster";
+
 import { useTodoStore } from "@/store/todoStore";
 
 const MAX_LENGTH = 100;
+
 const MAX_PASTE = 20;
 
-type OnAdd = (text: string) => Promise<void> | void;
-
-interface AddTodoProps {
+type AddTodoProps = {
     input: string;
-    setInput: (val: string) => void;
-    onAdd: OnAdd;
-}
 
-const normalize = (v: string) =>
-    v.replace(/\u3000/g, " ").replace(/\s+/g, " ").trim().slice(0, MAX_LENGTH);
+    setInput: (
+        value: string
+    ) => void;
+
+    onAdd: (
+        text: string
+    ) => Promise<void> | void;
+};
+
+const normalize = (value: string) => {
+    return value
+        .replace(/\u3000/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, MAX_LENGTH);
+};
 
 export default function AddTodo({
     input,
     setInput,
     onAdd,
 }: AddTodoProps) {
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [touched, setTouched] = useState(false);
-
-    const inputRef = useRef<HTMLInputElement>(null);
-    const isComposingRef = useRef(false);
-
-    const normalizedList = useTodoStore((s) =>
-        s.todos.map((t) => t.normalized)
+    const todos = useTodoStore(
+        (state) => state.todos
     );
 
-    const existingSet = useMemo(
-        () => new Set(normalizedList),
-        [normalizedList]
-    );
+    const [submitting, setSubmitting] =
+        useState(false);
 
-    const normalizedInput = useMemo(
-        () => normalize(input),
-        [input]
-    );
+    const [error, setError] =
+        useState("");
 
-    const validate = useCallback(
-        (value: string, set: Set<string>) => {
-            if (!value) return "入力してください";
-            if (value.length > MAX_LENGTH) return `最大${MAX_LENGTH}文字`;
-            if (set.has(value.toLowerCase())) return "既に存在します";
-            return "";
-        },
-        []
-    );
+    const inputRef =
+        useRef<HTMLInputElement>(null);
 
-    const error = useMemo(() => {
-        if (!touched && !input) return "";
-        return validate(normalizedInput, existingSet);
-    }, [normalizedInput, touched, input, existingSet, validate]);
+    const composingRef =
+        useRef(false);
 
-    const handleAdd = useCallback(async () => {
-        if (isSubmitting) return;
+    const normalizedInput =
+        normalize(input);
 
-        const value = normalizedInput;
-        const err = validate(value, existingSet);
+    useEffect(() => {
+        if (!input.trim()) {
+            setError("");
+        }
+    }, [input]);
 
-        if (err) {
-            setTouched(true);
-            return;
+    const validate = (
+        value: string
+    ) => {
+        if (!value) {
+            return "入力してください";
         }
 
-        setIsSubmitting(true);
-
-        try {
-            await onAdd(value);
-
-            setInput("");
-            setTouched(false);
-
-            requestAnimationFrame(() => {
-                inputRef.current?.focus();
-            });
-        } catch {
-            toast.error("追加に失敗しました");
-        } finally {
-            setIsSubmitting(false);
+        if (
+            value.length >
+            MAX_LENGTH
+        ) {
+            return `最大${MAX_LENGTH}文字です`;
         }
-    }, [normalizedInput, validate, existingSet, onAdd, setInput, isSubmitting]);
 
-    const handlePaste = useCallback(
-        async (e: React.ClipboardEvent<HTMLInputElement>) => {
-            const text = e.clipboardData.getData("text");
-            if (!text.includes("\n")) return;
+        const duplicated =
+            todos.some(
+                (todo) =>
+                    todo.normalized ===
+                    value.toLowerCase()
+            );
 
-            e.preventDefault();
+        if (duplicated) {
+            return "既に存在します";
+        }
+
+        return "";
+    };
+
+    const handleSubmit =
+        async () => {
+            if (submitting) {
+                return;
+            }
+
+            const next =
+                normalizedInput;
+
+            const validationError =
+                validate(next);
+
+            if (
+                validationError
+            ) {
+                setError(
+                    validationError
+                );
+
+                return;
+            }
+
+            setSubmitting(true);
+
+            try {
+                await onAdd(next);
+
+                setInput("");
+
+                setError("");
+
+                requestAnimationFrame(
+                    () => {
+                        inputRef.current?.focus();
+                    }
+                );
+            } catch {
+                setError(
+                    "追加に失敗しました"
+                );
+            } finally {
+                setSubmitting(false);
+            }
+        };
+
+    const handlePaste =
+        async (
+            event: React.ClipboardEvent<HTMLInputElement>
+        ) => {
+            const text =
+                event.clipboardData.getData(
+                    "text"
+                );
+
+            if (
+                !text.includes("\n")
+            ) {
+                return;
+            }
+
+            event.preventDefault();
 
             const lines = text
                 .split("\n")
                 .map(normalize)
                 .filter(Boolean)
-                .slice(0, MAX_PASTE);
+                .slice(
+                    0,
+                    MAX_PASTE
+                );
 
-            const baseSet = new Set(existingSet);
+            let added = 0;
 
-            const tasks = lines.map(async (line) => {
-                const lower = line.toLowerCase();
+            for (const line of lines) {
+                const validationError =
+                    validate(line);
 
-                if (validate(line, baseSet)) {
-                    return { ok: false };
+                if (
+                    validationError
+                ) {
+                    continue;
                 }
 
                 try {
-                    await onAdd(line);
-                    baseSet.add(lower);
-                    return { ok: true };
+                    await onAdd(
+                        line
+                    );
+
+                    added += 1;
                 } catch {
-                    return { ok: false };
+                    continue;
                 }
-            });
+            }
 
-            const results = await Promise.all(tasks);
+            if (added > 0) {
+                toast.success(
+                    `${added}件追加しました`
+                );
+            }
+        };
 
-            const success = results.filter(r => r.ok).length;
-            const fail = results.length - success;
-
-            if (success) toast.success(`${success}件追加`);
-            if (fail) toast.error(`${fail}件失敗`);
-        },
-        [existingSet, onAdd, validate]
-    );
-
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (isComposingRef.current) return;
-
-        if (e.key === "Enter") {
-            e.preventDefault();
-            handleAdd();
+    const handleKeyDown = (
+        event: React.KeyboardEvent<HTMLInputElement>
+    ) => {
+        if (
+            composingRef.current
+        ) {
+            return;
         }
 
-        if (e.key === "Escape") {
+        if (
+            event.key === "Enter"
+        ) {
+            event.preventDefault();
+
+            handleSubmit();
+        }
+
+        if (
+            event.key === "Escape"
+        ) {
             setInput("");
-            setTouched(false);
+
+            setError("");
         }
     };
 
-    const disabled = isSubmitting || !!error || !normalizedInput;
+    const disabled =
+        submitting ||
+        !normalizedInput;
 
     return (
-        <div className="p-6 border-b space-y-2">
+        <div className="border-b px-6 py-5">
             <div className="flex gap-3">
                 <div className="relative flex-1">
                     <Input
                         ref={inputRef}
                         value={input}
+                        disabled={
+                            submitting
+                        }
+                        autoFocus
+                        autoComplete="off"
+                        placeholder="タスクを追加"
+                        aria-invalid={
+                            !!error
+                        }
                         onChange={(e) => {
-                            setInput(e.target.value);
-                            if (!touched) setTouched(true);
+                            setInput(
+                                e.target
+                                    .value
+                            );
                         }}
-                        onBlur={() => setTouched(true)}
-                        onPaste={handlePaste}
-                        onKeyDown={handleKeyDown}
-                        disabled={isSubmitting}
-                        aria-invalid={!!error}
-                        className={clsx(
-                            "pl-10 pr-12 rounded-lg",
-                            error && "border-red-400"
-                        )}
+                        onKeyDown={
+                            handleKeyDown
+                        }
+                        onPaste={
+                            handlePaste
+                        }
                         onCompositionStart={() => {
-                            isComposingRef.current = true;
+                            composingRef.current =
+                                true;
                         }}
                         onCompositionEnd={() => {
-                            isComposingRef.current = false;
+                            composingRef.current =
+                                false;
                         }}
-                        placeholder="タスクを入力"
-                        autoFocus
+                        className={clsx(
+                            "pl-9 pr-14",
+                            error &&
+                            "border-destructive"
+                        )}
                     />
 
                     <Plus
                         size={16}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
                     />
 
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-                        {input.length}/{MAX_LENGTH}
-                    </span>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                        {
+                            normalizedInput.length
+                        }
+                        /
+                        {
+                            MAX_LENGTH
+                        }
+                    </div>
                 </div>
 
                 <Button
                     type="button"
-                    onClick={handleAdd}
-                    disabled={disabled}
+                    disabled={
+                        disabled
+                    }
+                    onClick={
+                        handleSubmit
+                    }
                 >
-                    {isSubmitting ? (
-                        <Loader2 className="animate-spin" size={16} />
+                    {submitting ? (
+                        <Loader2
+                            size={16}
+                            className="animate-spin"
+                        />
                     ) : (
-                        <Plus size={16} />
+                        <Plus
+                            size={16}
+                        />
                     )}
-                    {isSubmitting ? "追加中" : "追加"}
+
+                    {submitting
+                        ? "追加中"
+                        : "追加"}
                 </Button>
             </div>
 
-            {error && (
-                <div
-                    role="alert"
-                    className="flex items-center gap-1 text-sm text-red-500"
-                >
-                    <AlertCircle size={14} />
+            {error ? (
+                <p className="mt-2 text-sm text-destructive">
                     {error}
-                </div>
-            )}
+                </p>
+            ) : null}
         </div>
     );
 }
