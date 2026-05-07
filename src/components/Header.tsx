@@ -1,17 +1,20 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { Search, X } from "lucide-react";
+
+import {
+    Search,
+    X,
+} from "lucide-react";
+
 import clsx from "clsx";
+
 import {
     useState,
     useEffect,
     useRef,
     useCallback,
-    useMemo,
 } from "react";
-
-/* ================= TYPES ================= */
 
 const categoryMap = {
     myday: "マイデイ",
@@ -20,36 +23,17 @@ const categoryMap = {
     tasks: "すべてのタスク",
 } as const;
 
-type CategoryId = keyof typeof categoryMap;
+type CategoryId =
+    keyof typeof categoryMap;
 
 type HeaderProps = {
     categoryId: CategoryId;
     search: string;
-    onSearchChange: (value: string) => void;
+    onSearchChange: (
+        value: string
+    ) => void;
     total?: number;
 };
-
-/* ================= HOOK ================= */
-
-function useDebounce<T extends (...args: any[]) => void>(
-    fn: T,
-    delay: number
-) {
-    const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    return useCallback(
-        (...args: Parameters<T>) => {
-            if (timer.current) clearTimeout(timer.current);
-
-            timer.current = setTimeout(() => {
-                fn(...args);
-            }, delay);
-        },
-        [fn, delay]
-    );
-}
-
-/* ================= COMPONENT ================= */
 
 export default function Header({
     categoryId,
@@ -57,149 +41,228 @@ export default function Header({
     onSearchChange,
     total = 0,
 }: HeaderProps) {
-    const categoryName = categoryMap[categoryId] ?? "タスク";
+    const categoryName =
+        categoryMap[categoryId] ??
+        "タスク";
 
-    const [value, setValue] = useState(search);
+    const [value, setValue] =
+        useState(search);
 
-    const inputRef = useRef<HTMLInputElement | null>(null);
-    const isComposing = useRef(false);
+    const inputRef =
+        useRef<HTMLInputElement>(null);
 
-    const debouncedSearch = useDebounce(onSearchChange, 300);
+    const composingRef =
+        useRef(false);
 
-    /* sync external -> local */
+    const debounceRef = useRef<
+        ReturnType<typeof setTimeout> | undefined
+    >(undefined);
+
     useEffect(() => {
-        if (isComposing.current) return;
+        if (composingRef.current) {
+            return;
+        }
+
         setValue(search);
     }, [search]);
 
-    /* local -> store */
     useEffect(() => {
-        if (isComposing.current) return;
-        debouncedSearch(value);
-    }, [value, debouncedSearch]);
-
-    /* keyboard focus */
-    const focusInput = useCallback(() => {
-        const el = inputRef.current;
-        if (!el) return;
-
-        if (document.activeElement === el) {
-            el.blur();
-        } else {
-            el.focus();
-            el.select();
+        if (composingRef.current) {
+            return;
         }
-    }, []);
 
-    useEffect(() => {
-        const handler = (e: KeyboardEvent) => {
-            const isTyping =
-                document.activeElement instanceof HTMLInputElement ||
-                document.activeElement instanceof HTMLTextAreaElement;
+        if (debounceRef.current) {
+            clearTimeout(
+                debounceRef.current
+            );
+        }
 
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-                e.preventDefault();
-                focusInput();
+        debounceRef.current =
+            setTimeout(() => {
+                onSearchChange(value);
+            }, 250);
+
+        return () => {
+            if (
+                debounceRef.current
+            ) {
+                clearTimeout(
+                    debounceRef.current
+                );
+            }
+        };
+    }, [value, onSearchChange]);
+
+    const focusSearch =
+        useCallback(() => {
+            const element =
+                inputRef.current;
+
+            if (!element) {
+                return;
             }
 
-            if (e.key === "/" && !isTyping) {
-                e.preventDefault();
+            if (
+                document.activeElement ===
+                element
+            ) {
+                element.blur();
+
+                return;
+            }
+
+            element.focus();
+            element.select();
+        }, []);
+
+    useEffect(() => {
+        const handleKeyDown = (
+            event: KeyboardEvent
+        ) => {
+            const target =
+                document.activeElement;
+
+            const isTyping =
+                target instanceof
+                HTMLInputElement ||
+                target instanceof
+                HTMLTextAreaElement;
+
+            if (
+                (event.metaKey ||
+                    event.ctrlKey) &&
+                event.key.toLowerCase() ===
+                "k"
+            ) {
+                event.preventDefault();
+
+                focusSearch();
+            }
+
+            if (
+                event.key === "/" &&
+                !isTyping
+            ) {
+                event.preventDefault();
+
                 inputRef.current?.focus();
             }
         };
 
-        window.addEventListener("keydown", handler);
-        return () => window.removeEventListener("keydown", handler);
-    }, [focusInput]);
+        window.addEventListener(
+            "keydown",
+            handleKeyDown
+        );
 
-    /* subtitle */
-    const subtitle = useMemo(() => {
-        if (total === 0 && !search) return "タスクがありません";
-        if (total === 0 && search) return "該当するタスクがありません";
+        return () => {
+            window.removeEventListener(
+                "keydown",
+                handleKeyDown
+            );
+        };
+    }, [focusSearch]);
 
-        if (search) {
-            return `"${search}" の検索結果 · ${total}件`;
-        }
+    const clearSearch =
+        useCallback(() => {
+            setValue("");
 
-        return `${total}件のタスク`;
-    }, [search, total]);
+            onSearchChange("");
 
-    /* clear */
-    const clear = useCallback(() => {
-        setValue("");
-        onSearchChange("");
-        inputRef.current?.focus();
-    }, [onSearchChange]);
+            inputRef.current?.focus();
+        }, [onSearchChange]);
 
-    /* ================= UI ================= */
+    let subtitle = `${total}件のタスク`;
+
+    if (total === 0) {
+        subtitle = search
+            ? "検索結果がありません"
+            : "タスクがありません";
+    }
+
+    if (search && total > 0) {
+        subtitle = `"${search}" の検索結果 · ${total}件`;
+    }
 
     return (
-        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between
-            bg-white/80 dark:bg-gray-900/80 backdrop-blur
-            px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-
-            {/* left */}
-            <div className="flex flex-col mb-3 sm:mb-0">
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+        <header
+            className={clsx(
+                "flex flex-col justify-between gap-4 border-b px-6 py-4",
+                "bg-background/80 backdrop-blur",
+                "sm:flex-row sm:items-center"
+            )}
+        >
+            <div className="min-w-0">
+                <h1 className="truncate text-3xl font-semibold tracking-tight">
                     {categoryName}
-                </h2>
+                </h1>
 
-                <p className="text-sm text-gray-400" aria-live="polite">
+                <p
+                    aria-live="polite"
+                    className="mt-1 text-sm text-muted-foreground"
+                >
                     {subtitle}
                 </p>
             </div>
 
-            {/* search */}
-            <div className="relative w-full max-w-xs sm:w-72 group">
-
+            <div className="relative w-full sm:w-72">
                 <Input
                     ref={inputRef}
                     value={value}
-                    onChange={(e) => setValue(e.target.value)}
+                    onChange={(e) =>
+                        setValue(
+                            e.target.value
+                        )
+                    }
                     onCompositionStart={() => {
-                        isComposing.current = true;
+                        composingRef.current =
+                            true;
                     }}
-                    onCompositionEnd={(e) => {
-                        isComposing.current = false;
-                        setValue(e.currentTarget.value);
+                    onCompositionEnd={(
+                        e
+                    ) => {
+                        composingRef.current =
+                            false;
+
+                        setValue(
+                            e.currentTarget
+                                .value
+                        );
                     }}
-                    placeholder="検索（Ctrl+K / /）"
-                    className={clsx(
-                        "pl-10 pr-10 rounded-lg transition-all",
-                        "focus:ring-2 focus:ring-blue-400 focus:outline-none",
-                        "group-focus-within:ring-2 group-focus-within:ring-blue-400"
-                    )}
-                    role="searchbox"
-                    aria-label="タスク検索"
-                    autoComplete="off"
                     onKeyDown={(e) => {
-                        if (e.key === "Escape") {
-                            value ? clear() : inputRef.current?.blur();
+                        if (
+                            e.key ===
+                            "Escape"
+                        ) {
+                            if (value) {
+                                clearSearch();
+                            } else {
+                                inputRef.current?.blur();
+                            }
                         }
                     }}
+                    placeholder="検索"
+                    autoComplete="off"
+                    role="searchbox"
+                    aria-label="タスク検索"
+                    className="pl-9 pr-9"
                 />
 
                 <Search
-                    aria-hidden="true"
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                     size={16}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
                 />
 
-                {value && (
+                {value ? (
                     <button
-                        onClick={clear}
+                        onClick={
+                            clearSearch
+                        }
                         aria-label="検索をクリア"
-                        className="absolute right-3 top-1/2 -translate-y-1/2
-                        text-gray-400 hover:text-gray-600 transition"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:opacity-70"
                     >
                         <X size={16} />
                     </button>
-                )}
-
-                {/* keyboard hint */}
-                <div className="absolute right-10 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 hidden sm:block">
-                    ⌘K
-                </div>
+                ) : null}
             </div>
         </header>
     );
