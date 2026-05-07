@@ -9,11 +9,11 @@ import {
     useEffect,
     useState,
     useCallback,
-    useMemo,
     type ReactNode,
 } from "react";
 
 export type AppTheme = "light" | "dark" | "system";
+
 type ResolvedTheme = "light" | "dark";
 
 type ThemeProviderProps = {
@@ -22,7 +22,15 @@ type ThemeProviderProps = {
 
 const STORAGE_KEY = "donezo-theme";
 
-export function ThemeProvider({ children }: ThemeProviderProps) {
+const THEME_ORDER: AppTheme[] = [
+    "light",
+    "dark",
+    "system",
+];
+
+export function ThemeProvider({
+    children,
+}: ThemeProviderProps) {
     return (
         <NextThemesProvider
             attribute="class"
@@ -37,20 +45,27 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 }
 
 export function useAppTheme() {
-    const { theme, setTheme, resolvedTheme } = useTheme();
-    const [mounted, setMounted] = useState(false);
+    const {
+        theme,
+        setTheme,
+        resolvedTheme,
+        systemTheme,
+    } = useTheme();
+
+    const [hydrated, setHydrated] = useState(false);
 
     useEffect(() => {
-        setMounted(true);
+        setHydrated(true);
     }, []);
 
-    const currentTheme = (theme ?? "system") as AppTheme;
+    const currentTheme = (theme ??
+        "system") as AppTheme;
 
-    const resolved = (resolvedTheme ?? "light") as ResolvedTheme;
+    const resolved = (resolvedTheme ??
+        "light") as ResolvedTheme;
 
-    const isDark = mounted && resolved === "dark";
-    const isLight = mounted && resolved === "light";
-    const isSystem = currentTheme === "system";
+    const system = (systemTheme ??
+        "light") as ResolvedTheme;
 
     const set = useCallback(
         (value: AppTheme) => {
@@ -59,45 +74,56 @@ export function useAppTheme() {
         [setTheme]
     );
 
-    const toggleDarkLight = useCallback(() => {
-        set(resolved === "dark" ? "light" : "dark");
-    }, [resolved, set]);
+    const toggle = useCallback(() => {
+        setTheme(
+            resolved === "dark"
+                ? "light"
+                : "dark"
+        );
+    }, [resolved, setTheme]);
 
     const cycle = useCallback(() => {
-        const order: AppTheme[] = ["light", "dark", "system"];
-        const index = order.indexOf(currentTheme);
-        const next = order[(index + 1) % order.length];
-        set(next);
-    }, [currentTheme, set]);
+        const currentIndex =
+            THEME_ORDER.indexOf(currentTheme);
 
-    return useMemo(
-        () => ({
-            theme: currentTheme,
-            resolvedTheme: resolved,
-            isHydrated: mounted,
+        const nextTheme =
+            THEME_ORDER[
+            (currentIndex + 1) %
+            THEME_ORDER.length
+            ];
 
-            state: {
-                isDark,
-                isLight,
-                isSystem,
-            },
+        setTheme(nextTheme);
+    }, [currentTheme, setTheme]);
 
-            actions: {
-                set,
-                toggleDarkLight,
-                cycle,
-            },
-        }),
-        [
-            currentTheme,
-            resolved,
-            mounted,
-            isDark,
-            isLight,
-            isSystem,
-            set,
-            toggleDarkLight,
-            cycle,
-        ]
-    );
+    const nextTheme =
+        THEME_ORDER[
+        (THEME_ORDER.indexOf(currentTheme) + 1) %
+        THEME_ORDER.length
+        ];
+
+    return {
+        hydrated,
+
+        theme: currentTheme,
+
+        resolvedTheme: resolved,
+
+        systemTheme: system,
+
+        nextTheme,
+
+        isDark: hydrated && resolved === "dark",
+
+        isLight:
+            hydrated && resolved === "light",
+
+        isSystem:
+            hydrated && currentTheme === "system",
+
+        setTheme: set,
+
+        toggleTheme: toggle,
+
+        cycleTheme: cycle,
+    };
 }
