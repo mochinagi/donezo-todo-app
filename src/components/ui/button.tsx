@@ -1,96 +1,95 @@
 "use client";
 
 import * as React from "react";
+
 import { Slot } from "@radix-ui/react-slot";
+
 import { Loader2 } from "lucide-react";
-import { cva, type VariantProps } from "class-variance-authority";
+
+import {
+  cva,
+  type VariantProps,
+} from "class-variance-authority";
+
 import { cn } from "@/lib/utils";
 
-/* ================= styles ================= */
-
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none",
+  [
+    "relative inline-flex items-center justify-center whitespace-nowrap rounded-lg font-medium",
+    "transition-all duration-150",
+    "outline-none",
+    "focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2",
+    "disabled:pointer-events-none disabled:opacity-50",
+    "active:scale-[0.985]",
+    "[&_svg]:pointer-events-none [&_svg]:shrink-0",
+  ].join(" "),
   {
     variants: {
       variant: {
-        default: "bg-blue-600 text-white hover:bg-blue-700",
-        destructive: "bg-red-500 text-white hover:bg-red-600",
-        outline: "border border-gray-300 hover:bg-gray-100",
-        secondary: "bg-gray-200 text-gray-800 hover:bg-gray-300",
-        ghost: "hover:bg-gray-100",
-        link: "text-blue-600 underline-offset-4 hover:underline",
-        success: "bg-green-500 text-white hover:bg-green-600",
-        warning: "bg-yellow-400 text-black hover:bg-yellow-500",
+        primary:
+          "bg-zinc-900 text-white hover:bg-zinc-800",
+
+        danger:
+          "bg-red-500 text-white hover:bg-red-600",
+
+        secondary:
+          "bg-zinc-100 text-zinc-900 hover:bg-zinc-200",
+
+        outline:
+          "border border-zinc-300 bg-white hover:bg-zinc-100",
+
+        ghost:
+          "hover:bg-zinc-100",
+
+        link:
+          "text-blue-600 underline-offset-4 hover:underline",
       },
+
       size: {
-        default: "h-9 px-4",
         sm: "h-8 px-3 text-sm",
-        lg: "h-10 px-6 text-base",
+
+        md: "h-9 px-4 text-sm",
+
+        lg: "h-11 px-6 text-base",
+
         icon: "h-9 w-9 p-0",
       },
     },
+
     defaultVariants: {
-      variant: "default",
-      size: "default",
+      variant: "primary",
+      size: "md",
     },
   }
 );
 
-/* ================= types ================= */
+const iconSizeMap = {
+  sm: 14,
+  md: 16,
+  lg: 18,
+  icon: 16,
+} as const;
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-  VariantProps<typeof buttonVariants> {
+  VariantProps<
+    typeof buttonVariants
+  > {
   asChild?: boolean;
+
   loading?: boolean;
+
   loadingText?: string;
-  icon?: React.ReactNode;
-  iconOnly?: boolean;
+
+  leadingIcon?: React.ReactNode;
+
+  trailingIcon?: React.ReactNode;
 }
 
-/* ================= internal ================= */
-
-function ButtonContent({
-  loading,
-  loadingText,
-  icon,
-  iconOnly,
-  children,
-}: {
-  loading?: boolean;
-  loadingText?: string;
-  icon?: React.ReactNode;
-  iconOnly?: boolean;
-  children?: React.ReactNode;
-}) {
-  if (loading) {
-    return (
-      <>
-        <Loader2 className="animate-spin shrink-0" size={16} />
-        {!iconOnly && (
-          <span className="truncate">
-            {loadingText ?? children}
-          </span>
-        )}
-      </>
-    );
-  }
-
-  if (iconOnly) {
-    return icon ?? children;
-  }
-
-  return (
-    <>
-      {icon}
-      <span className="truncate">{children}</span>
-    </>
-  );
-}
-
-/* ================= component ================= */
-
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+const Button = React.forwardRef<
+  HTMLButtonElement,
+  ButtonProps
+>(
   (
     {
       className,
@@ -99,8 +98,8 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       asChild = false,
       loading = false,
       loadingText,
-      icon,
-      iconOnly = false,
+      leadingIcon,
+      trailingIcon,
       children,
       disabled,
       type,
@@ -108,37 +107,134 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     },
     ref
   ) => {
-    const Comp = asChild ? Slot : "button";
+    const Comp = asChild
+      ? Slot
+      : "button";
 
-    const isDisabled = disabled || loading;
+    const [
+      mounted,
+      setMounted,
+    ] = React.useState(false);
+
+    const contentRef =
+      React.useRef<HTMLSpanElement>(
+        null
+      );
+
+    const [
+      lockedWidth,
+      setLockedWidth,
+    ] = React.useState<
+      number | null
+    >(null);
+
+    React.useEffect(() => {
+      setMounted(true);
+    }, []);
+
+    React.useEffect(() => {
+      if (
+        !loading &&
+        contentRef.current
+      ) {
+        setLockedWidth(
+          contentRef.current
+            .offsetWidth
+        );
+      }
+    }, [children, loading]);
+
+    const iconSize =
+      iconSizeMap[
+      size ?? "md"
+      ];
+
+    const isDisabled =
+      disabled || loading;
 
     return (
       <Comp
         ref={ref}
-        {...(!asChild && { type: type ?? "button" })}
+        {...(!asChild && {
+          type:
+            type ??
+            "button",
+        })}
         data-slot="button"
-        aria-busy={loading || undefined}
-        aria-disabled={isDisabled || undefined}
+        data-loading={
+          loading ||
+          undefined
+        }
+        aria-busy={
+          loading ||
+          undefined
+        }
+        aria-disabled={
+          isDisabled ||
+          undefined
+        }
+        disabled={
+          !asChild
+            ? isDisabled
+            : undefined
+        }
         className={cn(
-          buttonVariants({ variant, size }),
+          buttonVariants({
+            variant,
+            size,
+          }),
           className
         )}
-        disabled={!asChild ? isDisabled : undefined}
+        style={{
+          minWidth:
+            lockedWidth ??
+            undefined,
+        }}
         {...props}
       >
-        <ButtonContent
-          loading={loading}
-          loadingText={loadingText}
-          icon={icon}
-          iconOnly={iconOnly}
+        <span
+          ref={contentRef}
+          className="inline-flex items-center gap-2"
         >
-          {children}
-        </ButtonContent>
+          {loading ? (
+            <>
+              <Loader2
+                size={
+                  iconSize
+                }
+                className="animate-spin"
+              />
+
+              <span className="truncate">
+                {loadingText ??
+                  children}
+              </span>
+            </>
+          ) : (
+            <>
+              {leadingIcon}
+
+              {children && (
+                <span className="truncate">
+                  {
+                    children
+                  }
+                </span>
+              )}
+
+              {trailingIcon}
+            </>
+          )}
+        </span>
       </Comp>
     );
   }
 );
 
-Button.displayName = "Button";
+Button.displayName =
+  "Button";
 
-export { Button, buttonVariants };
+export {
+  Button,
+  buttonVariants,
+};
