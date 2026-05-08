@@ -1,112 +1,121 @@
 "use client";
 
 import * as React from "react";
-import { Slot } from "@radix-ui/react-slot";
-import { cn } from "@/lib/utils";
-import { cva, type VariantProps } from "class-variance-authority";
 
-/* ================= VARIANTS ================= */
+import { Slot } from "@radix-ui/react-slot";
+
+import {
+  cva,
+  type VariantProps,
+} from "class-variance-authority";
+
+import { cn } from "@/lib/utils";
 
 const cardVariants = cva(
-  "rounded-lg flex flex-col border outline-none transition",
+  [
+    "relative flex flex-col rounded-2xl border transition-all duration-200",
+    "bg-white text-zinc-900",
+  ].join(" "),
   {
     variants: {
-      variant: {
-        default: "bg-white border-gray-200",
-        outline: "border-gray-300 bg-transparent",
-        elevated: "bg-white border-gray-100 shadow-sm",
-        ghost: "bg-transparent border-none",
+      surface: {
+        default:
+          "border-zinc-200",
+
+        muted:
+          "border-zinc-100 bg-zinc-50/60",
+
+        elevated:
+          "border-zinc-100 shadow-sm",
+
+        floating:
+          "border-transparent shadow-md",
       },
+
       interactive: {
-        true: "cursor-pointer",
+        true: [
+          "cursor-pointer",
+          "hover:-translate-y-[1px]",
+          "hover:border-zinc-300",
+          "hover:shadow-md",
+          "active:translate-y-0",
+        ].join(" "),
+
         false: "",
       },
-      disabled: {
-        true: "opacity-50 pointer-events-none",
+
+      selected: {
+        true: [
+          "border-zinc-900",
+          "ring-1 ring-zinc-900/10",
+        ].join(" "),
+
         false: "",
       },
-      density: {
-        compact: "text-sm",
-        comfortable: "text-sm",
-        spacious: "text-base",
+
+      loading: {
+        true: "animate-pulse",
+
+        false: "",
       },
     },
-    compoundVariants: [
-      {
-        interactive: true,
-        disabled: false,
-        class: "hover:shadow-md",
-      },
-    ],
+
     defaultVariants: {
-      variant: "default",
+      surface: "default",
       interactive: false,
-      disabled: false,
-      density: "comfortable",
+      selected: false,
+      loading: false,
     },
   }
 );
 
-type CardProps = React.ComponentProps<"div"> &
-  VariantProps<typeof cardVariants> & {
+type CardProps =
+  React.ComponentProps<"div"> &
+  VariantProps<
+    typeof cardVariants
+  > & {
     asChild?: boolean;
   };
 
-/* ================= CARD ================= */
-
-const Card = React.forwardRef<HTMLDivElement, CardProps>(
+const Card = React.forwardRef<
+  HTMLDivElement,
+  CardProps
+>(
   (
     {
       className,
-      variant,
+      surface,
       interactive,
-      disabled,
-      density,
+      selected,
+      loading,
       asChild = false,
-      onClick,
-      onKeyDown,
       ...props
     },
     ref
   ) => {
-    const Comp = asChild ? Slot : "div";
-
-    const clickable = interactive && !disabled;
-
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (!clickable) return;
-
-      if (e.currentTarget !== e.target) return;
-
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        (e.currentTarget as HTMLElement).click();
-      }
-
-      onKeyDown?.(e);
-    };
-
-    const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-      if (disabled) {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
-      onClick?.(e);
-    };
+    const Comp = asChild
+      ? Slot
+      : "div";
 
     return (
       <Comp
         ref={ref}
         data-slot="card"
-        tabIndex={clickable && !asChild ? 0 : undefined}
-        role={clickable && !asChild ? "button" : undefined}
-        aria-disabled={disabled || undefined}
-        onKeyDown={handleKeyDown}
-        onClick={handleClick}
+        data-selected={
+          selected ||
+          undefined
+        }
+        data-loading={
+          loading ||
+          undefined
+        }
         className={cn(
-          cardVariants({ variant, interactive, disabled, density }),
-          clickable && "focus-visible:ring-2 focus-visible:ring-blue-400",
+          cardVariants({
+            surface,
+            interactive,
+            selected,
+            loading,
+          }),
           className
         )}
         {...props}
@@ -115,99 +124,149 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
   }
 );
 
-Card.displayName = "Card";
+Card.displayName =
+  "Card";
 
-/* ================= SUB ================= */
+const CardHeader =
+  React.forwardRef<
+    HTMLDivElement,
+    React.ComponentProps<"div">
+  >(
+    (
+      {
+        className,
+        ...props
+      },
+      ref
+    ) => (
+      <div
+        ref={ref}
+        data-slot="card-header"
+        className={cn(
+          "flex flex-col gap-1.5 px-5 pt-5",
+          className
+        )}
+        {...props}
+      />
+    )
+  );
 
-const CardHeader = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    data-slot="card-header"
-    className={cn("px-4 pt-4 pb-2 flex flex-col gap-1", className)}
-    {...props}
-  />
-));
-CardHeader.displayName = "CardHeader";
+CardHeader.displayName =
+  "CardHeader";
 
-const CardTitle = React.forwardRef<
-  HTMLHeadingElement,
-  React.ComponentProps<"h3">
->(({ className, ...props }, ref) => (
-  <h3
-    ref={ref}
-    data-slot="card-title"
-    className={cn("font-semibold leading-tight", className)}
-    {...props}
-  />
-));
-CardTitle.displayName = "CardTitle";
+const CardTitle =
+  React.forwardRef<
+    HTMLHeadingElement,
+    React.ComponentProps<"h3">
+  >(
+    (
+      {
+        className,
+        ...props
+      },
+      ref
+    ) => (
+      <h3
+        ref={ref}
+        data-slot="card-title"
+        className={cn(
+          "text-base font-semibold tracking-tight",
+          className
+        )}
+        {...props}
+      />
+    )
+  );
 
-const CardDescription = React.forwardRef<
-  HTMLParagraphElement,
-  React.ComponentProps<"p">
->(({ className, ...props }, ref) => (
-  <p
-    ref={ref}
-    data-slot="card-description"
-    className={cn("text-gray-500 text-sm", className)}
-    {...props}
-  />
-));
-CardDescription.displayName = "CardDescription";
+CardTitle.displayName =
+  "CardTitle";
 
-const CardContent = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    data-slot="card-content"
-    className={cn("px-4 py-2", className)}
-    {...props}
-  />
-));
-CardContent.displayName = "CardContent";
+const CardDescription =
+  React.forwardRef<
+    HTMLParagraphElement,
+    React.ComponentProps<"p">
+  >(
+    (
+      {
+        className,
+        ...props
+      },
+      ref
+    ) => (
+      <p
+        ref={ref}
+        data-slot="card-description"
+        className={cn(
+          "text-sm leading-relaxed text-zinc-500",
+          className
+        )}
+        {...props}
+      />
+    )
+  );
 
-const CardFooter = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    data-slot="card-footer"
-    className={cn(
-      "px-4 pt-2 pb-4 flex items-center justify-between border-t border-gray-100",
-      className
-    )}
-    {...props}
-  />
-));
-CardFooter.displayName = "CardFooter";
+CardDescription.displayName =
+  "CardDescription";
 
-const CardAction = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    data-slot="card-action"
-    className={cn("ml-auto", className)}
-    {...props}
-  />
-));
-CardAction.displayName = "CardAction";
+const CardContent =
+  React.forwardRef<
+    HTMLDivElement,
+    React.ComponentProps<"div">
+  >(
+    (
+      {
+        className,
+        ...props
+      },
+      ref
+    ) => (
+      <div
+        ref={ref}
+        data-slot="card-content"
+        className={cn(
+          "flex-1 px-5 py-4",
+          className
+        )}
+        {...props}
+      />
+    )
+  );
 
-/* ================= EXPORT ================= */
+CardContent.displayName =
+  "CardContent";
+
+const CardFooter =
+  React.forwardRef<
+    HTMLDivElement,
+    React.ComponentProps<"div">
+  >(
+    (
+      {
+        className,
+        ...props
+      },
+      ref
+    ) => (
+      <div
+        ref={ref}
+        data-slot="card-footer"
+        className={cn(
+          "flex items-center justify-between border-t border-zinc-100 px-5 py-4",
+          className
+        )}
+        {...props}
+      />
+    )
+  );
+
+CardFooter.displayName =
+  "CardFooter";
 
 export {
   Card,
   CardHeader,
-  CardFooter,
   CardTitle,
-  CardAction,
   CardDescription,
   CardContent,
+  CardFooter,
 };
