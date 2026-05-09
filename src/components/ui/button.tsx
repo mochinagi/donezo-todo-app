@@ -14,23 +14,12 @@ import {
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  [
-    "relative inline-flex items-center justify-center whitespace-nowrap rounded-lg font-medium",
-    "transition-all duration-150",
-    "outline-none",
-    "focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2",
-    "disabled:pointer-events-none disabled:opacity-50",
-    "active:scale-[0.985]",
-    "[&_svg]:pointer-events-none [&_svg]:shrink-0",
-  ].join(" "),
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.985] [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         primary:
           "bg-zinc-900 text-white hover:bg-zinc-800",
-
-        danger:
-          "bg-red-500 text-white hover:bg-red-600",
 
         secondary:
           "bg-zinc-100 text-zinc-900 hover:bg-zinc-200",
@@ -40,6 +29,9 @@ const buttonVariants = cva(
 
         ghost:
           "hover:bg-zinc-100",
+
+        danger:
+          "bg-red-500 text-white hover:bg-red-600",
 
         link:
           "text-blue-600 underline-offset-4 hover:underline",
@@ -63,13 +55,6 @@ const buttonVariants = cva(
   }
 );
 
-const iconSizeMap = {
-  sm: 14,
-  md: 16,
-  lg: 18,
-  icon: 16,
-} as const;
-
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
   VariantProps<
@@ -86,115 +71,72 @@ export interface ButtonProps
   trailingIcon?: React.ReactNode;
 }
 
-const Button = React.forwardRef<
-  HTMLButtonElement,
-  ButtonProps
->(
-  (
-    {
-      className,
-      variant,
-      size,
-      asChild = false,
-      loading = false,
-      loadingText,
-      leadingIcon,
-      trailingIcon,
-      children,
-      disabled,
-      type,
-      ...props
-    },
-    ref
-  ) => {
-    const Comp = asChild
-      ? Slot
-      : "button";
+const iconSizeMap = {
+  sm: 14,
+  md: 16,
+  lg: 18,
+  icon: 16,
+} as const;
 
-    const [
-      mounted,
-      setMounted,
-    ] = React.useState(false);
+export const Button =
+  React.forwardRef<
+    HTMLButtonElement,
+    ButtonProps
+  >(
+    (
+      {
+        className,
+        variant,
+        size,
+        asChild,
+        loading,
+        loadingText,
+        leadingIcon,
+        trailingIcon,
+        children,
+        disabled,
+        type,
+        ...props
+      },
+      ref
+    ) => {
+      const Comp = asChild
+        ? Slot
+        : "button";
 
-    const contentRef =
-      React.useRef<HTMLSpanElement>(
-        null
-      );
+      const iconSize =
+        iconSizeMap[
+        size ?? "md"
+        ];
 
-    const [
-      lockedWidth,
-      setLockedWidth,
-    ] = React.useState<
-      number | null
-    >(null);
+      const isDisabled =
+        disabled || loading;
 
-    React.useEffect(() => {
-      setMounted(true);
-    }, []);
-
-    React.useEffect(() => {
-      if (
-        !loading &&
-        contentRef.current
-      ) {
-        setLockedWidth(
-          contentRef.current
-            .offsetWidth
-        );
-      }
-    }, [children, loading]);
-
-    const iconSize =
-      iconSizeMap[
-      size ?? "md"
-      ];
-
-    const isDisabled =
-      disabled || loading;
-
-    return (
-      <Comp
-        ref={ref}
-        {...(!asChild && {
-          type:
-            type ??
-            "button",
-        })}
-        data-slot="button"
-        data-loading={
-          loading ||
-          undefined
-        }
-        aria-busy={
-          loading ||
-          undefined
-        }
-        aria-disabled={
-          isDisabled ||
-          undefined
-        }
-        disabled={
-          !asChild
-            ? isDisabled
-            : undefined
-        }
-        className={cn(
-          buttonVariants({
-            variant,
-            size,
-          }),
-          className
-        )}
-        style={{
-          minWidth:
-            lockedWidth ??
-            undefined,
-        }}
-        {...props}
-      >
-        <span
-          ref={contentRef}
-          className="inline-flex items-center gap-2"
+      return (
+        <Comp
+          ref={ref}
+          type={
+            !asChild
+              ? type ?? "button"
+              : undefined
+          }
+          disabled={
+            !asChild
+              ? isDisabled
+              : undefined
+          }
+          aria-busy={
+            loading ||
+            undefined
+          }
+          className={cn(
+            buttonVariants({
+              variant,
+              size,
+            }),
+            className
+          )}
+          {...props}
         >
           {loading ? (
             <>
@@ -214,27 +156,24 @@ const Button = React.forwardRef<
             <>
               {leadingIcon}
 
-              {children && (
+              {children ? (
                 <span className="truncate">
                   {
                     children
                   }
                 </span>
-              )}
+              ) : null}
 
               {trailingIcon}
             </>
           )}
-        </span>
-      </Comp>
-    );
-  }
-);
+        </Comp>
+      );
+    }
+  );
 
-Button.displayName =
-  "Button";
+Button.displayName = "Button";
 
 export {
-  Button,
   buttonVariants,
 };
