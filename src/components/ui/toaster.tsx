@@ -1,15 +1,16 @@
 "use client";
 
-import { Toaster, toast as sonnerToast } from "sonner";
-
-/* ================= UI ================= */
+import {
+    Toaster,
+    toast as sonnerToast,
+} from "sonner";
 
 export default function AppToaster() {
     return (
         <Toaster
             position="top-right"
-            richColors
             closeButton
+            richColors
             expand
             visibleToasts={3}
             toastOptions={{
@@ -20,153 +21,263 @@ export default function AppToaster() {
     );
 }
 
-/* ================= TYPES ================= */
-
-type ToastType = "success" | "error" | "info" | "loading";
-
 type ToastOptions = {
-    description?: string;
     id?: string;
+    description?: string;
     duration?: number;
-    silent?: boolean;
     throttle?: number;
+    silent?: boolean;
+    action?: {
+        label: string;
+        onClick: () => void;
+    };
 };
 
-/* ================= INTERNAL ================= */
+const recentToastMap = new Map<
+    string,
+    number
+>();
 
-const lastToastMap = new Map<string, number>();
-
-const MAX_CACHE = 100;
 const DEFAULT_THROTTLE = 800;
 
-const now = () => Date.now();
+const MAX_CACHE = 100;
 
-const keyOf = (type: ToastType, message: string, id?: string) =>
-    id ?? `${type}:${message}`;
-
-const isThrottled = (key: string, throttle: number) => {
-    const last = lastToastMap.get(key);
-    return last ? now() - last < throttle : false;
-};
-
-const mark = (key: string) => {
-    if (lastToastMap.size > MAX_CACHE) {
-        const firstKey = lastToastMap.keys().next().value;
-        if (firstKey) lastToastMap.delete(firstKey);
-    }
-    lastToastMap.set(key, now());
-};
-
-/* ================= CORE ================= */
-
-const create = (
-    type: ToastType,
-    message: string,
-    opts?: ToastOptions
+const shouldSkip = (
+    key: string,
+    throttle: number
 ) => {
-    const { id, silent, throttle = DEFAULT_THROTTLE, ...rest } = opts || {};
+    const last =
+        recentToastMap.get(key);
 
-    if (silent) return;
+    if (!last) {
+        return false;
+    }
 
-    const key = keyOf(type, message, id);
-
-    if (isThrottled(key, throttle)) return id;
-
-    mark(key);
-
-    const handler = sonnerToast[type];
-
-    return handler(message, {
-        ...rest,
-        id,
-    });
+    return (
+        Date.now() - last <
+        throttle
+    );
 };
 
-/* ================= API ================= */
+const rememberToast = (
+    key: string
+) => {
+    if (
+        recentToastMap.size >=
+        MAX_CACHE
+    ) {
+        const first =
+            recentToastMap.keys().next()
+                .value;
+
+        if (first) {
+            recentToastMap.delete(
+                first
+            );
+        }
+    }
+
+    recentToastMap.set(
+        key,
+        Date.now()
+    );
+};
+
+const showToast = (
+    type:
+        | "success"
+        | "error"
+        | "info"
+        | "loading",
+    message: string,
+    options?: ToastOptions
+) => {
+    if (options?.silent) {
+        return;
+    }
+
+    const key =
+        options?.id ??
+        `${type}:${message}`;
+
+    const throttle =
+        options?.throttle ??
+        DEFAULT_THROTTLE;
+
+    if (
+        shouldSkip(
+            key,
+            throttle
+        )
+    ) {
+        return key;
+    }
+
+    rememberToast(key);
+
+    return sonnerToast[type](
+        message,
+        {
+            ...options,
+        }
+    );
+};
 
 export const toast = {
-    success: (msg: string, desc?: string, opts?: ToastOptions) =>
-        create("success", msg, { ...opts, description: desc }),
+    success: (
+        message: string,
+        description?: string,
+        options?: ToastOptions
+    ) => {
+        return showToast(
+            "success",
+            message,
+            {
+                ...options,
+                description,
+            }
+        );
+    },
 
-    error: (msg: string, desc?: string, opts?: ToastOptions) =>
-        create("error", msg, { ...opts, description: desc }),
+    error: (
+        message: string,
+        description?: string,
+        options?: ToastOptions
+    ) => {
+        return showToast(
+            "error",
+            message,
+            {
+                ...options,
+                description,
+            }
+        );
+    },
 
-    info: (msg: string, desc?: string, opts?: ToastOptions) =>
-        create("info", msg, { ...opts, description: desc }),
+    info: (
+        message: string,
+        description?: string,
+        options?: ToastOptions
+    ) => {
+        return showToast(
+            "info",
+            message,
+            {
+                ...options,
+                description,
+            }
+        );
+    },
 
-    loading: (msg: string, opts?: ToastOptions) =>
-        create("loading", msg, opts),
+    loading: (
+        message: string,
+        options?: ToastOptions
+    ) => {
+        return showToast(
+            "loading",
+            message,
+            options
+        );
+    },
 
-    dismiss: (id?: string | number) => {
+    dismiss: (
+        id?: string | number
+    ) => {
         sonnerToast.dismiss(id);
     },
 
     update: (
         id: string | number,
-        msg: string,
-        type: ToastType = "info",
-        opts?: ToastOptions
+        message: string,
+        type:
+            | "success"
+            | "error"
+            | "info"
+            | "loading" = "info",
+        options?: ToastOptions
     ) => {
-        const handler = sonnerToast[type];
-        return handler(msg, { id, ...opts });
+        return sonnerToast[type](
+            message,
+            {
+                ...options,
+                id,
+            }
+        );
     },
 
     promise: async <T,>(
         promise: Promise<T>,
         messages: {
             loading: string;
-            success: string | ((data: T) => string);
-            error: string | ((err: any) => string);
+            success:
+            | string
+            | ((
+                data: T
+            ) => string);
+            error:
+            | string
+            | ((
+                error: unknown
+            ) => string);
         },
-        opts?: ToastOptions
+        options?: ToastOptions
     ) => {
-        return sonnerToast.promise(promise, {
-            loading: messages.loading,
-            success: (data) =>
-                typeof messages.success === "function"
-                    ? messages.success(data)
-                    : messages.success,
-            error: (err) =>
-                typeof messages.error === "function"
-                    ? messages.error(err)
-                    : messages.error ?? err?.message ?? "error",
-            ...opts,
-        });
+        return sonnerToast.promise(
+            promise,
+            {
+                loading:
+                    messages.loading,
+
+                success: (data) => {
+                    if (
+                        typeof messages.success ===
+                        "function"
+                    ) {
+                        return messages.success(
+                            data
+                        );
+                    }
+
+                    return messages.success;
+                },
+
+                error: (error) => {
+                    if (
+                        typeof messages.error ===
+                        "function"
+                    ) {
+                        return messages.error(
+                            error
+                        );
+                    }
+
+                    return (
+                        messages.error ||
+                        "error"
+                    );
+                },
+
+                ...options,
+            }
+        );
     },
 
     action: (
-        msg: string,
+        message: string,
         label: string,
         onClick: () => void,
-        opts?: ToastOptions
-    ) =>
-        create("info", msg, {
-            ...opts,
-            action: { label, onClick },
-        }),
-
-    createTask: (msg: string, opts?: ToastOptions) => {
-        const id = opts?.id ?? crypto.randomUUID();
-        let done = false;
-
-        create("loading", msg, { ...opts, id });
-
-        return {
-            success: (m: string) => {
-                if (done) return;
-                done = true;
-                toast.update(id, m, "success", opts);
-            },
-            error: (m: string) => {
-                if (done) return;
-                done = true;
-                toast.update(id, m, "error", opts);
-            },
-            dismiss: () => {
-                done = true;
-                toast.dismiss(id);
-            },
-            id,
-        };
+        options?: ToastOptions
+    ) => {
+        return showToast(
+            "info",
+            message,
+            {
+                ...options,
+                action: {
+                    label,
+                    onClick,
+                },
+            }
+        );
     },
 };
