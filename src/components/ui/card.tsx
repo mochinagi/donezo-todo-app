@@ -12,13 +12,10 @@ import {
 import { cn } from "@/lib/utils";
 
 const cardVariants = cva(
-  [
-    "relative flex flex-col rounded-2xl border transition-all duration-200",
-    "bg-white text-zinc-900",
-  ].join(" "),
+  "flex flex-col rounded-2xl border bg-white text-zinc-900 transition-all duration-200",
   {
     variants: {
-      surface: {
+      variant: {
         default:
           "border-zinc-200",
 
@@ -33,38 +30,24 @@ const cardVariants = cva(
       },
 
       interactive: {
-        true: [
-          "cursor-pointer",
-          "hover:-translate-y-[1px]",
-          "hover:border-zinc-300",
-          "hover:shadow-md",
-          "active:translate-y-0",
-        ].join(" "),
+        true:
+          "cursor-pointer hover:-translate-y-[1px] hover:border-zinc-300 hover:shadow-md active:translate-y-0",
 
         false: "",
       },
 
       selected: {
-        true: [
-          "border-zinc-900",
-          "ring-1 ring-zinc-900/10",
-        ].join(" "),
-
-        false: "",
-      },
-
-      loading: {
-        true: "animate-pulse",
+        true:
+          "border-zinc-900 ring-1 ring-zinc-900/10",
 
         false: "",
       },
     },
 
     defaultVariants: {
-      surface: "default",
+      variant: "default",
       interactive: false,
       selected: false,
-      loading: false,
     },
   }
 );
@@ -84,11 +67,10 @@ const Card = React.forwardRef<
   (
     {
       className,
-      surface,
+      variant,
       interactive,
       selected,
-      loading,
-      asChild = false,
+      asChild,
       ...props
     },
     ref
@@ -100,21 +82,11 @@ const Card = React.forwardRef<
     return (
       <Comp
         ref={ref}
-        data-slot="card"
-        data-selected={
-          selected ||
-          undefined
-        }
-        data-loading={
-          loading ||
-          undefined
-        }
         className={cn(
           cardVariants({
-            surface,
+            variant,
             interactive,
             selected,
-            loading,
           }),
           className
         )}
@@ -124,143 +96,82 @@ const Card = React.forwardRef<
   }
 );
 
-Card.displayName =
-  "Card";
+Card.displayName = "Card";
 
-const CardHeader =
-  React.forwardRef<
-    HTMLDivElement,
-    React.ComponentProps<"div">
-  >(
-    (
-      {
-        className,
-        ...props
-      },
-      ref
-    ) => (
-      <div
-        ref={ref}
-        data-slot="card-header"
-        className={cn(
-          "flex flex-col gap-1.5 px-5 pt-5",
-          className
-        )}
-        {...props}
-      />
-    )
+function CardHeader({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-1.5 px-5 pt-5",
+        className
+      )}
+      {...props}
+    />
   );
+}
 
-CardHeader.displayName =
-  "CardHeader";
-
-const CardTitle =
-  React.forwardRef<
-    HTMLHeadingElement,
-    React.ComponentProps<"h3">
-  >(
-    (
-      {
-        className,
-        ...props
-      },
-      ref
-    ) => (
-      <h3
-        ref={ref}
-        data-slot="card-title"
-        className={cn(
-          "text-base font-semibold tracking-tight",
-          className
-        )}
-        {...props}
-      />
-    )
+function CardTitle({
+  className,
+  ...props
+}: React.ComponentProps<"h3">) {
+  return (
+    <h3
+      className={cn(
+        "text-base font-semibold tracking-tight",
+        className
+      )}
+      {...props}
+    />
   );
+}
 
-CardTitle.displayName =
-  "CardTitle";
-
-const CardDescription =
-  React.forwardRef<
-    HTMLParagraphElement,
-    React.ComponentProps<"p">
-  >(
-    (
-      {
-        className,
-        ...props
-      },
-      ref
-    ) => (
-      <p
-        ref={ref}
-        data-slot="card-description"
-        className={cn(
-          "text-sm leading-relaxed text-zinc-500",
-          className
-        )}
-        {...props}
-      />
-    )
+function CardDescription({
+  className,
+  ...props
+}: React.ComponentProps<"p">) {
+  return (
+    <p
+      className={cn(
+        "text-sm leading-relaxed text-zinc-500",
+        className
+      )}
+      {...props}
+    />
   );
+}
 
-CardDescription.displayName =
-  "CardDescription";
-
-const CardContent =
-  React.forwardRef<
-    HTMLDivElement,
-    React.ComponentProps<"div">
-  >(
-    (
-      {
-        className,
-        ...props
-      },
-      ref
-    ) => (
-      <div
-        ref={ref}
-        data-slot="card-content"
-        className={cn(
-          "flex-1 px-5 py-4",
-          className
-        )}
-        {...props}
-      />
-    )
+function CardContent({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn(
+        "flex-1 px-5 py-4",
+        className
+      )}
+      {...props}
+    />
   );
+}
 
-CardContent.displayName =
-  "CardContent";
-
-const CardFooter =
-  React.forwardRef<
-    HTMLDivElement,
-    React.ComponentProps<"div">
-  >(
-    (
-      {
-        className,
-        ...props
-      },
-      ref
-    ) => (
-      <div
-        ref={ref}
-        data-slot="card-footer"
-        className={cn(
-          "flex items-center justify-between border-t border-zinc-100 px-5 py-4",
-          className
-        )}
-        {...props}
-      />
-    )
+function CardFooter({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between border-t border-zinc-100 px-5 py-4",
+        className
+      )}
+      {...props}
+    />
   );
-
-CardFooter.displayName =
-  "CardFooter";
+}
 
 export {
   Card,
