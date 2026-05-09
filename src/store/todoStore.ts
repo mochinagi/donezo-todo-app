@@ -2,7 +2,6 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { shallow } from "zustand/shallow";
 
 export type Priority = "low" | "medium" | "high";
 
@@ -11,6 +10,7 @@ export interface Todo {
     text: string;
     normalized: string;
     completed: boolean;
+    completedAt?: number | null;
     archived: boolean;
     priority: Priority;
     pinned: boolean;
@@ -39,10 +39,25 @@ const priorityRank: Record<Priority, number> = {
     low: 1,
 };
 
+const isOverdue = (todo: Todo) => {
+    if (!todo.dueDate || todo.completed) {
+        return false;
+    }
+
+    return todo.dueDate < now();
+};
+
 const sortTodos = (todos: Todo[]) => {
     return [...todos].sort((a, b) => {
         if (a.pinned !== b.pinned) {
             return Number(b.pinned) - Number(a.pinned);
+        }
+
+        const aOverdue = isOverdue(a);
+        const bOverdue = isOverdue(b);
+
+        if (aOverdue !== bOverdue) {
+            return Number(bOverdue) - Number(aOverdue);
         }
 
         if (a.completed !== b.completed) {
@@ -51,6 +66,10 @@ const sortTodos = (todos: Todo[]) => {
 
         if (a.priority !== b.priority) {
             return priorityRank[b.priority] - priorityRank[a.priority];
+        }
+
+        if (a.dueDate && b.dueDate) {
+            return a.dueDate - b.dueDate;
         }
 
         return a.order - b.order;
@@ -75,20 +94,30 @@ const buildRemoved = (
 
     return todos
         .map((todo, index) =>
-            targets.has(todo.id) ? { todo, index } : null
+            targets.has(todo.id)
+                ? { todo, index }
+                : null
         )
         .filter(Boolean) as RemovedItem[];
 };
 
 const computeStats = (todos: Todo[]) => {
-    const completed = todos.filter((t) => t.completed).length;
-    const archived = todos.filter((t) => t.archived).length;
+    const completed = todos.filter(
+        (todo) => todo.completed
+    ).length;
+
+    const archived = todos.filter(
+        (todo) => todo.archived
+    ).length;
+
+    const overdue = todos.filter(isOverdue).length;
 
     return {
         total: todos.length,
         completed,
         active: todos.length - completed,
         archived,
+        overdue,
     };
 };
 
@@ -111,10 +140,14 @@ const applyAction = (
 
         case "delete": {
             const ids = new Set(
-                action.removed.map((v) => v.todo.id)
+                action.removed.map(
+                    (item) => item.todo.id
+                )
             );
 
-            return todos.filter((t) => !ids.has(t.id));
+            return todos.filter(
+                (todo) => !ids.has(todo.id)
+            );
         }
 
         case "replace":
@@ -132,7 +165,7 @@ const revertAction = (
     switch (action.type) {
         case "add":
             return todos.filter(
-                (t) => t.id !== action.todo.id
+                (todo) => todo.id !== action.todo.id
             );
 
         case "delete": {
@@ -172,6 +205,7 @@ type TodoStore = {
     completed: number;
     active: number;
     archived: number;
+    overdue: number;
 
     addTodo: (text: string) => void;
 
@@ -182,7 +216,17 @@ type TodoStore = {
 
     toggleTodo: (id: string) => void;
 
+    toggleMany: (
+        ids: string[],
+        completed: boolean
+    ) => void;
+
     togglePinned: (id: string) => void;
+
+    archiveMany: (
+        ids: string[],
+        archived: boolean
+    ) => void;
 
     setPriority: (
         id: string,
@@ -193,8 +237,6 @@ type TodoStore = {
         id: string,
         dueDate: number | null
     ) => void;
-
-    archiveTodo: (id: string) => void;
 
     reorderTodos: (
         from: number,
@@ -234,6 +276,19 @@ const commit = (
     ...computeStats(todos),
 });
 
+const replaceTodos = (
+    state: TodoStore,
+    nextTodos: Todo[]
+) => {
+    const action: Action = {
+        type: "replace",
+        before: state.todos,
+        after: nextTodos,
+    };
+
+    return commit(state, action, nextTodos);
+};
+
 export const useTodoStore = create<TodoStore>()(
     persist(
         (set, get) => ({
@@ -253,6 +308,7 @@ export const useTodoStore = create<TodoStore>()(
             completed: 0,
             active: 0,
             archived: 0,
+            overdue: 0,
 
             addTodo: (text) =>
                 set((state) => {
@@ -281,6 +337,7 @@ export const useTodoStore = create<TodoStore>()(
                         text: value,
                         normalized,
                         completed: false,
+                        completedAt: null,
                         archived: false,
                         priority: "medium",
                         pinned: false,
@@ -289,15 +346,16 @@ export const useTodoStore = create<TodoStore>()(
                         updatedAt: timestamp,
                     };
 
-                    const action: Action = {
-                        type: "add",
-                        todo,
-                    };
-
                     return commit(
                         state,
-                        action,
-                        applyAction(state.todos, action)
+                        {
+                            type: "add",
+                            todo,
+                        },
+                        applyAction(state.todos, {
+                            type: "add",
+                            todo,
+                        })
                     );
                 }),
 
@@ -334,15 +392,8 @@ export const useTodoStore = create<TodoStore>()(
                                 : todo
                     );
 
-                    const action: Action = {
-                        type: "replace",
-                        before: state.todos,
-                        after: nextTodos,
-                    };
-
-                    return commit(
+                    return replaceTodos(
                         state,
-                        action,
                         nextTodos
                     );
                 }),
@@ -350,24 +401,49 @@ export const useTodoStore = create<TodoStore>()(
             toggleTodo: (id) =>
                 set((state) => {
                     const nextTodos = state.todos.map(
+                        (todo) => {
+                            if (todo.id !== id) {
+                                return todo;
+                            }
+
+                            const completed =
+                                !todo.completed;
+
+                            return updateTodo(todo, {
+                                completed,
+                                completedAt:
+                                    completed
+                                        ? now()
+                                        : null,
+                            });
+                        }
+                    );
+
+                    return replaceTodos(
+                        state,
+                        nextTodos
+                    );
+                }),
+
+            toggleMany: (ids, completed) =>
+                set((state) => {
+                    const targets = new Set(ids);
+
+                    const nextTodos = state.todos.map(
                         (todo) =>
-                            todo.id === id
+                            targets.has(todo.id)
                                 ? updateTodo(todo, {
-                                    completed:
-                                        !todo.completed,
+                                    completed,
+                                    completedAt:
+                                        completed
+                                            ? now()
+                                            : null,
                                 })
                                 : todo
                     );
 
-                    const action: Action = {
-                        type: "replace",
-                        before: state.todos,
-                        after: nextTodos,
-                    };
-
-                    return commit(
+                    return replaceTodos(
                         state,
-                        action,
                         nextTodos
                     );
                 }),
@@ -384,11 +460,29 @@ export const useTodoStore = create<TodoStore>()(
                                 : todo
                     );
 
-                    return commit(state, {
-                        type: "replace",
-                        before: state.todos,
-                        after: nextTodos,
-                    }, nextTodos);
+                    return replaceTodos(
+                        state,
+                        nextTodos
+                    );
+                }),
+
+            archiveMany: (ids, archived) =>
+                set((state) => {
+                    const targets = new Set(ids);
+
+                    const nextTodos = state.todos.map(
+                        (todo) =>
+                            targets.has(todo.id)
+                                ? updateTodo(todo, {
+                                    archived,
+                                })
+                                : todo
+                    );
+
+                    return replaceTodos(
+                        state,
+                        nextTodos
+                    );
                 }),
 
             setPriority: (id, priority) =>
@@ -402,11 +496,10 @@ export const useTodoStore = create<TodoStore>()(
                                 : todo
                     );
 
-                    return commit(state, {
-                        type: "replace",
-                        before: state.todos,
-                        after: nextTodos,
-                    }, nextTodos);
+                    return replaceTodos(
+                        state,
+                        nextTodos
+                    );
                 }),
 
             setDueDate: (id, dueDate) =>
@@ -420,35 +513,24 @@ export const useTodoStore = create<TodoStore>()(
                                 : todo
                     );
 
-                    return commit(state, {
-                        type: "replace",
-                        before: state.todos,
-                        after: nextTodos,
-                    }, nextTodos);
-                }),
-
-            archiveTodo: (id) =>
-                set((state) => {
-                    const nextTodos = state.todos.map(
-                        (todo) =>
-                            todo.id === id
-                                ? updateTodo(todo, {
-                                    archived:
-                                        !todo.archived,
-                                })
-                                : todo
+                    return replaceTodos(
+                        state,
+                        nextTodos
                     );
-
-                    return commit(state, {
-                        type: "replace",
-                        before: state.todos,
-                        after: nextTodos,
-                    }, nextTodos);
                 }),
 
             reorderTodos: (from, to) =>
                 set((state) => {
-                    if (from === to) {
+                    const length =
+                        state.todos.length;
+
+                    if (
+                        from < 0 ||
+                        to < 0 ||
+                        from >= length ||
+                        to >= length ||
+                        from === to
+                    ) {
                         return state;
                     }
 
@@ -469,11 +551,10 @@ export const useTodoStore = create<TodoStore>()(
                             })
                         );
 
-                    return commit(state, {
-                        type: "replace",
-                        before: state.todos,
-                        after: nextTodos,
-                    }, nextTodos);
+                    return replaceTodos(
+                        state,
+                        nextTodos
+                    );
                 }),
 
             deleteTodo: (id) => {
@@ -506,16 +587,15 @@ export const useTodoStore = create<TodoStore>()(
                     );
                 }),
 
-            clearCompleted: () =>
-                set((state) => {
-                    const ids = state.todos
-                        .filter(
-                            (todo) => todo.completed
-                        )
-                        .map((todo) => todo.id);
+            clearCompleted: () => {
+                const ids = get()
+                    .todos.filter(
+                        (todo) => todo.completed
+                    )
+                    .map((todo) => todo.id);
 
-                    return get().deleteMany(ids);
-                }),
+                get().deleteMany(ids);
+            },
 
             undo: () =>
                 set((state) => {
@@ -596,7 +676,7 @@ export const useTodoStore = create<TodoStore>()(
         }),
         {
             name: "todo-storage",
-            version: 23,
+            version: 24,
             storage: createJSONStorage(
                 () => localStorage
             ),
@@ -616,44 +696,41 @@ export const useTodoStore = create<TodoStore>()(
 );
 
 export const useFilteredTodos = () =>
-    useTodoStore(
-        (state) => {
-            const filtered = state.todos.filter(
-                (todo) => {
-                    if (todo.archived) {
-                        return (
-                            state.activeCategory ===
-                            "archived"
-                        );
-                    }
-
-                    if (
-                        !todo.normalized.includes(
-                            state.searchNormalized
-                        )
-                    ) {
-                        return false;
-                    }
-
-                    switch (
-                    state.activeCategory
-                    ) {
-                        case "active":
-                            return !todo.completed;
-
-                        case "completed":
-                            return todo.completed;
-
-                        case "archived":
-                            return todo.archived;
-
-                        default:
-                            return true;
-                    }
+    useTodoStore((state) => {
+        const filtered = state.todos.filter(
+            (todo) => {
+                if (todo.archived) {
+                    return (
+                        state.activeCategory ===
+                        "archived"
+                    );
                 }
-            );
 
-            return sortTodos(filtered);
-        },
-        shallow
-    );
+                if (
+                    !todo.normalized.includes(
+                        state.searchNormalized
+                    )
+                ) {
+                    return false;
+                }
+
+                switch (
+                state.activeCategory
+                ) {
+                    case "active":
+                        return !todo.completed;
+
+                    case "completed":
+                        return todo.completed;
+
+                    case "archived":
+                        return todo.archived;
+
+                    default:
+                        return true;
+                }
+            }
+        );
+
+        return sortTodos(filtered);
+    });
