@@ -1,20 +1,12 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
-
-import {
-    Search,
-    X,
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import clsx from "clsx";
 
-import {
-    useState,
-    useEffect,
-    useRef,
-    useCallback,
-} from "react";
+import { Input } from "@/components/ui/input";
+
+import { Search, X } from "lucide-react";
 
 const categoryMap = {
     myday: "マイデイ",
@@ -22,6 +14,9 @@ const categoryMap = {
     planned: "予定あり",
     tasks: "すべてのタスク",
 } as const;
+
+const SEARCH_HISTORY_KEY =
+    "donezo-search-history";
 
 type CategoryId =
     keyof typeof categoryMap;
@@ -42,8 +37,7 @@ export default function Header({
     total = 0,
 }: HeaderProps) {
     const categoryName =
-        categoryMap[categoryId] ??
-        "タスク";
+        categoryMap[categoryId] ?? "タスク";
 
     const [value, setValue] =
         useState(search);
@@ -51,69 +45,45 @@ export default function Header({
     const inputRef =
         useRef<HTMLInputElement>(null);
 
-    const composingRef =
+    const composing =
         useRef(false);
 
-    const debounceRef = useRef<
-        ReturnType<typeof setTimeout> | undefined
-    >(undefined);
+    const debounceRef =
+        useRef<NodeJS.Timeout>();
 
     useEffect(() => {
-        if (composingRef.current) {
-            return;
+        if (!composing.current) {
+            setValue(search);
         }
-
-        setValue(search);
     }, [search]);
 
     useEffect(() => {
-        if (composingRef.current) {
+        if (composing.current) {
             return;
         }
 
-        if (debounceRef.current) {
-            clearTimeout(
-                debounceRef.current
-            );
-        }
+        clearTimeout(
+            debounceRef.current
+        );
 
         debounceRef.current =
             setTimeout(() => {
                 onSearchChange(value);
-            }, 250);
+
+                if (value.trim()) {
+                    localStorage.setItem(
+                        SEARCH_HISTORY_KEY,
+                        value
+                    );
+                }
+            }, 200);
 
         return () => {
-            if (
+            clearTimeout(
                 debounceRef.current
-            ) {
-                clearTimeout(
-                    debounceRef.current
-                );
-            }
+            );
         };
-    }, [value, onSearchChange]);
-
-    const focusSearch =
-        useCallback(() => {
-            const element =
-                inputRef.current;
-
-            if (!element) {
-                return;
-            }
-
-            if (
-                document.activeElement ===
-                element
-            ) {
-                element.blur();
-
-                return;
-            }
-
-            element.focus();
-            element.select();
-        }, []);
+    }, [value]);
 
     useEffect(() => {
         const handleKeyDown = (
@@ -128,19 +98,34 @@ export default function Header({
                 target instanceof
                 HTMLTextAreaElement;
 
+            const key =
+                event.key.toLowerCase();
+
             if (
                 (event.metaKey ||
                     event.ctrlKey) &&
-                event.key.toLowerCase() ===
-                "k"
+                key === "k"
             ) {
                 event.preventDefault();
 
-                focusSearch();
+                inputRef.current?.focus();
+
+                inputRef.current?.select();
+
+                if (!value) {
+                    const saved =
+                        localStorage.getItem(
+                            SEARCH_HISTORY_KEY
+                        );
+
+                    if (saved) {
+                        setValue(saved);
+                    }
+                }
             }
 
             if (
-                event.key === "/" &&
+                key === "/" &&
                 !isTyping
             ) {
                 event.preventDefault();
@@ -160,35 +145,38 @@ export default function Header({
                 handleKeyDown
             );
         };
-    }, [focusSearch]);
+    }, [value]);
 
-    const clearSearch =
-        useCallback(() => {
-            setValue("");
+    const clearSearch = () => {
+        setValue("");
 
-            onSearchChange("");
+        onSearchChange("");
 
-            inputRef.current?.focus();
-        }, [onSearchChange]);
+        inputRef.current?.focus();
+    };
 
-    let subtitle = `${total}件のタスク`;
+    const hasSearch =
+        Boolean(search);
 
-    if (total === 0) {
-        subtitle = search
-            ? "検索結果がありません"
-            : "タスクがありません";
-    }
+    let subtitle = "";
 
-    if (search && total > 0) {
-        subtitle = `"${search}" の検索結果 · ${total}件`;
+    if (hasSearch) {
+        subtitle =
+            total > 0
+                ? `"${search}" · ${total}件`
+                : "検索結果がありません";
+    } else {
+        subtitle =
+            total > 0
+                ? `${total}件のタスク`
+                : "タスクがありません";
     }
 
     return (
         <header
             className={clsx(
-                "flex flex-col justify-between gap-4 border-b px-6 py-4",
-                "bg-background/80 backdrop-blur",
-                "sm:flex-row sm:items-center"
+                "flex flex-col gap-4 border-b bg-background/80 px-6 py-4 backdrop-blur",
+                "sm:flex-row sm:items-center sm:justify-between"
             )}
         >
             <div className="min-w-0">
@@ -196,10 +184,7 @@ export default function Header({
                     {categoryName}
                 </h1>
 
-                <p
-                    aria-live="polite"
-                    className="mt-1 text-sm text-muted-foreground"
-                >
+                <p className="mt-1 text-sm text-muted-foreground">
                     {subtitle}
                 </p>
             </div>
@@ -208,29 +193,34 @@ export default function Header({
                 <Input
                     ref={inputRef}
                     value={value}
-                    onChange={(e) =>
+                    autoComplete="off"
+                    placeholder="検索"
+                    role="searchbox"
+                    aria-label="タスク検索"
+                    className="pl-9 pr-9"
+                    onChange={(e) => {
                         setValue(
                             e.target.value
-                        )
-                    }
+                        );
+                    }}
                     onCompositionStart={() => {
-                        composingRef.current =
+                        composing.current =
                             true;
                     }}
                     onCompositionEnd={(
-                        e
+                        event
                     ) => {
-                        composingRef.current =
+                        composing.current =
                             false;
 
                         setValue(
-                            e.currentTarget
+                            event.currentTarget
                                 .value
                         );
                     }}
-                    onKeyDown={(e) => {
+                    onKeyDown={(event) => {
                         if (
-                            e.key ===
+                            event.key ===
                             "Escape"
                         ) {
                             if (value) {
@@ -239,12 +229,14 @@ export default function Header({
                                 inputRef.current?.blur();
                             }
                         }
+
+                        if (
+                            event.key ===
+                            "Enter"
+                        ) {
+                            inputRef.current?.blur();
+                        }
                     }}
-                    placeholder="検索"
-                    autoComplete="off"
-                    role="searchbox"
-                    aria-label="タスク検索"
-                    className="pl-9 pr-9"
                 />
 
                 <Search
