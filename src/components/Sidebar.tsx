@@ -25,10 +25,7 @@ import { useTodoStore } from "@/store/todoStore";
 
 import { cn } from "@/lib/utils";
 
-type CategoryId =
-    | "tasks"
-    | "active"
-    | "completed";
+type CategoryId = "tasks" | "active" | "completed";
 
 type SidebarCategory = {
     id: CategoryId;
@@ -37,28 +34,16 @@ type SidebarCategory = {
     shortcut: string;
 };
 
-const SIDEBAR_STORAGE_KEY =
-    "donezo-sidebar-collapsed";
+const STORAGE_KEY = "donezo-sidebar-collapsed";
+
+const loadCollapsed = () => localStorage.getItem(STORAGE_KEY) === "true";
+const saveCollapsed = (v: boolean) =>
+    localStorage.setItem(STORAGE_KEY, String(v));
 
 const categories: SidebarCategory[] = [
-    {
-        id: "tasks",
-        label: "すべてのタスク",
-        icon: List,
-        shortcut: "1",
-    },
-    {
-        id: "active",
-        label: "未完了",
-        icon: Circle,
-        shortcut: "2",
-    },
-    {
-        id: "completed",
-        label: "完了済み",
-        icon: CheckCircle2,
-        shortcut: "3",
-    },
+    { id: "tasks", label: "すべてのタスク", icon: List, shortcut: "1" },
+    { id: "active", label: "未完了", icon: Circle, shortcut: "2" },
+    { id: "completed", label: "完了済み", icon: CheckCircle2, shortcut: "3" },
 ];
 
 type SidebarItemProps = {
@@ -66,265 +51,170 @@ type SidebarItemProps = {
     active: boolean;
     collapsed: boolean;
     count: number;
-    onSelect: (
-        category: CategoryId
-    ) => void;
-    onRef: (
-        element: HTMLButtonElement | null
-    ) => void;
+    onSelect: (id: CategoryId) => void;
+    onRef: (el: HTMLButtonElement | null) => void;
 };
 
-const SidebarItem = memo(
-    function SidebarItem({
-        item,
-        active,
-        collapsed,
-        count,
-        onSelect,
-        onRef,
-    }: SidebarItemProps) {
-        const Icon = item.icon;
+const SidebarItem = memo(function SidebarItem({
+    item,
+    active,
+    collapsed,
+    count,
+    onSelect,
+    onRef,
+}: SidebarItemProps) {
+    const Icon = item.icon;
 
-        return (
-            <button
-                ref={onRef}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                tabIndex={
-                    active ? 0 : -1
-                }
-                onClick={() =>
-                    onSelect(item.id)
-                }
+    return (
+        <button
+            ref={onRef}
+            type="button"
+            onClick={() => onSelect(item.id)}
+            className={cn(
+                "flex w-full items-center rounded-xl transition-colors focus-visible:ring-2 focus-visible:ring-blue-400",
+                collapsed ? "justify-center px-2 py-3" : "justify-between px-3 py-2.5",
+                active
+                    ? "bg-zinc-900 text-white"
+                    : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+            )}
+        >
+            <div
                 className={cn(
-                    "group relative flex w-full items-center rounded-xl transition-colors",
-                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400",
-                    collapsed
-                        ? "justify-center px-2 py-3"
-                        : "justify-between px-3 py-2.5",
-                    active
-                        ? "bg-zinc-900 text-white"
-                        : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                    "flex items-center",
+                    collapsed ? "" : "gap-3"
                 )}
             >
-                <div
-                    className={cn(
-                        "flex items-center",
-                        collapsed
-                            ? ""
-                            : "gap-3"
-                    )}
-                >
-                    <Icon size={18} />
-
-                    {!collapsed && (
-                        <span className="text-sm font-medium">
-                            {item.label}
-                        </span>
-                    )}
-                </div>
-
+                <Icon size={18} />
                 {!collapsed && (
-                    <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-zinc-400">
-                            ⌘
-                            {
-                                item.shortcut
-                            }
-                        </span>
-
-                        <span
-                            className={cn(
-                                "min-w-[24px] rounded-full px-2 py-0.5 text-center text-xs",
-                                active
-                                    ? "bg-white/15 text-white"
-                                    : "bg-zinc-200 text-zinc-700"
-                            )}
-                        >
-                            {count}
-                        </span>
-                    </div>
+                    <span className="text-sm font-medium">
+                        {item.label}
+                    </span>
                 )}
-            </button>
-        );
-    }
-);
+            </div>
+
+            {!collapsed && (
+                <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-zinc-400">
+                        ⌘{item.shortcut}
+                    </span>
+
+                    <span
+                        className={cn(
+                            "min-w-[24px] rounded-full px-2 py-0.5 text-xs text-center",
+                            active
+                                ? "bg-white/15 text-white"
+                                : "bg-zinc-200 text-zinc-700"
+                        )}
+                    >
+                        {count}
+                    </span>
+                </div>
+            )}
+        </button>
+    );
+});
 
 export default function Sidebar() {
-    const {
-        todos,
-        activeCategory,
-        setActiveCategory,
-    } = useTodoStore(
-        (state) => ({
-            todos: state.todos,
-            activeCategory:
-                state.activeCategory,
-            setActiveCategory:
-                state.setActiveCategory,
-        }),
-        shallow
-    );
+    const { todos, activeCategory, setActiveCategory } =
+        useTodoStore(
+            (s) => ({
+                todos: s.todos,
+                activeCategory: s.activeCategory,
+                setActiveCategory: s.setActiveCategory,
+            }),
+            shallow
+        );
 
-    const [
-        collapsed,
-        setCollapsed,
-    ] = useState(false);
+    const [collapsed, setCollapsed] = useState(false);
 
-    const itemRefs = useRef<
-        (HTMLButtonElement | null)[]
-    >([]);
+    const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
     useEffect(() => {
-        const saved =
-            localStorage.getItem(
-                SIDEBAR_STORAGE_KEY
-            );
-
-        setCollapsed(
-            saved === "true"
-        );
+        setCollapsed(loadCollapsed());
     }, []);
 
     useEffect(() => {
-        localStorage.setItem(
-            SIDEBAR_STORAGE_KEY,
-            String(collapsed)
-        );
+        saveCollapsed(collapsed);
     }, [collapsed]);
 
     const counts = useMemo(() => {
-        const completed =
-            todos.filter(
-                (todo) =>
-                    todo.completed
-            ).length;
+        let completed = 0;
+
+        for (const t of todos) {
+            if (t.completed) completed++;
+        }
 
         return {
             tasks: todos.length,
-            active:
-                todos.length -
-                completed,
+            active: todos.length - completed,
             completed,
         };
     }, [todos]);
 
     const activeIndex = useMemo(
-        () =>
-            categories.findIndex(
-                (category) =>
-                    category.id ===
-                    activeCategory
-            ),
+        () => categories.findIndex((c) => c.id === activeCategory),
         [activeCategory]
     );
 
     useEffect(() => {
-        itemRefs.current[
-            activeIndex
-        ]?.focus();
+        itemRefs.current[activeIndex]?.focus();
     }, [activeIndex]);
 
-    const moveFocus = useCallback(
-        (index: number) => {
-            itemRefs.current[
-                index
-            ]?.focus();
+    const focusAt = useCallback((i: number) => {
+        const next = (i + categories.length) % categories.length;
+        itemRefs.current[next]?.focus();
+    }, []);
+
+    const selectCurrent = useCallback(() => {
+        const current = categories[activeIndex];
+        if (!current) return;
+        setActiveCategory(current.id);
+    }, [activeIndex, setActiveCategory]);
+
+    const handleKeyDown = useCallback(
+        (e: React.KeyboardEvent) => {
+            switch (e.key) {
+                case "ArrowDown":
+                    e.preventDefault();
+                    focusAt(activeIndex + 1);
+                    break;
+
+                case "ArrowUp":
+                    e.preventDefault();
+                    focusAt(activeIndex - 1);
+                    break;
+
+                case "Home":
+                    e.preventDefault();
+                    focusAt(0);
+                    break;
+
+                case "End":
+                    e.preventDefault();
+                    focusAt(categories.length - 1);
+                    break;
+
+                case "Enter":
+                case " ":
+                    e.preventDefault();
+                    selectCurrent();
+                    break;
+            }
         },
-        []
+        [activeIndex, focusAt, selectCurrent]
     );
-
-    const handleKeyDown =
-        useCallback(
-            (
-                event: React.KeyboardEvent
-            ) => {
-                const actions: Record<
-                    string,
-                    () => void
-                > = {
-                    ArrowDown: () => {
-                        moveFocus(
-                            (activeIndex +
-                                1) %
-                            categories.length
-                        );
-                    },
-
-                    ArrowUp: () => {
-                        moveFocus(
-                            (activeIndex -
-                                1 +
-                                categories.length) %
-                            categories.length
-                        );
-                    },
-
-                    Home: () => {
-                        moveFocus(0);
-                    },
-
-                    End: () => {
-                        moveFocus(
-                            categories.length -
-                            1
-                        );
-                    },
-
-                    Enter: () => {
-                        setActiveCategory(
-                            categories[
-                                activeIndex
-                            ].id
-                        );
-                    },
-
-                    " ": () => {
-                        setActiveCategory(
-                            categories[
-                                activeIndex
-                            ].id
-                        );
-                    },
-                };
-
-                const action =
-                    actions[
-                    event.key
-                    ];
-
-                if (!action) {
-                    return;
-                }
-
-                event.preventDefault();
-
-                action();
-            },
-            [
-                activeIndex,
-                moveFocus,
-                setActiveCategory,
-            ]
-        );
 
     return (
         <aside
             className={cn(
-                "flex h-full flex-col border-r border-zinc-200 bg-white transition-all duration-200",
-                collapsed
-                    ? "w-[72px]"
-                    : "w-64"
+                "flex h-full flex-col border-r border-zinc-200 bg-white",
+                collapsed ? "w-[72px]" : "w-64"
             )}
         >
-            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-4">
+            <div className="flex items-center justify-between border-b px-4 py-4">
                 {!collapsed && (
                     <div>
-                        <h1 className="text-lg font-semibold text-zinc-900">
-                            Donezo
-                        </h1>
-
+                        <h1 className="text-lg font-semibold">Donezo</h1>
                         <p className="text-xs text-zinc-500">
                             Task workspace
                         </p>
@@ -333,71 +223,35 @@ export default function Sidebar() {
 
                 <button
                     type="button"
-                    onClick={() =>
-                        setCollapsed(
-                            (
-                                prev
-                            ) => !prev
-                        )
-                    }
-                    className="rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
+                    onClick={() => setCollapsed((v) => !v)}
+                    className="rounded-lg p-2 hover:bg-zinc-100"
                 >
                     {collapsed ? (
-                        <PanelLeftOpen
-                            size={18}
-                        />
+                        <PanelLeftOpen size={18} />
                     ) : (
-                        <PanelLeftClose
-                            size={18}
-                        />
+                        <PanelLeftClose size={18} />
                     )}
                 </button>
             </div>
 
             <nav
-                role="tablist"
-                aria-orientation="vertical"
-                onKeyDown={
-                    handleKeyDown
-                }
+                role="navigation"
+                onKeyDown={handleKeyDown}
                 className="flex flex-1 flex-col gap-1 p-3"
             >
-                {categories.map(
-                    (
-                        item,
-                        index
-                    ) => (
-                        <SidebarItem
-                            key={
-                                item.id
-                            }
-                            item={item}
-                            active={
-                                activeCategory ===
-                                item.id
-                            }
-                            collapsed={
-                                collapsed
-                            }
-                            count={
-                                counts[
-                                item.id
-                                ]
-                            }
-                            onSelect={
-                                setActiveCategory
-                            }
-                            onRef={(
-                                element
-                            ) => {
-                                itemRefs.current[
-                                    index
-                                ] =
-                                    element;
-                            }}
-                        />
-                    )
-                )}
+                {categories.map((item, index) => (
+                    <SidebarItem
+                        key={item.id}
+                        item={item}
+                        active={activeCategory === item.id}
+                        collapsed={collapsed}
+                        count={counts[item.id]}
+                        onSelect={setActiveCategory}
+                        onRef={(el) => {
+                            itemRefs.current[index] = el;
+                        }}
+                    />
+                ))}
             </nav>
         </aside>
     );
