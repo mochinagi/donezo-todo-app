@@ -1,23 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-
+import { useEffect, useRef, useState, useMemo } from "react";
 import clsx from "clsx";
-
 import { Loader2, Plus } from "lucide-react";
-
 import { Input } from "@/components/ui/input";
-
 import { Button } from "@/components/ui/button";
-
 import { toast } from "@/components/ui/toaster";
-
 import { useTodoStore } from "@/store/todoStore";
 
 const MAX_LENGTH = 100;
-
 const MAX_IMPORT = 20;
-
 const DRAFT_KEY = "donezo-add-todo-draft";
 
 type AddTodoProps = {
@@ -26,9 +18,8 @@ type AddTodoProps = {
     onAdd: (text: string) => Promise<void> | void;
 };
 
-const normalizeInput = (value: string) =>
-    value
-        .replace(/\u3000/g, " ")
+const normalize = (v: string) =>
+    v.replace(/\u3000/g, " ")
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, MAX_LENGTH);
@@ -38,83 +29,52 @@ export default function AddTodo({
     setInput,
     onAdd,
 }: AddTodoProps) {
-    const todos = useTodoStore((state) => state.todos);
+    const todos = useTodoStore((s) => s.todos);
 
     const inputRef = useRef<HTMLInputElement>(null);
-
     const composing = useRef(false);
-
     const lastAdded = useRef("");
 
-    const [submitting, setSubmitting] =
-        useState(false);
-
+    const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
 
-    const normalizedInput =
-        normalizeInput(input);
+    const normalizedInput = useMemo(() => normalize(input), [input]);
+
+    const existingSet = useMemo(() => {
+        return new Set(todos.map((t) => t.normalized));
+    }, [todos]);
 
     useEffect(() => {
-        const saved =
-            localStorage.getItem(
-                DRAFT_KEY
-            );
-
-        if (saved && !input) {
-            setInput(saved);
-        }
+        const saved = localStorage.getItem(DRAFT_KEY);
+        if (saved && !input) setInput(saved);
     }, []);
 
     useEffect(() => {
         if (!input.trim()) {
-            localStorage.removeItem(
-                DRAFT_KEY
-            );
-
+            localStorage.removeItem(DRAFT_KEY);
             return;
         }
 
-        localStorage.setItem(
-            DRAFT_KEY,
-            input
-        );
+        localStorage.setItem(DRAFT_KEY, input);
     }, [input]);
 
     useEffect(() => {
-        if (!input) {
-            setError("");
-        }
+        if (!input) setError("");
     }, [input]);
 
     const validate = (value: string) => {
-        if (!value) {
-            return "入力してください";
-        }
+        if (!value) return "入力してください";
+        if (value.length > MAX_LENGTH) return `最大${MAX_LENGTH}文字です`;
 
-        if (value.length > MAX_LENGTH) {
-            return `最大${MAX_LENGTH}文字です`;
-        }
-
-        const normalized =
-            normalizeInput(value).toLowerCase();
-
-        const exists = todos.some(
-            (todo) =>
-                todo.normalized === normalized
-        );
-
-        if (exists) {
-            return "既に存在します";
-        }
+        const n = normalize(value).toLowerCase();
+        if (existingSet.has(n)) return "既に存在します";
 
         return null;
     };
 
     const clear = () => {
         setInput("");
-
         setError("");
-
         localStorage.removeItem(DRAFT_KEY);
 
         requestAnimationFrame(() => {
@@ -122,28 +82,22 @@ export default function AddTodo({
         });
     };
 
-    const submit = async () => {
-        if (submitting) {
-            return;
-        }
+    const handleSubmit = async () => {
+        if (submitting) return;
 
-        const next = normalizedInput;
+        const value = normalizedInput;
+        const err = validate(value);
 
-        const validationError =
-            validate(next);
-
-        if (validationError) {
-            setError(validationError);
+        if (err) {
+            setError(err);
             return;
         }
 
         setSubmitting(true);
 
         try {
-            await onAdd(next);
-
-            lastAdded.current = next;
-
+            await onAdd(value);
+            lastAdded.current = value;
             clear();
         } catch {
             setError("追加できませんでした");
@@ -152,71 +106,44 @@ export default function AddTodo({
         }
     };
 
-    const importTodos = async (
-        event: React.ClipboardEvent<HTMLInputElement>
-    ) => {
-        const text =
-            event.clipboardData.getData(
-                "text"
-            );
+    const parseClipboard = (text: string) => {
+        return text
+            .split("\n")
+            .map(normalize)
+            .filter(Boolean);
+    };
 
-        if (!text.includes("\n")) {
-            return;
-        }
-
-        event.preventDefault();
-
-        const lines =
-            text.split("\n");
-
-        const unique: string[] = [];
-
-        for (const line of lines) {
-            const normalized =
-                normalizeInput(line);
-
-            if (!normalized) {
-                continue;
-            }
-
-            if (
-                unique.includes(normalized)
-            ) {
-                continue;
-            }
-
-            unique.push(normalized);
-
-            if (
-                unique.length >= MAX_IMPORT
-            ) {
-                break;
-            }
-        }
-
+    const bulkAdd = async (items: string[]) => {
         let added = 0;
 
-        for (const line of unique) {
-            const validationError =
-                validate(line);
-
-            if (validationError) {
-                continue;
-            }
+        for (const item of items) {
+            if (added >= MAX_IMPORT) break;
+            if (validate(item)) continue;
 
             try {
-                await onAdd(line);
-
-                added += 1;
-            } catch {
-                continue;
-            }
+                await onAdd(item);
+                added++;
+            } catch { }
         }
 
+        return added;
+    };
+
+    const handlePaste = async (
+        e: React.ClipboardEvent<HTMLInputElement>
+    ) => {
+        const text = e.clipboardData.getData("text");
+
+        if (!text.includes("\n")) return;
+
+        e.preventDefault();
+
+        const items = parseClipboard(text);
+
+        const added = await bulkAdd(items);
+
         if (added > 0) {
-            toast.success(
-                `${added}件追加しました`
-            );
+            toast.success(`${added}件追加しました`);
         }
     };
 
@@ -232,62 +159,37 @@ export default function AddTodo({
                         value={input}
                         placeholder="タスクを追加"
                         aria-invalid={!!error}
-                        onChange={(event) => {
-                            setInput(
-                                event.target.value
-                            );
-                        }}
-                        onPaste={importTodos}
+                        onChange={(e) => setInput(e.target.value)}
+                        onPaste={handlePaste}
                         onCompositionStart={() => {
                             composing.current = true;
                         }}
                         onCompositionEnd={() => {
                             composing.current = false;
                         }}
-                        onKeyDown={(event) => {
-                            if (composing.current) {
-                                return;
+                        onKeyDown={(e) => {
+                            if (composing.current) return;
+
+                            if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleSubmit();
                             }
 
-                            if (
-                                event.key ===
-                                "Enter"
-                            ) {
-                                event.preventDefault();
-
-                                submit();
-                            }
-
-                            if (
-                                event.key ===
-                                "Escape"
-                            ) {
+                            if (e.key === "Escape") {
                                 clear();
                             }
 
-                            if (
-                                event.key ===
-                                "ArrowUp" &&
-                                !input
-                            ) {
-                                setInput(
-                                    lastAdded.current
-                                );
+                            if (e.key === "ArrowUp" && !input) {
+                                setInput(lastAdded.current);
                             }
 
-                            if (
-                                (event.metaKey ||
-                                    event.ctrlKey) &&
-                                event.key ===
-                                "Enter"
-                            ) {
-                                submit();
+                            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                                handleSubmit();
                             }
                         }}
                         className={clsx(
                             "h-11 pl-10 pr-16",
-                            error &&
-                            "border-destructive"
+                            error && "border-destructive"
                         )}
                     />
 
@@ -300,49 +202,30 @@ export default function AddTodo({
                         <span className="text-[11px] text-zinc-400">
                             Enter
                         </span>
-
                         <span className="text-xs text-zinc-400">
-                            {
-                                normalizedInput.length
-                            }
-                            /
-                            {MAX_LENGTH}
+                            {normalizedInput.length}/{MAX_LENGTH}
                         </span>
                     </div>
                 </div>
 
                 <Button
                     type="button"
-                    disabled={
-                        submitting ||
-                        !normalizedInput
-                    }
-                    onClick={submit}
+                    disabled={submitting || !normalizedInput}
+                    onClick={handleSubmit}
                     className="min-w-[92px]"
                 >
                     {submitting ? (
-                        <Loader2
-                            size={16}
-                            className="animate-spin"
-                        />
+                        <Loader2 size={16} className="animate-spin" />
                     ) : (
                         <Plus size={16} />
                     )}
-
-                    {submitting
-                        ? "追加中"
-                        : "追加"}
+                    {submitting ? "追加中" : "追加"}
                 </Button>
             </div>
 
             <div className="mt-2 flex items-center justify-between text-xs">
-                <div className="text-destructive">
-                    {error}
-                </div>
-
-                <div className="text-zinc-400">
-                    Esc to clear
-                </div>
+                <div className="text-destructive">{error}</div>
+                <div className="text-zinc-400">Esc to clear</div>
             </div>
         </div>
     );
