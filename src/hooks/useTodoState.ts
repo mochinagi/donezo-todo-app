@@ -4,610 +4,242 @@ import {
     useCallback,
     useEffect,
     useMemo,
-    useRef,
-    useState,
 } from "react";
 
-export type Priority = "low" | "medium" | "high";
+import {
+    useFilteredTodos,
+    useTodoStore,
+} from "@/store/todoStore";
 
-export interface Todo {
-    id: string;
-    text: string;
-    normalized: string;
-    completed: boolean;
-    pinned: boolean;
-    priority: Priority;
-    createdAt: number;
-    updatedAt: number;
-}
-
-export type FilterType =
-    | "all"
-    | "active"
-    | "completed";
-
-export type SortType =
-    | "latest"
-    | "oldest"
-    | "priority";
-
-type RemovedItem = {
-    todo: Todo;
-    index: number;
-};
-
-type Action =
-    | {
-        type: "replace";
-        previous: Todo[];
-        next: Todo[];
-    }
-    | {
-        type: "add";
-        todo: Todo;
-    }
-    | {
-        type: "delete";
-        removed: RemovedItem[];
-    };
-
-const STORAGE_KEY = "donezo-todos-v8";
-const FILTER_KEY = "donezo-filter";
-const SEARCH_KEY = "donezo-search";
-const SORT_KEY = "donezo-sort";
-
-const MAX_HISTORY = 50;
-
-const now = () => Date.now();
-
-const normalizeText = (value: string) =>
-    value.trim().replace(/\s+/g, " ").toLowerCase();
-
-const priorityRank: Record<
-    Priority,
-    number
-> = {
-    high: 3,
-    medium: 2,
-    low: 1,
-};
-
-const load = <T,>(
-    key: string,
-    fallback: T
-): T => {
-    if (typeof window === "undefined") {
-        return fallback;
-    }
-
-    try {
-        const value = localStorage.getItem(key);
-
-        return value
-            ? JSON.parse(value)
-            : fallback;
-    } catch {
-        return fallback;
-    }
-};
-
-const applyAction = (
-    todos: Todo[],
-    action: Action
-): Todo[] => {
-    switch (action.type) {
-        case "add":
-            return [action.todo, ...todos];
-
-        case "delete": {
-            const ids = new Set(
-                action.removed.map(
-                    (item) => item.todo.id
-                )
-            );
-
-            return todos.filter(
-                (todo) => !ids.has(todo.id)
-            );
-        }
-
-        case "replace":
-            return action.next;
-
-        default:
-            return todos;
-    }
-};
-
-const revertAction = (
-    todos: Todo[],
-    action: Action
-): Todo[] => {
-    switch (action.type) {
-        case "add":
-            return todos.filter(
-                (todo) =>
-                    todo.id !== action.todo.id
-            );
-
-        case "delete": {
-            const restored = [...todos];
-
-            [...action.removed]
-                .sort(
-                    (a, b) =>
-                        a.index - b.index
-                )
-                .forEach(
-                    ({ todo, index }) => {
-                        restored.splice(
-                            index,
-                            0,
-                            todo
-                        );
-                    }
-                );
-
-            return restored;
-        }
-
-        case "replace":
-            return action.previous;
-
-        default:
-            return todos;
-    }
-};
-
-export function useTodoState(
-    initialTodos: Todo[] = []
-) {
-    const [todos, setTodos] = useState<Todo[]>(
-        () =>
-            load(
-                STORAGE_KEY,
-                initialTodos
-            )
-    );
-
-    const [filter, setFilter] =
-        useState<FilterType>(() =>
-            load(FILTER_KEY, "all")
+export function useTodoState() {
+    const todos =
+        useTodoStore(
+            (state) => state.todos
         );
 
-    const [search, setSearch] =
-        useState<string>(() =>
-            load(SEARCH_KEY, "")
+    const filteredTodos =
+        useFilteredTodos();
+
+    const search =
+        useTodoStore(
+            (state) => state.search
         );
 
-    const [sort, setSort] =
-        useState<SortType>(() =>
-            load(SORT_KEY, "latest")
+    const setSearch =
+        useTodoStore(
+            (state) =>
+                state.setSearch
         );
 
-    const undoStack = useRef<Action[]>(
-        []
-    );
-
-    const redoStack = useRef<Action[]>(
-        []
-    );
-
-    const normalizedSearch = useMemo(
-        () => normalizeText(search),
-        [search]
-    );
-
-    useEffect(() => {
-        localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify(todos)
+    const activeCategory =
+        useTodoStore(
+            (state) =>
+                state.activeCategory
         );
-    }, [todos]);
 
-    useEffect(() => {
-        localStorage.setItem(
-            FILTER_KEY,
-            JSON.stringify(filter)
+    const setActiveCategory =
+        useTodoStore(
+            (state) =>
+                state.setActiveCategory
         );
-    }, [filter]);
 
-    useEffect(() => {
-        localStorage.setItem(
-            SEARCH_KEY,
-            JSON.stringify(search)
+    const addTodo =
+        useTodoStore(
+            (state) =>
+                state.addTodo
         );
-    }, [search]);
 
-    useEffect(() => {
-        localStorage.setItem(
-            SORT_KEY,
-            JSON.stringify(sort)
+    const toggleTodo =
+        useTodoStore(
+            (state) =>
+                state.toggleTodo
         );
-    }, [sort]);
 
-    const pushHistory = useCallback(
-        (action: Action) => {
-            undoStack.current.push(action);
+    const togglePinned =
+        useTodoStore(
+            (state) =>
+                state.togglePinned
+        );
 
-            if (
-                undoStack.current.length >
-                MAX_HISTORY
-            ) {
-                undoStack.current.shift();
-            }
+    const updateTodoText =
+        useTodoStore(
+            (state) =>
+                state.updateTodoText
+        );
 
-            redoStack.current = [];
-        },
-        []
-    );
-
-    const commit = useCallback(
-        (action: Action) => {
-            setTodos((prev) =>
-                applyAction(prev, action)
-            );
-
-            pushHistory(action);
-        },
-        [pushHistory]
-    );
-
-    const patchTodo = useCallback(
-        (
-            id: string,
-            updater: (
-                todo: Todo
-            ) => Todo
-        ) => {
-            const target = todos.find(
-                (todo) => todo.id === id
-            );
-
-            if (!target) {
-                return;
-            }
-
-            const next = todos.map((todo) =>
-                todo.id === id
-                    ? updater(todo)
-                    : todo
-            );
-
-            commit({
-                type: "replace",
-                previous: todos,
-                next,
-            });
-        },
-        [todos, commit]
-    );
-
-    const addTodo = useCallback(
-        (text: string) => {
-            const value = text.trim();
-
-            if (!value) {
-                return;
-            }
-
-            const normalized =
-                normalizeText(value);
-
-            const exists = todos.some(
-                (todo) =>
-                    todo.normalized ===
-                    normalized
-            );
-
-            if (exists) {
-                return;
-            }
-
-            const timestamp = now();
-
-            commit({
-                type: "add",
-                todo: {
-                    id: crypto.randomUUID(),
-                    text: value,
-                    normalized,
-                    completed: false,
-                    pinned: false,
-                    priority: "medium",
-                    createdAt: timestamp,
-                    updatedAt: timestamp,
-                },
-            });
-        },
-        [todos, commit]
-    );
-
-    const toggleTodo = useCallback(
-        (id: string) => {
-            patchTodo(id, (todo) => ({
-                ...todo,
-                completed:
-                    !todo.completed,
-                updatedAt: now(),
-            }));
-        },
-        [patchTodo]
-    );
-
-    const togglePinned = useCallback(
-        (id: string) => {
-            patchTodo(id, (todo) => ({
-                ...todo,
-                pinned: !todo.pinned,
-                updatedAt: now(),
-            }));
-        },
-        [patchTodo]
-    );
-
-    const setPriority = useCallback(
-        (
-            id: string,
-            priority: Priority
-        ) => {
-            patchTodo(id, (todo) => ({
-                ...todo,
-                priority,
-                updatedAt: now(),
-            }));
-        },
-        [patchTodo]
-    );
-
-    const editTodo = useCallback(
-        (id: string, text: string) => {
-            const value = text.trim();
-
-            if (!value) {
-                return;
-            }
-
-            const normalized =
-                normalizeText(value);
-
-            const duplicated =
-                todos.some(
-                    (todo) =>
-                        todo.id !== id &&
-                        todo.normalized ===
-                        normalized
-                );
-
-            if (duplicated) {
-                return;
-            }
-
-            patchTodo(id, (todo) => ({
-                ...todo,
-                text: value,
-                normalized,
-                updatedAt: now(),
-            }));
-        },
-        [todos, patchTodo]
-    );
-
-    const deleteTodo = useCallback(
-        (id: string) => {
-            const index = todos.findIndex(
-                (todo) => todo.id === id
-            );
-
-            if (index === -1) {
-                return;
-            }
-
-            commit({
-                type: "delete",
-                removed: [
-                    {
-                        todo: todos[index],
-                        index,
-                    },
-                ],
-            });
-        },
-        [todos, commit]
-    );
+    const deleteTodo =
+        useTodoStore(
+            (state) =>
+                state.deleteTodo
+        );
 
     const clearCompleted =
-        useCallback(() => {
-            const removed = todos
-                .map((todo, index) => ({
-                    todo,
-                    index,
-                }))
-                .filter(
-                    (item) =>
-                        item.todo.completed
-                );
+        useTodoStore(
+            (state) =>
+                state.clearCompleted
+        );
 
-            if (!removed.length) {
+    const undo =
+        useTodoStore(
+            (state) =>
+                state.undo
+        );
+
+    const redo =
+        useTodoStore(
+            (state) =>
+                state.redo
+        );
+
+    const total =
+        useTodoStore(
+            (state) => state.total
+        );
+
+    const completed =
+        useTodoStore(
+            (state) =>
+                state.completed
+        );
+
+    const active =
+        useTodoStore(
+            (state) => state.active
+        );
+
+    const canUndo =
+        useTodoStore(
+            (state) =>
+                state.undoStack.length >
+                0
+        );
+
+    const canRedo =
+        useTodoStore(
+            (state) =>
+                state.redoStack.length >
+                0
+        );
+
+    useEffect(() => {
+        const onKeyDown = (
+            event: KeyboardEvent
+        ) => {
+            const modifier =
+                event.metaKey ||
+                event.ctrlKey;
+
+            if (
+                modifier &&
+                event.key === "z" &&
+                !event.shiftKey
+            ) {
+                event.preventDefault();
+
+                undo();
+
                 return;
             }
 
-            commit({
-                type: "delete",
-                removed,
-            });
-        }, [todos, commit]);
-
-    const toggleAll = useCallback(() => {
-        const shouldComplete =
-            todos.some(
-                (todo) =>
-                    !todo.completed
-            );
-
-        const next = todos.map((todo) => ({
-            ...todo,
-            completed: shouldComplete,
-            updatedAt: now(),
-        }));
-
-        commit({
-            type: "replace",
-            previous: todos,
-            next,
-        });
-    }, [todos, commit]);
-
-    const undo = useCallback(() => {
-        const action =
-            undoStack.current.pop();
-
-        if (!action) {
-            return;
-        }
-
-        setTodos((prev) =>
-            revertAction(prev, action)
-        );
-
-        redoStack.current.push(action);
-    }, []);
-
-    const redo = useCallback(() => {
-        const action =
-            redoStack.current.pop();
-
-        if (!action) {
-            return;
-        }
-
-        setTodos((prev) =>
-            applyAction(prev, action)
-        );
-
-        undoStack.current.push(action);
-    }, []);
-
-    const filteredTodos = useMemo(() => {
-        const filtered = todos.filter(
-            (todo) => {
-                if (
-                    !todo.normalized.includes(
-                        normalizedSearch
+            if (
+                modifier &&
+                (
+                    event.key === "y" ||
+                    (
+                        event.shiftKey &&
+                        event.key === "Z"
                     )
-                ) {
-                    return false;
-                }
+                )
+            ) {
+                event.preventDefault();
 
-                if (
-                    filter ===
-                    "completed"
-                ) {
-                    return todo.completed;
-                }
-
-                if (
-                    filter === "active"
-                ) {
-                    return !todo.completed;
-                }
-
-                return true;
+                redo();
             }
-        );
-
-        return [...filtered].sort(
-            (a, b) => {
-                if (
-                    a.pinned !== b.pinned
-                ) {
-                    return Number(
-                        b.pinned
-                    ) - Number(a.pinned);
-                }
-
-                if (
-                    sort === "priority"
-                ) {
-                    return (
-                        priorityRank[
-                        b.priority
-                        ] -
-                        priorityRank[
-                        a.priority
-                        ]
-                    );
-                }
-
-                if (
-                    sort === "oldest"
-                ) {
-                    return (
-                        a.createdAt -
-                        b.createdAt
-                    );
-                }
-
-                return (
-                    b.updatedAt -
-                    a.updatedAt
-                );
-            }
-        );
-    }, [
-        todos,
-        filter,
-        sort,
-        normalizedSearch,
-    ]);
-
-    const stats = useMemo(() => {
-        const completed =
-            todos.filter(
-                (todo) =>
-                    todo.completed
-            ).length;
-
-        return {
-            total: todos.length,
-            completed,
-            active:
-                todos.length - completed,
         };
-    }, [todos]);
+
+        window.addEventListener(
+            "keydown",
+            onKeyDown
+        );
+
+        return () => {
+            window.removeEventListener(
+                "keydown",
+                onKeyDown
+            );
+        };
+    }, [undo, redo]);
+
+    const stats = useMemo(
+        () => ({
+            total,
+            completed,
+            active,
+        }),
+        [
+            total,
+            completed,
+            active,
+        ]
+    );
+
+    const remainingText =
+        useMemo(() => {
+            if (active === 0) {
+                return "All tasks completed";
+            }
+
+            if (active === 1) {
+                return "1 task remaining";
+            }
+
+            return `${active} tasks remaining`;
+        }, [active]);
+
+    const hasCompleted =
+        completed > 0;
+
+    const isEmpty =
+        todos.length === 0;
+
+    const isFilteredEmpty =
+        filteredTodos.length === 0;
+
+    const resetSearch =
+        useCallback(() => {
+            setSearch("");
+        }, [setSearch]);
 
     return {
         todos,
         filteredTodos,
-        stats,
-
-        filter,
-        setFilter,
-
-        sort,
-        setSort,
 
         search,
         setSearch,
+        resetSearch,
+
+        activeCategory,
+        setActiveCategory,
 
         addTodo,
         toggleTodo,
         togglePinned,
-        setPriority,
-        editTodo,
+        updateTodoText,
         deleteTodo,
         clearCompleted,
-        toggleAll,
 
         undo,
         redo,
 
-        canUndo:
-            undoStack.current.length >
-            0,
+        canUndo,
+        canRedo,
 
-        canRedo:
-            redoStack.current.length >
-            0,
+        stats,
+
+        remainingText,
+
+        hasCompleted,
+        isEmpty,
+        isFilteredEmpty,
     };
 }
