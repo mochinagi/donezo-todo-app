@@ -14,42 +14,46 @@ import {
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.985] [&_svg]:shrink-0",
+  [
+    "inline-flex items-center justify-center gap-2",
+    "whitespace-nowrap rounded-lg font-medium",
+    "transition-all duration-150",
+    "outline-none",
+    "focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2",
+    "disabled:pointer-events-none disabled:opacity-50",
+    "[&_svg]:shrink-0",
+  ].join(" "),
   {
     variants: {
       variant: {
-        primary:
+        default:
           "bg-zinc-900 text-white hover:bg-zinc-800",
-
         secondary:
           "bg-zinc-100 text-zinc-900 hover:bg-zinc-200",
-
         outline:
           "border border-zinc-300 bg-white hover:bg-zinc-100",
-
         ghost:
-          "hover:bg-zinc-100",
-
-        danger:
+          "text-zinc-700 hover:bg-zinc-100",
+        destructive:
           "bg-red-500 text-white hover:bg-red-600",
-
         link:
           "text-blue-600 underline-offset-4 hover:underline",
       },
 
       size: {
         sm: "h-8 px-3 text-sm",
-
         md: "h-9 px-4 text-sm",
-
         lg: "h-11 px-6 text-base",
-
         icon: "h-9 w-9 p-0",
+      },
+
+      fullWidth: {
+        true: "w-full",
       },
     },
 
     defaultVariants: {
-      variant: "primary",
+      variant: "default",
       size: "md",
     },
   }
@@ -57,123 +61,96 @@ const buttonVariants = cva(
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-  VariantProps<
-    typeof buttonVariants
-  > {
+  VariantProps<typeof buttonVariants> {
   asChild?: boolean;
-
   loading?: boolean;
-
-  loadingText?: string;
-
   leadingIcon?: React.ReactNode;
-
   trailingIcon?: React.ReactNode;
 }
 
-const iconSizeMap = {
-  sm: 14,
-  md: 16,
-  lg: 18,
-  icon: 16,
-} as const;
+export const Button = React.forwardRef<
+  HTMLButtonElement,
+  ButtonProps
+>(
+  (
+    {
+      className,
+      variant,
+      size,
+      fullWidth,
+      asChild = false,
+      loading = false,
+      leadingIcon,
+      trailingIcon,
+      children,
+      disabled,
+      type,
+      ...props
+    },
+    ref
+  ) => {
+    const Comp = asChild ? Slot : "button";
 
-export const Button =
-  React.forwardRef<
-    HTMLButtonElement,
-    ButtonProps
-  >(
-    (
-      {
-        className,
-        variant,
-        size,
-        asChild,
-        loading,
-        loadingText,
-        leadingIcon,
-        trailingIcon,
-        children,
-        disabled,
-        type,
-        ...props
-      },
-      ref
-    ) => {
-      const Comp = asChild
-        ? Slot
-        : "button";
+    const isDisabled =
+      disabled || loading;
 
-      const iconSize =
-        iconSizeMap[
-        size ?? "md"
-        ];
+    return (
+      <Comp
+        ref={ref}
+        type={
+          !asChild
+            ? type ?? "button"
+            : undefined
+        }
+        disabled={
+          !asChild
+            ? isDisabled
+            : undefined
+        }
+        aria-busy={
+          loading || undefined
+        }
+        className={cn(
+          buttonVariants({
+            variant,
+            size,
+            fullWidth,
+          }),
+          className
+        )}
+        {...props}
+      >
+        {loading ? (
+          <>
+            <Loader2
+              size={16}
+              className="animate-spin"
+            />
 
-      const isDisabled =
-        disabled || loading;
-
-      return (
-        <Comp
-          ref={ref}
-          type={
-            !asChild
-              ? type ?? "button"
-              : undefined
-          }
-          disabled={
-            !asChild
-              ? isDisabled
-              : undefined
-          }
-          aria-busy={
-            loading ||
-            undefined
-          }
-          className={cn(
-            buttonVariants({
-              variant,
-              size,
-            }),
-            className
-          )}
-          {...props}
-        >
-          {loading ? (
-            <>
-              <Loader2
-                size={
-                  iconSize
-                }
-                className="animate-spin"
-              />
-
+            {children && (
               <span className="truncate">
-                {loadingText ??
-                  children}
+                {children}
               </span>
-            </>
-          ) : (
-            <>
-              {leadingIcon}
+            )}
+          </>
+        ) : (
+          <>
+            {leadingIcon}
 
-              {children ? (
-                <span className="truncate">
-                  {
-                    children
-                  }
-                </span>
-              ) : null}
+            {children && (
+              <span className="truncate">
+                {children}
+              </span>
+            )}
 
-              {trailingIcon}
-            </>
-          )}
-        </Comp>
-      );
-    }
-  );
+            {trailingIcon}
+          </>
+        )}
+      </Comp>
+    );
+  }
+);
 
 Button.displayName = "Button";
 
-export {
-  buttonVariants,
-};
+export { buttonVariants };
