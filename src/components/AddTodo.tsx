@@ -1,15 +1,27 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import {
+    useEffect,
+    useRef,
+    useState,
+} from "react";
+
 import clsx from "clsx";
-import { Loader2, Plus } from "lucide-react";
+
+import {
+    Loader2,
+    Plus,
+} from "lucide-react";
+
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toaster";
+
 import { useTodoStore } from "@/store/todoStore";
 
 const MAX_LENGTH = 100;
 const MAX_IMPORT = 20;
+
 const DRAFT_KEY = "donezo-add-todo-draft";
 
 type AddTodoProps = {
@@ -18,63 +30,67 @@ type AddTodoProps = {
     onAdd: (text: string) => Promise<void> | void;
 };
 
-const normalize = (v: string) =>
-    v.replace(/\u3000/g, " ")
+const normalize = (value: string) => {
+    return value
+        .replace(/\u3000/g, " ")
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, MAX_LENGTH);
+};
 
 export default function AddTodo({
     input,
     setInput,
     onAdd,
 }: AddTodoProps) {
-    const todos = useTodoStore((s) => s.todos);
+    const todos = useTodoStore(state => state.todos);
 
     const inputRef = useRef<HTMLInputElement>(null);
-    const composing = useRef(false);
-    const lastAdded = useRef("");
 
-    const [submitting, setSubmitting] = useState(false);
+    const composing = useRef(false);
+
+    const [submitting, setSubmitting] =
+        useState(false);
+
     const [error, setError] = useState("");
 
-    const normalizedInput = useMemo(() => normalize(input), [input]);
-
-    const existingSet = useMemo(() => {
-        return new Set(todos.map((t) => t.normalized));
-    }, [todos]);
+    const [lastAdded, setLastAdded] =
+        useState("");
 
     useEffect(() => {
-        const saved = localStorage.getItem(DRAFT_KEY);
-        if (saved && !input) setInput(saved);
+        const saved =
+            localStorage.getItem(DRAFT_KEY);
+
+        if (saved && !input) {
+            setInput(saved);
+        }
     }, []);
 
     useEffect(() => {
         if (!input.trim()) {
             localStorage.removeItem(DRAFT_KEY);
+
             return;
         }
 
         localStorage.setItem(DRAFT_KEY, input);
     }, [input]);
 
-    useEffect(() => {
-        if (!input) setError("");
-    }, [input]);
+    const normalizedInput = normalize(input);
 
-    const validate = (value: string) => {
-        if (!value) return "入力してください";
-        if (value.length > MAX_LENGTH) return `最大${MAX_LENGTH}文字です`;
+    const duplicated = todos.some(
+        todo =>
+            todo.normalized ===
+            normalizedInput.toLowerCase()
+    );
 
-        const n = normalize(value).toLowerCase();
-        if (existingSet.has(n)) return "既に存在します";
-
-        return null;
-    };
+    const remaining =
+        MAX_LENGTH - normalizedInput.length;
 
     const clear = () => {
         setInput("");
         setError("");
+
         localStorage.removeItem(DRAFT_KEY);
 
         requestAnimationFrame(() => {
@@ -83,21 +99,29 @@ export default function AddTodo({
     };
 
     const handleSubmit = async () => {
-        if (submitting) return;
+        if (submitting) {
+            return;
+        }
 
-        const value = normalizedInput;
-        const err = validate(value);
+        if (!normalizedInput) {
+            setError("入力してください");
 
-        if (err) {
-            setError(err);
+            return;
+        }
+
+        if (duplicated) {
+            setError("既に存在します");
+
             return;
         }
 
         setSubmitting(true);
 
         try {
-            await onAdd(value);
-            lastAdded.current = value;
+            await onAdd(normalizedInput);
+
+            setLastAdded(normalizedInput);
+
             clear();
         } catch {
             setError("追加できませんでした");
@@ -106,51 +130,78 @@ export default function AddTodo({
         }
     };
 
-    const parseClipboard = (text: string) => {
-        return text
-            .split("\n")
-            .map(normalize)
-            .filter(Boolean);
-    };
-
-    const bulkAdd = async (items: string[]) => {
-        let added = 0;
-
-        for (const item of items) {
-            if (added >= MAX_IMPORT) break;
-            if (validate(item)) continue;
-
-            try {
-                await onAdd(item);
-                added++;
-            } catch { }
-        }
-
-        return added;
-    };
-
     const handlePaste = async (
         e: React.ClipboardEvent<HTMLInputElement>
     ) => {
-        const text = e.clipboardData.getData("text");
+        const text =
+            e.clipboardData.getData("text");
 
-        if (!text.includes("\n")) return;
+        if (!text.includes("\n")) {
+            return;
+        }
 
         e.preventDefault();
 
-        const items = parseClipboard(text);
+        const items = text
+            .split("\n")
+            .map(normalize)
+            .filter(Boolean);
 
-        const added = await bulkAdd(items);
+        if (!items.length) {
+            return;
+        }
+
+        let added = 0;
+        let skipped = 0;
+
+        for (const item of items) {
+            if (added >= MAX_IMPORT) {
+                break;
+            }
+
+            const exists = todos.some(
+                todo =>
+                    todo.normalized ===
+                    item.toLowerCase()
+            );
+
+            if (exists) {
+                skipped++;
+
+                continue;
+            }
+
+            try {
+                await onAdd(item);
+
+                added++;
+            } catch {
+                skipped++;
+            }
+        }
 
         if (added > 0) {
-            toast.success(`${added}件追加しました`);
+            toast.success(
+                `${added}件追加しました`
+            );
+        }
+
+        if (skipped > 0) {
+            toast.error(
+                `${skipped}件スキップしました`
+            );
         }
     };
 
     return (
-        <div className="border-b border-zinc-200 px-6 py-5">
+        <div className="border-b border-zinc-200 bg-white px-6 py-5">
             <div className="flex gap-3">
                 <div className="relative flex-1">
+                    <Plus
+                        size={16}
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
+                    />
+
                     <Input
                         ref={inputRef}
                         autoFocus
@@ -159,7 +210,13 @@ export default function AddTodo({
                         value={input}
                         placeholder="タスクを追加"
                         aria-invalid={!!error}
-                        onChange={(e) => setInput(e.target.value)}
+                        onChange={e => {
+                            setInput(e.target.value);
+
+                            if (error) {
+                                setError("");
+                            }
+                        }}
                         onPaste={handlePaste}
                         onCompositionStart={() => {
                             composing.current = true;
@@ -167,65 +224,107 @@ export default function AddTodo({
                         onCompositionEnd={() => {
                             composing.current = false;
                         }}
-                        onKeyDown={(e) => {
-                            if (composing.current) return;
+                        onKeyDown={e => {
+                            if (
+                                composing.current
+                            ) {
+                                return;
+                            }
 
-                            if (e.key === "Enter") {
+                            if (
+                                e.key === "Enter"
+                            ) {
                                 e.preventDefault();
+
                                 handleSubmit();
                             }
 
-                            if (e.key === "Escape") {
+                            if (
+                                e.key ===
+                                "ArrowUp" &&
+                                !input &&
+                                lastAdded
+                            ) {
+                                setInput(
+                                    lastAdded
+                                );
+                            }
+
+                            if (
+                                e.key ===
+                                "Escape" &&
+                                input
+                            ) {
                                 clear();
-                            }
-
-                            if (e.key === "ArrowUp" && !input) {
-                                setInput(lastAdded.current);
-                            }
-
-                            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                                handleSubmit();
                             }
                         }}
                         className={clsx(
-                            "h-11 pl-10 pr-16",
-                            error && "border-destructive"
+                            "h-11 pl-10 pr-20",
+                            error &&
+                            "border-destructive",
+                            duplicated &&
+                            !error &&
+                            "border-amber-400"
                         )}
                     />
 
-                    <Plus
-                        size={16}
-                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
-                    />
-
                     <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2">
-                        <span className="text-[11px] text-zinc-400">
-                            Enter
-                        </span>
-                        <span className="text-xs text-zinc-400">
-                            {normalizedInput.length}/{MAX_LENGTH}
+                        {duplicated &&
+                            !error && (
+                                <span className="text-[11px] text-amber-600">
+                                    duplicate
+                                </span>
+                            )}
+
+                        <span
+                            className={clsx(
+                                "text-xs",
+                                remaining <= 10
+                                    ? "text-amber-600"
+                                    : "text-zinc-400"
+                            )}
+                        >
+                            {
+                                normalizedInput.length
+                            }
+                            /{MAX_LENGTH}
                         </span>
                     </div>
                 </div>
 
                 <Button
                     type="button"
-                    disabled={submitting || !normalizedInput}
+                    disabled={
+                        submitting ||
+                        !normalizedInput ||
+                        duplicated
+                    }
                     onClick={handleSubmit}
-                    className="min-w-[92px]"
+                    className="min-w-[96px]"
                 >
                     {submitting ? (
-                        <Loader2 size={16} className="animate-spin" />
+                        <Loader2
+                            size={16}
+                            className="animate-spin"
+                        />
                     ) : (
                         <Plus size={16} />
                     )}
-                    {submitting ? "追加中" : "追加"}
+
+                    {submitting
+                        ? "追加中"
+                        : "追加"}
                 </Button>
             </div>
 
             <div className="mt-2 flex items-center justify-between text-xs">
-                <div className="text-destructive">{error}</div>
-                <div className="text-zinc-400">Esc to clear</div>
+                <div className="min-h-[16px] text-destructive">
+                    {error}
+                </div>
+
+                <div className="text-zinc-400">
+                    Paste multiple lines to import
+                </div>
             </div>
         </div>
     );
