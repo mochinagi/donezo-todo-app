@@ -1,7 +1,15 @@
 "use client";
 
 import * as React from "react";
+
+import { X } from "lucide-react";
+
 import { cn } from "@/lib/utils";
+
+type InputSize =
+  | "sm"
+  | "md"
+  | "lg";
 
 type InputProps =
   React.InputHTMLAttributes<HTMLInputElement> & {
@@ -9,131 +17,188 @@ type InputProps =
     rightIcon?: React.ReactNode;
     onRightIconClick?: () => void;
     clearable?: boolean;
-    error?: boolean;
-    size?: "sm" | "md" | "lg";
+    error?: string;
+    size?: InputSize;
+    loading?: boolean;
   };
 
-const sizeClassMap = {
+const sizeClasses: Record<
+  InputSize,
+  string
+> = {
   sm: "h-8 px-2 text-sm",
   md: "h-10 px-3 text-sm",
   lg: "h-12 px-4 text-base",
 };
 
-function mergeRefs<T>(
-  ref: React.ForwardedRef<T>,
-  innerRef: React.MutableRefObject<T | null>
-) {
-  return (node: T | null) => {
-    innerRef.current = node;
+export const Input =
+  React.forwardRef<
+    HTMLInputElement,
+    InputProps
+  >(
+    (
+      {
+        className,
+        type = "text",
+        leftIcon,
+        rightIcon,
+        onRightIconClick,
+        clearable = false,
+        error,
+        size = "md",
+        value,
+        onChange,
+        disabled,
+        loading = false,
+        ...props
+      },
+      ref
+    ) => {
+      const innerRef =
+        React.useRef<HTMLInputElement | null>(
+          null
+        );
 
-    if (typeof ref === "function") {
-      ref(node);
-    } else if (ref) {
-      (ref as React.MutableRefObject<T | null>).current = node;
-    }
-  };
-}
+      const currentValue =
+        typeof value === "string"
+          ? value
+          : "";
 
-const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  (
-    {
-      className,
-      type = "text",
-      leftIcon,
-      rightIcon,
-      onRightIconClick,
-      clearable,
-      error,
-      size = "md",
-      value,
-      onChange,
-      disabled,
-      ...props
-    },
-    ref
-  ) => {
-    const innerRef = React.useRef<HTMLInputElement | null>(null);
+      const showClear =
+        clearable &&
+        currentValue.length > 0 &&
+        !disabled &&
+        !loading;
 
-    const currentValue = typeof value === "string" ? value : "";
+      const setRefs = (
+        node: HTMLInputElement | null
+      ) => {
+        innerRef.current = node;
 
-    const showClear = clearable && !!currentValue && !disabled;
+        if (
+          typeof ref === "function"
+        ) {
+          ref(node);
 
-    const handleChange = (nextValue: string) => {
-      if (!onChange) return;
+          return;
+        }
 
-      onChange({
-        target: { value: nextValue },
-      } as React.ChangeEvent<HTMLInputElement>);
-    };
+        if (ref) {
+          ref.current = node;
+        }
+      };
 
-    const handleClear = () => {
-      if (disabled) return;
+      const handleClear = () => {
+        if (
+          disabled ||
+          loading ||
+          !onChange
+        ) {
+          return;
+        }
 
-      handleChange("");
-      innerRef.current?.focus();
-    };
+        const event = {
+          target: {
+            value: "",
+          },
+        } as React.ChangeEvent<HTMLInputElement>;
 
-    const mergedRef = mergeRefs(ref, innerRef);
+        onChange(event);
 
-    return (
-      <div className="relative w-full">
-        {leftIcon && (
-          <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-            {leftIcon}
+        requestAnimationFrame(() => {
+          innerRef.current?.focus();
+        });
+      };
+
+      return (
+        <div className="w-full">
+          <div className="relative">
+            {leftIcon && (
+              <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
+                {leftIcon}
+              </div>
+            )}
+
+            <input
+              ref={setRefs}
+              type={type}
+              value={value}
+              onChange={onChange}
+              disabled={disabled}
+              aria-invalid={
+                !!error ||
+                undefined
+              }
+              className={cn(
+                "w-full rounded-lg border bg-white outline-none transition-colors",
+                "placeholder:text-zinc-400",
+                "disabled:cursor-not-allowed disabled:opacity-50",
+                "focus-visible:ring-2 focus-visible:ring-blue-400",
+                sizeClasses[size],
+                leftIcon &&
+                "pl-10",
+                (
+                  rightIcon ||
+                  showClear
+                ) &&
+                "pr-10",
+                error
+                  ? "border-red-400"
+                  : "border-zinc-300",
+                loading &&
+                "cursor-wait",
+                className
+              )}
+              {...props}
+            />
+
+            {(showClear ||
+              rightIcon) && (
+                <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
+                  {showClear && (
+                    <button
+                      type="button"
+                      onClick={
+                        handleClear
+                      }
+                      className="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                      tabIndex={
+                        -1
+                      }
+                    >
+                      <X
+                        size={
+                          14
+                        }
+                      />
+                    </button>
+                  )}
+
+                  {rightIcon && (
+                    <button
+                      type="button"
+                      onClick={
+                        onRightIconClick
+                      }
+                      className="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                    >
+                      {
+                        rightIcon
+                      }
+                    </button>
+                  )}
+                </div>
+              )}
           </div>
-        )}
 
-        <input
-          ref={mergedRef}
-          type={type}
-          value={value}
-          onChange={onChange}
-          disabled={disabled}
-          aria-invalid={error || undefined}
-          className={cn(
-            "w-full rounded-md border bg-background outline-none transition",
-            "placeholder:text-muted-foreground",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-            "focus-visible:ring-2 focus-visible:ring-ring",
-            sizeClassMap[size],
-            leftIcon && "pl-10",
-            (rightIcon || showClear) && "pr-10",
-            error ? "border-destructive" : "border-input",
-            className
+          {error && (
+            <p className="mt-1 text-xs text-red-500">
+              {error}
+            </p>
           )}
-          {...props}
-        />
-
-        {(showClear || rightIcon) && (
-          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
-            {showClear && (
-              <button
-                type="button"
-                onClick={handleClear}
-                className="px-1 text-muted-foreground transition hover:opacity-70"
-                aria-label="Clear input"
-              >
-                ×
-              </button>
-            )}
-
-            {rightIcon && (
-              <button
-                type="button"
-                onClick={onRightIconClick}
-                className="px-1 text-muted-foreground transition hover:opacity-70"
-                aria-label="Input action"
-              >
-                {rightIcon}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-);
+        </div>
+      );
+    }
+  );
 
 Input.displayName = "Input";
-
-export { Input };
