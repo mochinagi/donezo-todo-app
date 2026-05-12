@@ -6,9 +6,7 @@ import {
 } from "next-themes";
 
 import {
-    useCallback,
     useEffect,
-    useMemo,
     useState,
     type ReactNode,
 } from "react";
@@ -26,13 +24,23 @@ type ThemeProviderProps = {
     children: ReactNode;
 };
 
-const STORAGE_KEY = "donezo-theme";
+const STORAGE_KEY =
+    "donezo-theme";
 
-const THEME_SEQUENCE: AppTheme[] = [
-    "light",
-    "dark",
-    "system",
-];
+const THEME_ORDER: AppTheme[] =
+    [
+        "light",
+        "dark",
+        "system",
+    ];
+
+const isValidTheme = (
+    value: string
+): value is AppTheme => {
+    return THEME_ORDER.includes(
+        value as AppTheme
+    );
+};
 
 export function ThemeProvider({
     children,
@@ -42,7 +50,9 @@ export function ThemeProvider({
             attribute="class"
             defaultTheme="system"
             enableSystem
-            storageKey={STORAGE_KEY}
+            storageKey={
+                STORAGE_KEY
+            }
             disableTransitionOnChange
         >
             {children}
@@ -61,64 +71,56 @@ export function useAppTheme() {
     const [mounted, setMounted] =
         useState(false);
 
-    const [
-        reducedMotion,
-        setReducedMotion,
-    ] = useState(false);
-
     useEffect(() => {
         setMounted(true);
-
-        const mediaQuery =
-            window.matchMedia(
-                "(prefers-reduced-motion: reduce)"
-            );
-
-        const updateMotion = () => {
-            setReducedMotion(
-                mediaQuery.matches
-            );
-        };
-
-        updateMotion();
-
-        mediaQuery.addEventListener(
-            "change",
-            updateMotion
-        );
-
-        return () => {
-            mediaQuery.removeEventListener(
-                "change",
-                updateMotion
-            );
-        };
     }, []);
 
     useEffect(() => {
-        if (!mounted) {
+        if (
+            typeof window ===
+            "undefined" ||
+            !mounted
+        ) {
             return;
         }
 
         const resolved =
-            resolvedTheme ?? "light";
+            resolvedTheme === "dark"
+                ? "dark"
+                : "light";
 
         document.documentElement.dataset.theme =
             resolved;
-    }, [mounted, resolvedTheme]);
+    }, [
+        mounted,
+        resolvedTheme,
+    ]);
 
     useEffect(() => {
+        if (
+            typeof window ===
+            "undefined"
+        ) {
+            return;
+        }
+
         const syncTheme = (
             event: StorageEvent
         ) => {
             if (
-                event.key !== STORAGE_KEY ||
-                !event.newValue
+                event.key !==
+                STORAGE_KEY ||
+                !event.newValue ||
+                !isValidTheme(
+                    event.newValue
+                )
             ) {
                 return;
             }
 
-            setTheme(event.newValue);
+            setTheme(
+                event.newValue
+            );
         };
 
         window.addEventListener(
@@ -134,112 +136,101 @@ export function useAppTheme() {
         };
     }, [setTheme]);
 
-    const currentTheme =
-        (theme ??
-            "system") as AppTheme;
+    const currentTheme: AppTheme =
+        isValidTheme(
+            theme ?? ""
+        )
+            ? theme
+            : "system";
 
-    const resolved =
-        (resolvedTheme ??
-            "light") as ResolvedTheme;
+    const resolved: ResolvedTheme =
+        resolvedTheme ===
+            "dark"
+            ? "dark"
+            : "light";
 
-    const system =
-        (systemTheme ??
-            "light") as ResolvedTheme;
+    const system: ResolvedTheme =
+        systemTheme ===
+            "dark"
+            ? "dark"
+            : "light";
 
-    const updateTheme = useCallback(
-        (value: AppTheme) => {
-            setTheme(value);
-        },
-        [setTheme]
-    );
+    const setAppTheme = (
+        value: AppTheme
+    ) => {
+        setTheme(value);
+    };
 
-    const toggleTheme = useCallback(
-        () => {
-            setTheme(
-                resolved === "dark"
-                    ? "light"
-                    : "dark"
-            );
-        },
-        [resolved, setTheme]
-    );
+    const toggleTheme = () => {
+        setTheme(
+            resolved === "dark"
+                ? "light"
+                : "dark"
+        );
+    };
 
-    const cycleTheme = useCallback(
-        () => {
-            const currentIndex =
-                THEME_SEQUENCE.indexOf(
-                    currentTheme
-                );
+    const cycleTheme = () => {
+        if (
+            currentTheme ===
+            "light"
+        ) {
+            setTheme("dark");
 
-            const next =
-                THEME_SEQUENCE[
-                (currentIndex + 1) %
-                THEME_SEQUENCE.length
-                ];
+            return;
+        }
 
-            setTheme(next);
-        },
-        [currentTheme, setTheme]
-    );
+        if (
+            currentTheme ===
+            "dark"
+        ) {
+            setTheme("system");
 
-    const nextTheme = useMemo(() => {
-        const index =
-            THEME_SEQUENCE.indexOf(
-                currentTheme
-            );
+            return;
+        }
 
-        return THEME_SEQUENCE[
-            (index + 1) %
-            THEME_SEQUENCE.length
-        ];
-    }, [currentTheme]);
+        setTheme("light");
+    };
 
-    const metadata = useMemo(
-        () => ({
-            light: {
-                label: "Light",
-            },
-
-            dark: {
-                label: "Dark",
-            },
-
-            system: {
-                label: "System",
-            },
-        }),
-        []
-    );
+    const nextTheme =
+        currentTheme ===
+            "light"
+            ? "dark"
+            : currentTheme ===
+                "dark"
+                ? "system"
+                : "light";
 
     return {
         mounted,
 
-        theme: currentTheme,
+        theme:
+            currentTheme,
 
-        resolvedTheme: resolved,
+        resolvedTheme:
+            resolved,
 
-        systemTheme: system,
+        systemTheme:
+            system,
 
         nextTheme,
 
-        reducedMotion,
-
         isDark:
             mounted &&
-            resolved === "dark",
+            resolved ===
+            "dark",
 
         isLight:
             mounted &&
-            resolved === "light",
+            resolved ===
+            "light",
 
         isSystem:
             mounted &&
             currentTheme ===
             "system",
 
-        metadata,
-
-        setTheme: updateTheme,
+        setTheme:
+            setAppTheme,
 
         toggleTheme,
 
