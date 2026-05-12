@@ -3,13 +3,17 @@
 import {
     useEffect,
     useState,
+    useCallback,
 } from "react";
+
+import clsx from "clsx";
+
+import { usePathname } from "next/navigation";
 
 import { Menu } from "lucide-react";
 
-import Sidebar from "@/components/Sidebar";
-
 import Header from "@/components/Header";
+import Sidebar from "@/components/Sidebar";
 
 import { Button } from "@/components/ui/button";
 
@@ -17,65 +21,155 @@ type AppShellProps = {
     children: React.ReactNode;
 };
 
+const DESKTOP_QUERY =
+    "(min-width: 768px)";
+
 export default function AppShell({
     children,
 }: AppShellProps) {
-    const [
-        sidebarOpen,
-        setSidebarOpen,
-    ] = useState(false);
+    const pathname = usePathname();
+
+    const [sidebarOpen, setSidebarOpen] =
+        useState(false);
+
+    const [desktop, setDesktop] =
+        useState(false);
+
+    const closeSidebar =
+        useCallback(() => {
+            setSidebarOpen(false);
+        }, []);
+
+    const toggleSidebar =
+        useCallback(() => {
+            setSidebarOpen(
+                current => !current
+            );
+        }, []);
 
     useEffect(() => {
-        const onResize = () => {
-            if (
-                window.innerWidth >= 768
-            ) {
+        const mediaQuery =
+            window.matchMedia(
+                DESKTOP_QUERY
+            );
+
+        const syncLayout = () => {
+            const desktopView =
+                mediaQuery.matches;
+
+            setDesktop(desktopView);
+
+            if (desktopView) {
                 setSidebarOpen(false);
             }
         };
 
+        syncLayout();
+
+        mediaQuery.addEventListener(
+            "change",
+            syncLayout
+        );
+
+        return () => {
+            mediaQuery.removeEventListener(
+                "change",
+                syncLayout
+            );
+        };
+    }, []);
+
+    useEffect(() => {
+        closeSidebar();
+    }, [pathname]);
+
+    useEffect(() => {
+        if (
+            desktop ||
+            !sidebarOpen
+        ) {
+            document.body.style
+                .overflow = "";
+
+            return;
+        }
+
+        document.body.style
+            .overflow = "hidden";
+
+        return () => {
+            document.body.style
+                .overflow = "";
+        };
+    }, [
+        sidebarOpen,
+        desktop,
+    ]);
+
+    useEffect(() => {
+        const onKeyDown = (
+            event: KeyboardEvent
+        ) => {
+            if (
+                event.key ===
+                "Escape"
+            ) {
+                closeSidebar();
+            }
+        };
+
         window.addEventListener(
-            "resize",
-            onResize
+            "keydown",
+            onKeyDown
         );
 
         return () => {
             window.removeEventListener(
-                "resize",
-                onResize
+                "keydown",
+                onKeyDown
             );
         };
     }, []);
 
     return (
-        <div className="flex h-screen overflow-hidden">
+        <div className="flex h-screen overflow-hidden bg-zinc-50 dark:bg-zinc-900">
             <aside
-                className={[
+                aria-hidden={
+                    !desktop &&
+                    !sidebarOpen
+                }
+                className={clsx(
                     "fixed inset-y-0 left-0 z-40 w-64 border-r border-zinc-200 bg-white transition-transform duration-200 dark:border-zinc-800 dark:bg-zinc-950",
                     sidebarOpen
                         ? "translate-x-0"
                         : "-translate-x-full",
-                    "md:relative md:translate-x-0",
-                ].join(" ")}
+                    "md:relative md:translate-x-0"
+                )}
             >
                 <Sidebar />
             </aside>
 
-            {sidebarOpen && (
-                <button
-                    type="button"
-                    aria-label="Close sidebar"
-                    className="fixed inset-0 z-30 bg-black/40 md:hidden"
-                    onClick={() =>
-                        setSidebarOpen(
-                            false
-                        )
-                    }
-                />
-            )}
+            <button
+                type="button"
+                aria-label="Close sidebar"
+                tabIndex={
+                    sidebarOpen
+                        ? 0
+                        : -1
+                }
+                onClick={
+                    closeSidebar
+                }
+                className={clsx(
+                    "fixed inset-0 z-30 bg-black/40 opacity-0 transition-opacity duration-200 md:hidden",
+                    sidebarOpen
+                        ? "pointer-events-auto opacity-100"
+                        : "pointer-events-none"
+                )}
+            />
 
             <div className="flex min-w-0 flex-1 flex-col">
-                <header className="flex h-16 items-center justify-between border-b border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-950">
+                <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-zinc-200 bg-white/95 px-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
                     <Header />
 
                     <Button
@@ -83,13 +177,11 @@ export default function AppShell({
                         variant="ghost"
                         className="md:hidden"
                         aria-label="Toggle sidebar"
-                        onClick={() =>
-                            setSidebarOpen(
-                                (
-                                    value
-                                ) =>
-                                    !value
-                            )
+                        aria-expanded={
+                            sidebarOpen
+                        }
+                        onClick={
+                            toggleSidebar
                         }
                     >
                         <Menu size={18} />
