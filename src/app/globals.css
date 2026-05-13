@@ -1,34 +1,47 @@
-/* ========================================
-   グローバルスタイル (globals.css)
-   アプリ全体のベーススタイルとテーマ
-======================================== */
+/* ================================
+   Global Design Tokens
+   App Base Styles & Theme System
+================================ */
 
-/* -----------------------------
-   ルート変数 (ライト/ダークテーマ)
------------------------------ */
 :root {
   --color-bg: #f9fafb;
-  /* 背景色 */
   --color-text: #111827;
-  /* テキスト色 */
   --color-border: #d1d5db;
-  /* ボーダー色 */
   --color-primary: #3b82f6;
-  /* プライマリ色 */
-  --transition-duration: 0.2s;
+
+  --color-muted: #6b7280;
+  --color-surface: #ffffff;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.08);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+
+  --transition: 0.2s ease;
 }
 
-/* ダークテーマ変数 */
 [data-theme='dark'] {
   --color-bg: #111827;
   --color-text: #f9fafb;
   --color-border: #374151;
   --color-primary: #3b82f6;
+
+  --color-muted: #9ca3af;
+  --color-surface: #1f2937;
 }
 
-/* -----------------------------
-   ボックスサイジング & 基本リセット
------------------------------ */
+/* ================================
+   Reset
+================================ */
+
 *,
 *::before,
 *::after {
@@ -40,29 +53,39 @@ body {
   margin: 0;
   padding: 0;
   font-family: "Noto Sans JP", "Helvetica Neue", Arial, sans-serif;
-  background-color: var(--color-bg);
+  background: var(--color-bg);
   color: var(--color-text);
-  scroll-behavior: smooth;
-  /* スムーズスクロール */
   line-height: 1.6;
-  transition: background-color var(--transition-duration) ease, color var(--transition-duration) ease;
+  scroll-behavior: smooth;
+  transition: background-color var(--transition), color var(--transition);
 }
 
-/* -----------------------------
-   フォーカススタイル (アクセシビリティ)
------------------------------ */
+/* ================================
+   Selection
+================================ */
+
+::selection {
+  background: var(--color-primary);
+  color: white;
+}
+
+/* ================================
+   Focus
+================================ */
+
 :focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 
-/* -----------------------------
-   デフォルト要素スタイル
------------------------------ */
+/* ================================
+   Base Elements
+================================ */
+
 a {
   color: var(--color-primary);
   text-decoration: none;
-  transition: color var(--transition-duration) ease;
+  transition: color var(--transition);
 }
 
 a:hover {
@@ -75,17 +98,27 @@ button {
   background: none;
 }
 
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 input,
 textarea,
 select,
 button {
   font-family: inherit;
-  transition: border-color var(--transition-duration) ease, background-color var(--transition-duration) ease;
+  transition: border-color var(--transition), background-color var(--transition);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-muted);
 }
 
 ul,
 ol {
-  padding-left: 1.5rem;
+  padding-left: var(--space-4);
 }
 
 img,
@@ -95,19 +128,43 @@ svg {
   height: auto;
 }
 
-/* -----------------------------
-   アニメーション & モーション設定
------------------------------ */
+/* ================================
+   Scrollbar (Webkit)
+================================ */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted);
+}
+
+/* ================================
+   Reduced Motion
+================================ */
+
 @media (prefers-reduced-motion: reduce) {
   * {
-    transition: none !important;
     animation: none !important;
+    transition: none !important;
   }
 }
 
-/* -----------------------------
-   共通ユーティリティ
------------------------------ */
+/* ================================
+   Utilities
+================================ */
+
 .hidden {
   display: none !important;
 }
@@ -122,4 +179,17 @@ svg {
   clip: rect(0, 0, 0, 0) !important;
   white-space: nowrap !important;
   border: 0 !important;
+}
+
+.surface {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.card {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-border);
 }
