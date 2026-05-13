@@ -19,14 +19,19 @@ function Skeleton({
     );
 }
 
-const rows = Array.from({ length: 6 }).map((_, i) => ({
-    title: i % 2 === 0 ? "w-[72%]" : "w-[55%]",
-    meta: i % 3 === 0 ? "w-24" : "w-16",
-}));
+function createRows(count: number) {
+    return Array.from({ length: count }).map((_, i) => ({
+        title: i % 2 === 0 ? "w-[72%]" : "w-[55%]",
+        meta: i % 3 === 0 ? "w-24" : "w-16",
+    }));
+}
 
 function HeaderSkeleton() {
     return (
-        <section className="flex items-center justify-between gap-4">
+        <section
+            aria-label="Loading header"
+            className="flex items-center justify-between gap-4"
+        >
             <div className="space-y-3">
                 <Skeleton className="h-7 w-40 rounded-lg" />
                 <Skeleton className="h-4 w-60" />
@@ -39,7 +44,10 @@ function HeaderSkeleton() {
 
 function ToolbarSkeleton() {
     return (
-        <div className="border-b border-zinc-200 p-5 dark:border-zinc-800">
+        <div
+            aria-label="Loading toolbar"
+            className="border-b border-zinc-200 p-5 dark:border-zinc-800"
+        >
             <div className="flex gap-3">
                 <Skeleton className="h-11 flex-1 rounded-xl" />
                 <Skeleton className="h-11 w-24 rounded-xl" />
@@ -49,8 +57,10 @@ function ToolbarSkeleton() {
 }
 
 function ListSkeleton() {
+    const rows = createRows(6);
+
     return (
-        <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+        <div aria-label="Loading list" className="divide-y divide-zinc-100 dark:divide-zinc-800">
             {rows.map((row, index) => (
                 <div
                     key={index}
@@ -75,7 +85,10 @@ function ListSkeleton() {
 
 function FooterSkeleton() {
     return (
-        <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-4 dark:border-zinc-800">
+        <div
+            aria-label="Loading footer"
+            className="flex items-center justify-between border-t border-zinc-200 px-5 py-4 dark:border-zinc-800"
+        >
             <Skeleton className="h-4 w-28" />
 
             <div className="flex items-center gap-2">
@@ -92,6 +105,7 @@ export default function Loading() {
             role="status"
             aria-live="polite"
             aria-busy="true"
+            aria-label="Loading tasks page"
             className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6"
         >
             <HeaderSkeleton />
@@ -102,7 +116,7 @@ export default function Loading() {
                 <FooterSkeleton />
             </section>
 
-            <span className="sr-only">Loading tasks</span>
+            <span className="sr-only">Loading tasks content</span>
         </div>
     );
 }
