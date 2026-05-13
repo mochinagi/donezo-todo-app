@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback } from "react";
+import { shallow } from "zustand/shallow";
+
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import AddTodo from "@/components/AddTodo";
@@ -12,13 +14,10 @@ import {
   useFilteredTodos,
   useTodoStats,
 } from "@/store/todoStore";
-import { shallow } from "zustand/shallow";
 
 export default function Home() {
-  /* ---------------- store ---------------- */
-
   const { addTodo, search, setSearch } = useTodoStore(
-    (s) => ({
+    s => ({
       addTodo: s.addTodo,
       search: s.search,
       setSearch: s.setSearch,
@@ -29,46 +28,53 @@ export default function Home() {
   const filteredTodos = useFilteredTodos();
   const stats = useTodoStats();
 
-  /* ---------------- handlers ---------------- */
-
   const handleAdd = useCallback(
     (text: string) => {
-      addTodo(text);
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      addTodo(trimmed);
     },
     [addTodo]
   );
 
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setSearch(value);
+    },
+    [setSearch]
+  );
+
   return (
     <div className="flex min-h-screen bg-gray-100 font-sans text-gray-900">
-
-      {/* Sidebar */}
       <Sidebar />
 
-      {/* Main */}
-      <main className="flex-1 flex flex-col">
-
-        {/* Header */}
+      <main
+        role="main"
+        aria-label="Todo workspace"
+        className="flex flex-1 flex-col"
+      >
         <Header
           categoryId="tasks"
           search={search}
-          onSearchChange={setSearch}
+          onSearchChange={handleSearchChange}
           total={filteredTodos.length}
         />
 
-        {/* Add */}
-        <AddTodo onAdd={handleAdd} />
+        <section aria-label="Add todo input">
+          <AddTodo onAdd={handleAdd} />
+        </section>
 
-        {/* List */}
-        <section className="flex-1 overflow-y-auto">
+        <section
+          aria-label="Todo list"
+          className="flex-1 overflow-y-auto"
+        >
           <TodoList />
         </section>
 
-        {/* Footer */}
         <Footer
           total={stats.total}
           completed={stats.completed}
         />
-
       </main>
     </div>
   );
