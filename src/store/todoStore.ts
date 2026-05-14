@@ -1,3 +1,4 @@
+```ts
 "use client";
 
 import { create } from "zustand";
@@ -26,26 +27,38 @@ export interface Todo {
     updatedAt: number;
 }
 
-export type FilterType = "tasks" | "active" | "completed" | "archived";
+export type FilterType =
+    | "tasks"
+    | "active"
+    | "completed"
+    | "archived";
+
+type TodoPatch = Partial<Todo>;
 
 type RemovedTodo = {
     todo: Todo;
     index: number;
 };
 
-type FieldPatch = Partial<Todo>;
-
-type BulkUpdateItem = {
+type BulkHistoryItem = {
     id: string;
-    before: FieldPatch;
-    after: FieldPatch;
+    before: TodoPatch;
+    after: TodoPatch;
 };
 
 type HistoryAction =
     | { type: "add"; todo: Todo }
     | { type: "delete"; removed: RemovedTodo[] }
-    | { type: "update"; id: string; before: FieldPatch; after: FieldPatch }
-    | { type: "bulkUpdate"; updates: BulkUpdateItem[] };
+    | {
+          type: "update";
+          id: string;
+          before: TodoPatch;
+          after: TodoPatch;
+      }
+    | {
+          type: "bulk";
+          items: BulkHistoryItem[];
+      };
 
 type TodoStore = {
     todos: Todo[];
@@ -61,107 +74,172 @@ type TodoStore = {
     redoStack: HistoryAction[];
 
     addTodo: (text: string) => void;
+
     updateTodoText: (id: string, text: string) => void;
 
     toggleTodo: (id: string) => void;
-    toggleMany: (ids: string[], completed: boolean) => void;
+
+    toggleMany: (
+        ids: string[],
+        completed: boolean
+    ) => void;
 
     togglePinned: (id: string) => void;
 
-    archiveMany: (ids: string[], archived: boolean) => void;
+    archiveMany: (
+        ids: string[],
+        archived: boolean
+    ) => void;
 
-    setPriority: (id: string, priority: Priority) => void;
+    setPriority: (
+        id: string,
+        priority: Priority
+    ) => void;
 
-    setDueDate: (id: string, dueDate: number | null) => void;
+    setDueDate: (
+        id: string,
+        dueDate: number | null
+    ) => void;
 
-    reorderTodos: (from: number, to: number) => void;
+    reorderTodos: (
+        from: number,
+        to: number
+    ) => void;
 
     deleteTodo: (id: string) => void;
+
     deleteMany: (ids: string[]) => void;
 
     clearCompleted: () => void;
 
     undo: () => void;
+
     redo: () => void;
 
     setSearch: (value: string) => void;
-    setActiveCategory: (value: FilterType) => void;
+
+    setActiveCategory: (
+        value: FilterType
+    ) => void;
+
     setHydrated: (value: boolean) => void;
 };
 
 const HISTORY_LIMIT = 50;
 
-const now = () => Date.now();
+const timestamp = () => Date.now();
 
 const normalizeText = (value: string) =>
-    value.trim().replace(/\s+/g, " ").toLowerCase();
+    value
+        .trim()
+        .replace(/\s+/g, " ")
+        .toLowerCase();
 
-const priorityWeight: Record<Priority, number> = {
+const priorityWeight: Record<
+    Priority,
+    number
+> = {
     high: 3,
     medium: 2,
     low: 1,
 };
 
 const isOverdue = (todo: Todo) =>
-    !!todo.dueDate && !todo.completed && !todo.archived && todo.dueDate < now();
+    Boolean(
+        todo.dueDate &&
+            !todo.completed &&
+            !todo.archived &&
+            todo.dueDate < timestamp()
+    );
 
 const isStale = (todo: Todo) =>
-    !todo.completed && !todo.archived && now() - todo.updatedAt > 1000 * 60 * 60 * 24 * 7;
+    !todo.completed &&
+    !todo.archived &&
+    timestamp() - todo.updatedAt >
+        1000 * 60 * 60 * 24 * 7;
 
 const sortTodos = (todos: Todo[]) =>
     [...todos].sort((a, b) => {
-        if (a.pinned !== b.pinned) return Number(b.pinned) - Number(a.pinned);
-
-        const ao = isOverdue(a);
-        const bo = isOverdue(b);
-        if (ao !== bo) return Number(bo) - Number(ao);
-
-        if (a.completed !== b.completed) return Number(a.completed) - Number(b.completed);
-
-        if (a.priority !== b.priority) {
-            return priorityWeight[b.priority] - priorityWeight[a.priority];
+        if (a.pinned !== b.pinned) {
+            return Number(b.pinned) - Number(a.pinned);
         }
 
-        if (a.dueDate && b.dueDate) return a.dueDate - b.dueDate;
+        const overdueA = isOverdue(a);
+        const overdueB = isOverdue(b);
+
+        if (overdueA !== overdueB) {
+            return Number(overdueB) - Number(overdueA);
+        }
+
+        if (a.completed !== b.completed) {
+            return Number(a.completed) - Number(b.completed);
+        }
+
+        if (a.priority !== b.priority) {
+            return (
+                priorityWeight[b.priority] -
+                priorityWeight[a.priority]
+            );
+        }
+
+        if (a.dueDate && b.dueDate) {
+            return a.dueDate - b.dueDate;
+        }
 
         return a.order - b.order;
     });
 
-const limitHistory = (stack: HistoryAction[]) => stack.slice(-HISTORY_LIMIT);
-
-const reorderIndexes = (todos: Todo[]) =>
-    todos.map((t, i) => ({ ...t, order: i }));
-
-const touchTodo = (todo: Todo, patch: Partial<Todo>): Todo => ({
+const withUpdatedAt = (
+    todo: Todo,
+    patch: TodoPatch
+): Todo => ({
     ...todo,
     ...patch,
-    updatedAt: now(),
+    updatedAt: timestamp(),
 });
 
-const buildBulkUpdate = (
-    ids: string[],
-    beforeMap: Map<string, Todo>,
-    afterMap: Map<string, Todo>
-): BulkUpdateItem[] =>
-    ids
-        .map(id => {
-            const b = beforeMap.get(id);
-            const a = afterMap.get(id);
-            if (!b || !a) return null;
+const reorderIndexes = (todos: Todo[]) =>
+    todos.map((todo, index) => ({
+        ...todo,
+        order: index,
+    }));
 
-            const before: FieldPatch = {};
-            const after: FieldPatch = {};
+const trimHistory = (
+    stack: HistoryAction[]
+) => stack.slice(-HISTORY_LIMIT);
 
-            (Object.keys(a) as (keyof Todo)[]).forEach(k => {
-                if (b[k] !== a[k]) {
-                    before[k] = b[k] as any;
-                    after[k] = a[k] as any;
+const createBulkHistory = (
+    previousTodos: Map<string, Todo>,
+    updatedTodos: Map<string, Todo>
+): BulkHistoryItem[] => {
+    const items: BulkHistoryItem[] = [];
+
+    updatedTodos.forEach((updated, id) => {
+        const previous = previousTodos.get(id);
+
+        if (!previous) return;
+
+        const before: TodoPatch = {};
+        const after: TodoPatch = {};
+
+        (Object.keys(updated) as (keyof Todo)[]).forEach(
+            key => {
+                if (previous[key] !== updated[key]) {
+                    before[key] = previous[key] as never;
+                    after[key] = updated[key] as never;
                 }
-            });
+            }
+        );
 
-            return { id, before, after };
-        })
-        .filter(Boolean) as BulkUpdateItem[];
+        items.push({
+            id,
+            before,
+            after,
+        });
+    });
+
+    return items;
+};
 
 export const useTodoStore = create<TodoStore>()(
     persist(
@@ -170,6 +248,7 @@ export const useTodoStore = create<TodoStore>()(
 
             search: "",
             searchNormalized: "",
+
             activeCategory: "tasks",
 
             hydrated: false,
@@ -180,34 +259,67 @@ export const useTodoStore = create<TodoStore>()(
             addTodo: text =>
                 set(state => {
                     const value = text.trim();
-                    if (!value) return state;
 
-                    const normalized = normalizeText(value);
-                    if (state.todos.some(t => t.normalized === normalized)) return state;
+                    if (!value) {
+                        return state;
+                    }
 
-                    const timestamp = now();
+                    const normalized =
+                        normalizeText(value);
+
+                    const duplicated =
+                        state.todos.some(
+                            todo =>
+                                todo.normalized ===
+                                normalized
+                        );
+
+                    if (duplicated) {
+                        return state;
+                    }
+
+                    const now = timestamp();
 
                     const todo: Todo = {
                         id: crypto.randomUUID(),
+
                         text: value,
                         normalized,
+
                         completed: false,
                         completedAt: null,
+
                         archived: false,
+
                         priority: "medium",
                         pinned: false,
+
                         order: 0,
+
                         dueDate: null,
-                        createdAt: timestamp,
-                        updatedAt: timestamp,
+
+                        createdAt: now,
+                        updatedAt: now,
                     };
 
-                    const next = reorderIndexes([todo, ...state.todos]);
+                    const todos = reorderIndexes([
+                        todo,
+                        ...state.todos,
+                    ]);
 
                     return {
                         ...state,
-                        todos: next,
-                        undoStack: limitHistory([...state.undoStack, { type: "add", todo }]),
+
+                        todos,
+
+                        undoStack: trimHistory([
+                            ...state.undoStack,
+                            {
+                                type: "add",
+                                todo,
+                            },
+                        ]),
+
                         redoStack: [],
                     };
                 }),
@@ -215,390 +327,747 @@ export const useTodoStore = create<TodoStore>()(
             updateTodoText: (id, text) =>
                 set(state => {
                     const value = text.trim();
-                    if (!value) return state;
 
-                    const normalized = normalizeText(value);
+                    if (!value) {
+                        return state;
+                    }
 
-                    let before: Todo | null = null;
-                    let after: Todo | null = null;
+                    const normalized =
+                        normalizeText(value);
 
-                    const next = state.todos.map(t => {
-                        if (t.id !== id) return t;
-                        before = t;
-                        after = touchTodo(t, { text: value, normalized });
-                        return after;
-                    });
+                    let previousTodo: Todo | null =
+                        null;
 
-                    if (!before || !after) return state;
+                    let updatedTodo: Todo | null =
+                        null;
+
+                    const todos = state.todos.map(
+                        todo => {
+                            if (todo.id !== id) {
+                                return todo;
+                            }
+
+                            previousTodo = todo;
+
+                            updatedTodo =
+                                withUpdatedAt(todo, {
+                                    text: value,
+                                    normalized,
+                                });
+
+                            return updatedTodo;
+                        }
+                    );
+
+                    if (
+                        !previousTodo ||
+                        !updatedTodo
+                    ) {
+                        return state;
+                    }
 
                     return {
                         ...state,
-                        todos: next,
-                        undoStack: limitHistory([
+
+                        todos,
+
+                        undoStack: trimHistory([
                             ...state.undoStack,
                             {
                                 type: "update",
+
                                 id,
-                                before: { text: before.text, normalized: before.normalized },
-                                after: { text: after.text, normalized: after.normalized },
+
+                                before: {
+                                    text: previousTodo.text,
+                                    normalized:
+                                        previousTodo.normalized,
+                                },
+
+                                after: {
+                                    text: updatedTodo.text,
+                                    normalized:
+                                        updatedTodo.normalized,
+                                },
                             },
                         ]),
+
                         redoStack: [],
                     };
                 }),
 
             toggleTodo: id =>
                 set(state => {
-                    let before: Todo | null = null;
-                    let after: Todo | null = null;
-
-                    const next = state.todos.map(t => {
-                        if (t.id !== id) return t;
-                        before = t;
-                        after = touchTodo(t, {
-                            completed: !t.completed,
-                            completedAt: !t.completed ? now() : null,
-                        });
-                        return after;
-                    });
-
-                    if (!before || !after) return state;
-
-                    return {
-                        ...state,
-                        todos: next,
-                        undoStack: limitHistory([
-                            ...state.undoStack,
-                            {
-                                type: "update",
-                                id,
-                                before: {
-                                    completed: before.completed,
-                                    completedAt: before.completedAt,
-                                },
-                                after: {
-                                    completed: after.completed,
-                                    completedAt: after.completedAt,
-                                },
-                            },
-                        ]),
-                        redoStack: [],
-                    };
+                    return get().toggleMany(
+                        [id],
+                        !state.todos.find(
+                            todo => todo.id === id
+                        )?.completed
+                    );
                 }),
 
-            toggleMany: (ids, completed) =>
+            toggleMany: (
+                ids,
+                completed
+            ) =>
                 set(state => {
-                    const setIds = new Set(ids);
+                    const affectedIds = new Set(ids);
 
-                    const beforeMap = new Map<string, Todo>();
-                    const afterMap = new Map<string, Todo>();
+                    const previousTodos = new Map<
+                        string,
+                        Todo
+                    >();
 
-                    const next = state.todos.map(t => {
-                        if (!setIds.has(t.id)) return t;
+                    const updatedTodos = new Map<
+                        string,
+                        Todo
+                    >();
 
-                        beforeMap.set(t.id, t);
+                    const todos = state.todos.map(
+                        todo => {
+                            if (
+                                !affectedIds.has(todo.id)
+                            ) {
+                                return todo;
+                            }
 
-                        const updated = touchTodo(t, {
-                            completed,
-                            completedAt: completed ? now() : null,
-                        });
+                            previousTodos.set(
+                                todo.id,
+                                todo
+                            );
 
-                        afterMap.set(t.id, updated);
-                        return updated;
-                    });
+                            const updated =
+                                withUpdatedAt(todo, {
+                                    completed,
+                                    completedAt:
+                                        completed
+                                            ? timestamp()
+                                            : null,
+                                });
 
-                    const updates = buildBulkUpdate(ids, beforeMap, afterMap);
+                            updatedTodos.set(
+                                todo.id,
+                                updated
+                            );
+
+                            return updated;
+                        }
+                    );
 
                     return {
                         ...state,
-                        todos: next,
-                        undoStack: limitHistory([...state.undoStack, { type: "bulkUpdate", updates }]),
+
+                        todos,
+
+                        undoStack: trimHistory([
+                            ...state.undoStack,
+                            {
+                                type: "bulk",
+                                items: createBulkHistory(
+                                    previousTodos,
+                                    updatedTodos
+                                ),
+                            },
+                        ]),
+
                         redoStack: [],
                     };
                 }),
 
             togglePinned: id =>
                 set(state => {
-                    const beforeMap = new Map<string, Todo>();
-                    const afterMap = new Map<string, Todo>();
+                    const previous =
+                        new Map<string, Todo>();
 
-                    const next = state.todos.map(t => {
-                        if (t.id !== id) return t;
-                        beforeMap.set(t.id, t);
-                        const updated = touchTodo(t, { pinned: !t.pinned });
-                        afterMap.set(t.id, updated);
-                        return updated;
-                    });
+                    const updated =
+                        new Map<string, Todo>();
 
-                    const updates = buildBulkUpdate([id], beforeMap, afterMap);
+                    const todos = state.todos.map(
+                        todo => {
+                            if (todo.id !== id) {
+                                return todo;
+                            }
 
-                    return {
-                        ...state,
-                        todos: next,
-                        undoStack: limitHistory([...state.undoStack, { type: "bulkUpdate", updates }]),
-                        redoStack: [],
-                    };
-                }),
+                            previous.set(
+                                todo.id,
+                                todo
+                            );
 
-            archiveMany: (ids, archived) =>
-                set(state => {
-                    const setIds = new Set(ids);
+                            const next =
+                                withUpdatedAt(todo, {
+                                    pinned:
+                                        !todo.pinned,
+                                });
 
-                    const beforeMap = new Map<string, Todo>();
-                    const afterMap = new Map<string, Todo>();
+                            updated.set(
+                                todo.id,
+                                next
+                            );
 
-                    const next = state.todos.map(t => {
-                        if (!setIds.has(t.id)) return t;
-
-                        beforeMap.set(t.id, t);
-                        const updated = touchTodo(t, { archived });
-                        afterMap.set(t.id, updated);
-                        return updated;
-                    });
-
-                    const updates = buildBulkUpdate(ids, beforeMap, afterMap);
-
-                    return {
-                        ...state,
-                        todos: next,
-                        undoStack: limitHistory([...state.undoStack, { type: "bulkUpdate", updates }]),
-                        redoStack: [],
-                    };
-                }),
-
-            setPriority: (id, priority) =>
-                set(state => {
-                    const beforeMap = new Map<string, Todo>();
-                    const afterMap = new Map<string, Todo>();
-
-                    const next = state.todos.map(t => {
-                        if (t.id !== id) return t;
-
-                        beforeMap.set(t.id, t);
-                        const updated = touchTodo(t, { priority });
-                        afterMap.set(t.id, updated);
-                        return updated;
-                    });
-
-                    const updates = buildBulkUpdate([id], beforeMap, afterMap);
-
-                    return {
-                        ...state,
-                        todos: next,
-                        undoStack: limitHistory([...state.undoStack, { type: "bulkUpdate", updates }]),
-                        redoStack: [],
-                    };
-                }),
-
-            setDueDate: (id, dueDate) =>
-                set(state => {
-                    const beforeMap = new Map<string, Todo>();
-                    const afterMap = new Map<string, Todo>();
-
-                    const next = state.todos.map(t => {
-                        if (t.id !== id) return t;
-
-                        beforeMap.set(t.id, t);
-                        const updated = touchTodo(t, { dueDate });
-                        afterMap.set(t.id, updated);
-                        return updated;
-                    });
-
-                    const updates = buildBulkUpdate([id], beforeMap, afterMap);
-
-                    return {
-                        ...state,
-                        todos: next,
-                        undoStack: limitHistory([...state.undoStack, { type: "bulkUpdate", updates }]),
-                        redoStack: [],
-                    };
-                }),
-
-            reorderTodos: (from, to) =>
-                set(state => {
-                    if (from === to) return state;
-
-                    const arr = [...state.todos];
-                    if (from < 0 || to < 0 || from >= arr.length || to >= arr.length) return state;
-
-                    const before = [...arr];
-                    const [moved] = arr.splice(from, 1);
-                    arr.splice(to, 0, moved);
-                    const next = reorderIndexes(arr);
-
-                    const updates = buildBulkUpdate(
-                        next.map(t => t.id),
-                        new Map(before.map(t => [t.id, t])),
-                        new Map(next.map(t => [t.id, t]))
+                            return next;
+                        }
                     );
 
                     return {
                         ...state,
-                        todos: next,
-                        undoStack: limitHistory([...state.undoStack, { type: "bulkUpdate", updates }]),
+
+                        todos,
+
+                        undoStack: trimHistory([
+                            ...state.undoStack,
+                            {
+                                type: "bulk",
+                                items: createBulkHistory(
+                                    previous,
+                                    updated
+                                ),
+                            },
+                        ]),
+
                         redoStack: [],
                     };
                 }),
 
-            deleteTodo: id => get().deleteMany([id]),
-
-            deleteMany: ids =>
+            archiveMany: (
+                ids,
+                archived
+            ) =>
                 set(state => {
-                    const setIds = new Set(ids);
-                    const removed: RemovedTodo[] = [];
+                    const affectedIds = new Set(ids);
 
-                    state.todos.forEach((t, i) => {
-                        if (setIds.has(t.id)) removed.push({ todo: t, index: i });
-                    });
+                    const previous =
+                        new Map<string, Todo>();
 
-                    if (!removed.length) return state;
+                    const updated =
+                        new Map<string, Todo>();
 
-                    const next = reorderIndexes(state.todos.filter(t => !setIds.has(t.id)));
+                    const todos = state.todos.map(
+                        todo => {
+                            if (
+                                !affectedIds.has(todo.id)
+                            ) {
+                                return todo;
+                            }
+
+                            previous.set(
+                                todo.id,
+                                todo
+                            );
+
+                            const next =
+                                withUpdatedAt(todo, {
+                                    archived,
+                                });
+
+                            updated.set(
+                                todo.id,
+                                next
+                            );
+
+                            return next;
+                        }
+                    );
 
                     return {
                         ...state,
-                        todos: next,
-                        undoStack: limitHistory([...state.undoStack, { type: "delete", removed }]),
+
+                        todos,
+
+                        undoStack: trimHistory([
+                            ...state.undoStack,
+                            {
+                                type: "bulk",
+                                items: createBulkHistory(
+                                    previous,
+                                    updated
+                                ),
+                            },
+                        ]),
+
                         redoStack: [],
                     };
                 }),
 
-            clearCompleted: () =>
+            setPriority: (
+                id,
+                priority
+            ) =>
                 set(state => {
-                    const ids = state.todos.filter(t => t.completed).map(t => t.id);
-                    return get().deleteMany(ids);
+                    const todos = state.todos.map(
+                        todo =>
+                            todo.id === id
+                                ? withUpdatedAt(todo, {
+                                      priority,
+                                  })
+                                : todo
+                    );
+
+                    return {
+                        ...state,
+                        todos,
+                    };
                 }),
+
+            setDueDate: (
+                id,
+                dueDate
+            ) =>
+                set(state => {
+                    const todos = state.todos.map(
+                        todo =>
+                            todo.id === id
+                                ? withUpdatedAt(todo, {
+                                      dueDate,
+                                  })
+                                : todo
+                    );
+
+                    return {
+                        ...state,
+                        todos,
+                    };
+                }),
+
+            reorderTodos: (
+                from,
+                to
+            ) =>
+                set(state => {
+                    if (from === to) {
+                        return state;
+                    }
+
+                    const copied = [
+                        ...state.todos,
+                    ];
+
+                    if (
+                        from < 0 ||
+                        to < 0 ||
+                        from >= copied.length ||
+                        to >= copied.length
+                    ) {
+                        return state;
+                    }
+
+                    const previous =
+                        new Map(
+                            copied.map(todo => [
+                                todo.id,
+                                todo,
+                            ])
+                        );
+
+                    const [moved] =
+                        copied.splice(from, 1);
+
+                    copied.splice(to, 0, moved);
+
+                    const todos =
+                        reorderIndexes(copied);
+
+                    const updated =
+                        new Map(
+                            todos.map(todo => [
+                                todo.id,
+                                todo,
+                            ])
+                        );
+
+                    return {
+                        ...state,
+
+                        todos,
+
+                        undoStack: trimHistory([
+                            ...state.undoStack,
+                            {
+                                type: "bulk",
+                                items: createBulkHistory(
+                                    previous,
+                                    updated
+                                ),
+                            },
+                        ]),
+
+                        redoStack: [],
+                    };
+                }),
+
+            deleteTodo: id =>
+                get().deleteMany([id]),
+
+            deleteMany: ids =>
+                set(state => {
+                    const affectedIds = new Set(ids);
+
+                    const removed: RemovedTodo[] =
+                        [];
+
+                    state.todos.forEach(
+                        (todo, index) => {
+                            if (
+                                affectedIds.has(
+                                    todo.id
+                                )
+                            ) {
+                                removed.push({
+                                    todo,
+                                    index,
+                                });
+                            }
+                        }
+                    );
+
+                    if (!removed.length) {
+                        return state;
+                    }
+
+                    const todos =
+                        reorderIndexes(
+                            state.todos.filter(
+                                todo =>
+                                    !affectedIds.has(
+                                        todo.id
+                                    )
+                            )
+                        );
+
+                    return {
+                        ...state,
+
+                        todos,
+
+                        undoStack: trimHistory([
+                            ...state.undoStack,
+                            {
+                                type: "delete",
+                                removed,
+                            },
+                        ]),
+
+                        redoStack: [],
+                    };
+                }),
+
+            clearCompleted: () => {
+                const completedIds =
+                    get()
+                        .todos.filter(
+                            todo => todo.completed
+                        )
+                        .map(todo => todo.id);
+
+                get().deleteMany(completedIds);
+            },
 
             undo: () =>
                 set(state => {
-                    const action = state.undoStack.at(-1);
-                    if (!action) return state;
+                    const action =
+                        state.undoStack.at(-1);
 
-                    let next = [...state.todos];
+                    if (!action) {
+                        return state;
+                    }
+
+                    let todos = [
+                        ...state.todos,
+                    ];
 
                     switch (action.type) {
                         case "add":
-                            next = next.filter(t => t.id !== action.todo.id);
+                            todos = todos.filter(
+                                todo =>
+                                    todo.id !==
+                                    action.todo.id
+                            );
                             break;
 
                         case "delete": {
-                            const restored = [...next];
+                            const restored = [
+                                ...todos,
+                            ];
+
                             action.removed
-                                .sort((a, b) => a.index - b.index)
-                                .forEach(r => restored.splice(r.index, 0, r.todo));
-                            next = reorderIndexes(restored);
+                                .sort(
+                                    (a, b) =>
+                                        a.index -
+                                        b.index
+                                )
+                                .forEach(item => {
+                                    restored.splice(
+                                        item.index,
+                                        0,
+                                        item.todo
+                                    );
+                                });
+
+                            todos =
+                                reorderIndexes(
+                                    restored
+                                );
+
                             break;
                         }
 
                         case "update":
-                            next = next.map(t =>
-                                t.id === action.id ? { ...t, ...action.before } : t
+                            todos = todos.map(
+                                todo =>
+                                    todo.id ===
+                                    action.id
+                                        ? {
+                                              ...todo,
+                                              ...action.before,
+                                          }
+                                        : todo
                             );
                             break;
 
-                        case "bulkUpdate":
-                            next = next.map(t => {
-                                const u = action.updates.find(x => x.id === t.id);
-                                return u ? { ...t, ...u.before } : t;
-                            });
+                        case "bulk": {
+                            const historyMap =
+                                new Map(
+                                    action.items.map(
+                                        item => [
+                                            item.id,
+                                            item,
+                                        ]
+                                    )
+                                );
+
+                            todos = todos.map(
+                                todo => {
+                                    const item =
+                                        historyMap.get(
+                                            todo.id
+                                        );
+
+                                    return item
+                                        ? {
+                                              ...todo,
+                                              ...item.before,
+                                          }
+                                        : todo;
+                                }
+                            );
+
                             break;
+                        }
                     }
 
                     return {
                         ...state,
-                        todos: next,
-                        undoStack: state.undoStack.slice(0, -1),
-                        redoStack: limitHistory([...state.redoStack, action]),
+
+                        todos,
+
+                        undoStack:
+                            state.undoStack.slice(
+                                0,
+                                -1
+                            ),
+
+                        redoStack: trimHistory([
+                            ...state.redoStack,
+                            action,
+                        ]),
                     };
                 }),
 
             redo: () =>
                 set(state => {
-                    const action = state.redoStack.at(-1);
-                    if (!action) return state;
+                    const action =
+                        state.redoStack.at(-1);
 
-                    let next = [...state.todos];
+                    if (!action) {
+                        return state;
+                    }
+
+                    let todos = [
+                        ...state.todos,
+                    ];
 
                     switch (action.type) {
                         case "add":
-                            next = reorderIndexes([action.todo, ...next]);
+                            todos =
+                                reorderIndexes([
+                                    action.todo,
+                                    ...todos,
+                                ]);
                             break;
 
                         case "delete": {
-                            const ids = new Set(action.removed.map(r => r.todo.id));
-                            next = reorderIndexes(next.filter(t => !ids.has(t.id)));
+                            const ids = new Set(
+                                action.removed.map(
+                                    item =>
+                                        item.todo.id
+                                )
+                            );
+
+                            todos =
+                                reorderIndexes(
+                                    todos.filter(
+                                        todo =>
+                                            !ids.has(
+                                                todo.id
+                                            )
+                                    )
+                                );
+
                             break;
                         }
 
                         case "update":
-                            next = next.map(t =>
-                                t.id === action.id ? { ...t, ...action.after } : t
+                            todos = todos.map(
+                                todo =>
+                                    todo.id ===
+                                    action.id
+                                        ? {
+                                              ...todo,
+                                              ...action.after,
+                                          }
+                                        : todo
                             );
                             break;
 
-                        case "bulkUpdate":
-                            next = next.map(t => {
-                                const u = action.updates.find(x => x.id === t.id);
-                                return u ? { ...t, ...u.after } : t;
-                            });
+                        case "bulk": {
+                            const historyMap =
+                                new Map(
+                                    action.items.map(
+                                        item => [
+                                            item.id,
+                                            item,
+                                        ]
+                                    )
+                                );
+
+                            todos = todos.map(
+                                todo => {
+                                    const item =
+                                        historyMap.get(
+                                            todo.id
+                                        );
+
+                                    return item
+                                        ? {
+                                              ...todo,
+                                              ...item.after,
+                                          }
+                                        : todo;
+                                }
+                            );
+
                             break;
+                        }
                     }
 
                     return {
                         ...state,
-                        todos: next,
-                        redoStack: state.redoStack.slice(0, -1),
-                        undoStack: limitHistory([...state.undoStack, action]),
+
+                        todos,
+
+                        redoStack:
+                            state.redoStack.slice(
+                                0,
+                                -1
+                            ),
+
+                        undoStack: trimHistory([
+                            ...state.undoStack,
+                            action,
+                        ]),
                     };
                 }),
 
             setSearch: value =>
                 set({
                     search: value,
-                    searchNormalized: normalizeText(value),
+                    searchNormalized:
+                        normalizeText(value),
                 }),
 
-            setActiveCategory: value => set({ activeCategory: value }),
+            setActiveCategory: value =>
+                set({
+                    activeCategory: value,
+                }),
 
-            setHydrated: value => set({ hydrated: value }),
+            setHydrated: value =>
+                set({
+                    hydrated: value,
+                }),
         }),
+
         {
             name: "todo-storage",
-            version: 28,
-            storage: createJSONStorage(() => localStorage),
-            migrate: persisted => persisted as TodoStore,
+
+            version: 29,
+
+            storage: createJSONStorage(
+                () => localStorage
+            ),
+
+            migrate: persistedState => {
+                const persisted =
+                    persistedState as Partial<TodoStore>;
+
+                return {
+                    ...persisted,
+                    todos: persisted.todos ?? [],
+                };
+            },
+
             partialize: state => ({
                 todos: state.todos,
-                activeCategory: state.activeCategory,
+                activeCategory:
+                    state.activeCategory,
             }),
-            onRehydrateStorage: () => state => {
-                state?.setHydrated(true);
-            },
+
+            onRehydrateStorage:
+                () => state => {
+                    state?.setHydrated(true);
+                },
         }
     )
 );
 
 export const useFilteredTodos = () =>
-    useTodoStore(state =>
-        sortTodos(
-            state.todos.filter(todo => {
-                if (state.activeCategory !== "archived" && todo.archived) return false;
+    useTodoStore(state => {
+        const filtered = state.todos.filter(
+            todo => {
+                if (
+                    state.activeCategory !==
+                        "archived" &&
+                    todo.archived
+                ) {
+                    return false;
+                }
 
-                if (!todo.normalized.includes(state.searchNormalized)) return false;
+                if (
+                    !todo.normalized.includes(
+                        state.searchNormalized
+                    )
+                ) {
+                    return false;
+                }
 
-                switch (state.activeCategory) {
+                switch (
+                    state.activeCategory
+                ) {
                     case "active":
                         return !todo.completed;
+
                     case "completed":
                         return todo.completed;
+
                     case "archived":
                         return todo.archived;
+
                     default:
                         return true;
                 }
-            })
-        )
-    );
+            }
+        );
+
+        return sortTodos(filtered);
+    });
 
 export const useTodoStats = () =>
     useTodoStore(state => {
@@ -607,19 +1076,38 @@ export const useTodoStats = () =>
         let overdue = 0;
         let stale = 0;
 
-        for (const t of state.todos) {
-            if (t.completed) completed++;
-            if (t.archived) archived++;
-            if (isOverdue(t)) overdue++;
-            if (isStale(t)) stale++;
+        for (const todo of state.todos) {
+            if (todo.completed) {
+                completed++;
+            }
+
+            if (todo.archived) {
+                archived++;
+            }
+
+            if (isOverdue(todo)) {
+                overdue++;
+            }
+
+            if (isStale(todo)) {
+                stale++;
+            }
         }
 
         return {
             total: state.todos.length,
+
             completed,
-            active: state.todos.length - completed,
+
+            active:
+                state.todos.length -
+                completed,
+
             archived,
+
             overdue,
+
             stale,
         };
     });
+```
