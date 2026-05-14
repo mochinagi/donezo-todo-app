@@ -1,150 +1,289 @@
 "use client";
 
-import { useEffect, useRef, useTransition, useMemo } from "react";
+import {
+    useEffect,
+    useState,
+    useTransition,
+} from "react";
+
 import { useRouter } from "next/navigation";
-import { AlertCircle, Copy } from "lucide-react";
+
+import {
+    AlertCircle,
+    Copy,
+    Home,
+    RefreshCw,
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 
 type ErrorPageProps = {
     error: Error & {
         digest?: string;
     };
+
     reset: () => void;
 };
 
-function getErrorId(message: string) {
+function createErrorId(
+    input: string
+) {
     let hash = 0;
 
-    for (let i = 0; i < message.length; i++) {
-        hash = (hash * 31 + message.charCodeAt(i)) | 0;
+    for (let i = 0; i < input.length; i++) {
+        hash =
+            (hash * 31 +
+                input.charCodeAt(i)) |
+            0;
     }
 
-    return Math.abs(hash).toString(16).slice(0, 6);
+    return Math.abs(hash)
+        .toString(16)
+        .slice(0, 8);
 }
 
-export default function ErrorPage({ error, reset }: ErrorPageProps) {
-    const [isPending, startTransition] = useTransition();
-    const hasRetried = useRef(false);
+export default function ErrorPage({
+    error,
+    reset,
+}: ErrorPageProps) {
     const router = useRouter();
 
+    const [isPending, startTransition] =
+        useTransition();
+
+    const [copied, setCopied] =
+        useState<
+            "id" | "details" | null
+        >(null);
+
+    const isDevelopment =
+        process.env.NODE_ENV ===
+        "development";
+
+    const errorId = createErrorId(
+        [
+            error.name,
+            error.message,
+            error.digest,
+        ]
+            .filter(Boolean)
+            .join(":")
+    );
+
     useEffect(() => {
-        console.error("[App Error]", {
-            name: error.name,
-            message: error.message,
-            stack: error.stack,
-            digest: error.digest,
-        });
-    }, [error]);
-
-    const isDevelopment = process.env.NODE_ENV === "development";
-
-    const errorId = useMemo(() => {
-        return getErrorId(error.message || "unknown");
-    }, [error.message]);
+        if (isDevelopment) {
+            console.error(error);
+        }
+    }, [error, isDevelopment]);
 
     const handleRetry = () => {
-        if (isPending) return;
-        if (hasRetried.current) return;
-
-        hasRetried.current = true;
+        if (isPending) {
+            return;
+        }
 
         startTransition(() => {
             reset();
         });
-
-        setTimeout(() => {
-            hasRetried.current = false;
-        }, 1200);
     };
 
-    const goHome = () => {
-        router.push("/");
+    const handleCopy = async (
+        value: string,
+        type: "id" | "details"
+    ) => {
+        try {
+            await navigator.clipboard.writeText(
+                value
+            );
+
+            setCopied(type);
+
+            window.setTimeout(() => {
+                setCopied(null);
+            }, 1500);
+        } catch {
+            setCopied(null);
+        }
     };
 
-    const copyErrorId = async () => {
-        await navigator.clipboard.writeText(errorId);
-    };
+    const handleCopyId = () =>
+        handleCopy(errorId, "id");
 
-    const copyErrorDetails = async () => {
-        const payload = {
-            errorId,
-            name: error.name,
-            message: error.message,
-            stack: error.stack,
-            digest: error.digest,
-        };
-
-        await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-    };
+    const handleCopyDetails = () =>
+        handleCopy(
+            JSON.stringify(
+                {
+                    errorId,
+                    name: error.name,
+                    message:
+                        error.message,
+                    digest:
+                        error.digest,
+                    stack: error.stack,
+                },
+                null,
+                2
+            ),
+            "details"
+        );
 
     return (
-        <div className="flex min-h-[60vh] items-center justify-center px-6">
-            <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-                <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-500/10 dark:text-red-400">
-                        <AlertCircle size={20} />
+        <div className="flex min-h-[70vh] items-center justify-center px-6 py-10">
+            <section className="w-full max-w-lg rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-100 text-red-600 dark:bg-red-500/10 dark:text-red-400">
+                        <AlertCircle
+                            size={20}
+                        />
                     </div>
 
-                    <div className="flex-1">
-                        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-                            Something went wrong
+                    <div className="min-w-0 flex-1">
+                        <h1 className="text-xl font-semibold text-zinc-950 dark:text-zinc-50">
+                            Failed to load page
                         </h1>
 
-                        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                            The request could not be completed.
+                        <p className="mt-2 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+                            The request could
+                            not be completed.
+                            Try again or return
+                            to the main page.
                         </p>
 
-                        <div className="mt-2 flex items-center gap-2">
-                            <p className="text-xs text-zinc-400">
-                                Error ID: {errorId}
-                            </p>
+                        <div className="mt-4 flex items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500">
+                            <span>
+                                Error ID:
+                                {" "}
+                                {errorId}
+                            </span>
 
                             <button
-                                onClick={copyErrorId}
-                                className="text-zinc-400 hover:text-zinc-600"
+                                type="button"
+                                onClick={
+                                    handleCopyId
+                                }
+                                className="transition hover:text-zinc-700 dark:hover:text-zinc-200"
                             >
-                                <Copy size={12} />
+                                <Copy
+                                    size={
+                                        12
+                                    }
+                                />
                             </button>
+
+                            {copied ===
+                                "id" && (
+                                    <span>
+                                        copied
+                                    </span>
+                                )}
                         </div>
                     </div>
                 </div>
 
-                {isDevelopment && (
-                    <div className="mt-6 space-y-2 overflow-auto rounded-lg bg-zinc-100 p-3 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                        <div className="flex items-center justify-between">
-                            <div className="font-medium">Debug Info</div>
+                <div className="mt-8 flex flex-wrap items-center gap-3">
+                    <Button
+                        onClick={
+                            handleRetry
+                        }
+                        disabled={
+                            isPending
+                        }
+                    >
+                        <RefreshCw className="mr-2 h-4 w-4" />
 
-                            <button
-                                onClick={copyErrorDetails}
-                                className="text-xs text-zinc-400 hover:text-zinc-200"
-                            >
-                                copy
-                            </button>
-                        </div>
-
-                        <div>Name: {error.name}</div>
-                        <div>Message: {error.message}</div>
-
-                        {error.digest && <div>Digest: {error.digest}</div>}
-
-                        {error.stack && (
-                            <pre className="whitespace-pre-wrap break-words text-[10px] opacity-80">
-                                {error.stack}
-                            </pre>
-                        )}
-                    </div>
-                )}
-
-                <div className="mt-6 flex items-center gap-3">
-                    <Button loading={isPending} onClick={handleRetry}>
-                        Try again
+                        {isPending
+                            ? "Retrying"
+                            : "Try again"}
                     </Button>
 
-                    <Button variant="secondary" onClick={goHome}>
+                    <Button
+                        variant="secondary"
+                        onClick={() =>
+                            router.push(
+                                "/"
+                            )
+                        }
+                    >
+                        <Home className="mr-2 h-4 w-4" />
                         Back to home
                     </Button>
                 </div>
-            </div>
+
+                {isDevelopment && (
+                    <div className="mt-8 overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800">
+                        <div className="flex items-center justify-between border-b border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950/40">
+                            <div>
+                                <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                                    Debug
+                                    information
+                                </p>
+
+                                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                                    Visible in
+                                    development
+                                    mode only
+                                </p>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={
+                                    handleCopyDetails
+                                }
+                                className="inline-flex items-center gap-1 text-xs text-zinc-500 transition hover:text-zinc-900 dark:hover:text-zinc-100"
+                            >
+                                <Copy
+                                    size={
+                                        12
+                                    }
+                                />
+
+                                {copied ===
+                                    "details"
+                                    ? "Copied"
+                                    : "Copy"}
+                            </button>
+                        </div>
+
+                        <div className="space-y-3 p-4 text-xs text-zinc-600 dark:text-zinc-300">
+                            <div>
+                                <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                                    Name:
+                                </span>
+                                {" "}
+                                {error.name}
+                            </div>
+
+                            <div>
+                                <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                                    Message:
+                                </span>
+                                {" "}
+                                {error.message}
+                            </div>
+
+                            {error.digest && (
+                                <div>
+                                    <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                                        Digest:
+                                    </span>
+                                    {" "}
+                                    {
+                                        error.digest
+                                    }
+                                </div>
+                            )}
+
+                            {error.stack && (
+                                <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-xl bg-zinc-100 p-3 text-[11px] leading-5 dark:bg-zinc-950">
+                                    {
+                                        error.stack
+                                    }
+                                </pre>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </section>
         </div>
     );
 }
