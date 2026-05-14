@@ -3,14 +3,16 @@
 import {
     useEffect,
     useState,
-    useCallback,
 } from "react";
 
 import clsx from "clsx";
 
 import { usePathname } from "next/navigation";
 
-import { Menu } from "lucide-react";
+import {
+    Menu,
+    X,
+} from "lucide-react";
 
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
@@ -21,9 +23,6 @@ type AppShellProps = {
     children: React.ReactNode;
 };
 
-const DESKTOP_QUERY =
-    "(min-width: 768px)";
-
 export default function AppShell({
     children,
 }: AppShellProps) {
@@ -32,101 +31,51 @@ export default function AppShell({
     const [sidebarOpen, setSidebarOpen] =
         useState(false);
 
-    const [desktop, setDesktop] =
-        useState(false);
-
-    const closeSidebar =
-        useCallback(() => {
-            setSidebarOpen(false);
-        }, []);
-
-    const toggleSidebar =
-        useCallback(() => {
-            setSidebarOpen(
-                current => !current
-            );
-        }, []);
-
     useEffect(() => {
-        const mediaQuery =
-            window.matchMedia(
-                DESKTOP_QUERY
-            );
-
-        const syncLayout = () => {
-            const desktopView =
-                mediaQuery.matches;
-
-            setDesktop(desktopView);
-
-            if (desktopView) {
-                setSidebarOpen(false);
-            }
-        };
-
-        syncLayout();
-
-        mediaQuery.addEventListener(
-            "change",
-            syncLayout
-        );
-
-        return () => {
-            mediaQuery.removeEventListener(
-                "change",
-                syncLayout
-            );
-        };
-    }, []);
-
-    useEffect(() => {
-        closeSidebar();
+        setSidebarOpen(false);
     }, [pathname]);
 
     useEffect(() => {
-        if (
-            desktop ||
-            !sidebarOpen
-        ) {
-            document.body.style
-                .overflow = "";
+        if (!sidebarOpen) {
+            document.body.classList.remove(
+                "overflow-hidden"
+            );
 
             return;
         }
 
-        document.body.style
-            .overflow = "hidden";
+        document.body.classList.add(
+            "overflow-hidden"
+        );
 
         return () => {
-            document.body.style
-                .overflow = "";
+            document.body.classList.remove(
+                "overflow-hidden"
+            );
         };
-    }, [
-        sidebarOpen,
-        desktop,
-    ]);
+    }, [sidebarOpen]);
 
     useEffect(() => {
-        const onKeyDown = (
+        const handleKeyDown = (
             event: KeyboardEvent
         ) => {
             if (
                 event.key ===
                 "Escape"
             ) {
-                closeSidebar();
+                setSidebarOpen(false);
             }
         };
 
         window.addEventListener(
             "keydown",
-            onKeyDown
+            handleKeyDown
         );
 
         return () => {
             window.removeEventListener(
                 "keydown",
-                onKeyDown
+                handleKeyDown
             );
         };
     }, []);
@@ -134,16 +83,14 @@ export default function AppShell({
     return (
         <div className="flex h-screen overflow-hidden bg-zinc-50 dark:bg-zinc-900">
             <aside
-                aria-hidden={
-                    !desktop &&
-                    !sidebarOpen
-                }
+                role="dialog"
+                aria-modal="true"
+                aria-label="Sidebar"
                 className={clsx(
-                    "fixed inset-y-0 left-0 z-40 w-64 border-r border-zinc-200 bg-white transition-transform duration-200 dark:border-zinc-800 dark:bg-zinc-950",
+                    "fixed inset-y-0 left-0 z-40 w-64 shrink-0 border-r border-zinc-200 bg-white shadow-xl transition-transform duration-300 ease-out dark:border-zinc-800 dark:bg-zinc-950 md:relative md:translate-x-0 md:shadow-none",
                     sidebarOpen
                         ? "translate-x-0"
-                        : "-translate-x-full",
-                    "md:relative md:translate-x-0"
+                        : "-translate-x-full"
                 )}
             >
                 <Sidebar />
@@ -152,16 +99,11 @@ export default function AppShell({
             <button
                 type="button"
                 aria-label="Close sidebar"
-                tabIndex={
-                    sidebarOpen
-                        ? 0
-                        : -1
-                }
-                onClick={
-                    closeSidebar
+                onClick={() =>
+                    setSidebarOpen(false)
                 }
                 className={clsx(
-                    "fixed inset-0 z-30 bg-black/40 opacity-0 transition-opacity duration-200 md:hidden",
+                    "fixed inset-0 z-30 bg-black/40 opacity-0 backdrop-blur-[1px] transition duration-300 md:hidden",
                     sidebarOpen
                         ? "pointer-events-auto opacity-100"
                         : "pointer-events-none"
@@ -169,30 +111,51 @@ export default function AppShell({
             />
 
             <div className="flex min-w-0 flex-1 flex-col">
-                <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-zinc-200 bg-white/95 px-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
-                    <Header />
+                <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white/90 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
+                    <div className="flex h-16 items-center justify-between px-4">
+                        <Header />
 
-                    <Button
-                        size="icon"
-                        variant="ghost"
-                        className="md:hidden"
-                        aria-label="Toggle sidebar"
-                        aria-expanded={
-                            sidebarOpen
-                        }
-                        onClick={
-                            toggleSidebar
-                        }
-                    >
-                        <Menu size={18} />
-                    </Button>
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            className="md:hidden"
+                            aria-label={
+                                sidebarOpen
+                                    ? "Close sidebar"
+                                    : "Open sidebar"
+                            }
+                            aria-expanded={
+                                sidebarOpen
+                            }
+                            onClick={() =>
+                                setSidebarOpen(
+                                    current =>
+                                        !current
+                                )
+                            }
+                        >
+                            {sidebarOpen ? (
+                                <X
+                                    size={
+                                        18
+                                    }
+                                />
+                            ) : (
+                                <Menu
+                                    size={
+                                        18
+                                    }
+                                />
+                            )}
+                        </Button>
+                    </div>
                 </header>
 
                 <main
                     id="main-content"
                     className="flex-1 overflow-y-auto"
                 >
-                    <div className="mx-auto w-full max-w-6xl p-6">
+                    <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-4 py-6 sm:px-6">
                         {children}
                     </div>
                 </main>
