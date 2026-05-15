@@ -1,6 +1,7 @@
 "use client";
 
 import {
+    useCallback,
     useEffect,
     useMemo,
     useRef,
@@ -21,18 +22,23 @@ import { toast } from "@/components/ui/toaster";
 import { useTodoStore } from "@/store/todoStore";
 
 const MAX_LENGTH = 100;
+
 const MAX_IMPORT = 20;
 
-const DRAFT_KEY =
+const STORAGE_KEY =
     "donezo-add-todo-draft";
 
-const DRAFT_TIME_KEY =
+const STORAGE_TIME_KEY =
     "donezo-add-todo-draft-time";
+
+const DRAFT_EXPIRE =
+    1000 * 60 * 60 * 24;
 
 const SUBMIT_COOLDOWN = 250;
 
 type AddTodoProps = {
     input: string;
+
     setInput: (
         value: string
     ) => void;
@@ -65,6 +71,42 @@ const parseImportText = (
     ].slice(0, MAX_IMPORT);
 };
 
+const saveDraft = (
+    value: string
+) => {
+    if (!value.trim()) {
+        localStorage.removeItem(
+            STORAGE_KEY
+        );
+
+        localStorage.removeItem(
+            STORAGE_TIME_KEY
+        );
+
+        return;
+    }
+
+    localStorage.setItem(
+        STORAGE_KEY,
+        value
+    );
+
+    localStorage.setItem(
+        STORAGE_TIME_KEY,
+        String(Date.now())
+    );
+};
+
+const clearDraft = () => {
+    localStorage.removeItem(
+        STORAGE_KEY
+    );
+
+    localStorage.removeItem(
+        STORAGE_TIME_KEY
+    );
+};
+
 export default function AddTodo({
     input,
     setInput,
@@ -80,7 +122,7 @@ export default function AddTodo({
     const composing =
         useRef(false);
 
-    const submitLock =
+    const submitLocked =
         useRef(false);
 
     const [submitting, setSubmitting] =
@@ -98,16 +140,17 @@ export default function AddTodo({
             [input]
         );
 
-    const todoMap = useMemo(() => {
-        return new Set(
-            todos.map(
-                todo => todo.normalized
-            )
-        );
-    }, [todos]);
+    const existingTodos =
+        useMemo(() => {
+            return new Set(
+                todos.map(todo =>
+                    todo.normalized.toLowerCase()
+                )
+            );
+        }, [todos]);
 
     const duplicated =
-        todoMap.has(
+        existingTodos.has(
             normalized.toLowerCase()
         );
 
@@ -116,33 +159,31 @@ export default function AddTodo({
         normalized.length;
 
     useEffect(() => {
+        if (input) {
+            return;
+        }
+
         const draft =
             localStorage.getItem(
-                DRAFT_KEY
+                STORAGE_KEY
             );
 
         const timestamp =
             localStorage.getItem(
-                DRAFT_TIME_KEY
+                STORAGE_TIME_KEY
             );
 
-        if (!draft || input) {
+        if (!draft || !timestamp) {
             return;
         }
 
         const expired =
-            !timestamp ||
-            now() - Number(timestamp) >
-            1000 * 60 * 60 * 24;
+            Date.now() -
+            Number(timestamp) >
+            DRAFT_EXPIRE;
 
         if (expired) {
-            localStorage.removeItem(
-                DRAFT_KEY
-            );
-
-            localStorage.removeItem(
-                DRAFT_TIME_KEY
-            );
+            clearDraft();
 
             return;
         }
@@ -151,63 +192,43 @@ export default function AddTodo({
     }, []);
 
     useEffect(() => {
-        if (!input.trim()) {
-            localStorage.removeItem(
-                DRAFT_KEY
-            );
-
-            localStorage.removeItem(
-                DRAFT_TIME_KEY
-            );
-
-            return;
-        }
-
-        localStorage.setItem(
-            DRAFT_KEY,
-            input
-        );
-
-        localStorage.setItem(
-            DRAFT_TIME_KEY,
-            String(Date.now())
-        );
+        saveDraft(input);
     }, [input]);
 
-    const clear = () => {
-        setInput("");
-        setError("");
+    const clearInput =
+        useCallback(() => {
+            setInput("");
 
-        localStorage.removeItem(
-            DRAFT_KEY
-        );
+            setError("");
 
-        localStorage.removeItem(
-            DRAFT_TIME_KEY
-        );
+            clearDraft();
 
-        requestAnimationFrame(() => {
-            inputRef.current?.focus();
-        });
-    };
+            requestAnimationFrame(() => {
+                inputRef.current?.focus();
+            });
+        }, [setInput]);
 
-    const validate = () => {
-        if (!normalized) {
-            return "入力してください";
-        }
+    const validate =
+        useCallback(() => {
+            if (!normalized) {
+                return "入力してください";
+            }
 
-        if (duplicated) {
-            return "既に存在します";
-        }
+            if (duplicated) {
+                return "既に存在します";
+            }
 
-        return "";
-    };
+            return "";
+        }, [
+            normalized,
+            duplicated,
+        ]);
 
     const handleSubmit =
-        async () => {
+        useCallback(async () => {
             if (
                 submitting ||
-                submitLock.current
+                submitLocked.current
             ) {
                 return;
             }
@@ -221,7 +242,8 @@ export default function AddTodo({
                 return;
             }
 
-            submitLock.current = true;
+            submitLocked.current =
+                true;
 
             setSubmitting(true);
 
@@ -230,7 +252,7 @@ export default function AddTodo({
 
                 setLastAdded(normalized);
 
-                clear();
+                clearInput();
             } catch {
                 setError(
                     "追加できませんでした"
@@ -238,82 +260,95 @@ export default function AddTodo({
             } finally {
                 setSubmitting(false);
 
-                setTimeout(() => {
-                    submitLock.current =
+                window.setTimeout(() => {
+                    submitLocked.current =
                         false;
                 }, SUBMIT_COOLDOWN);
             }
-        };
+        }, [
+            submitting,
+            validate,
+            onAdd,
+            normalized,
+            clearInput,
+        ]);
 
     const handlePaste =
-        async (
-            e: React.ClipboardEvent<HTMLInputElement>
-        ) => {
-            const text =
-                e.clipboardData.getData(
-                    "text"
-                );
-
-            if (
-                !text.includes("\n")
-            ) {
-                return;
-            }
-
-            e.preventDefault();
-
-            const items =
-                parseImportText(text);
-
-            if (!items.length) {
-                return;
-            }
-
-            let added = 0;
-            let skipped = 0;
-
-            const existing =
-                new Set(todoMap);
-
-            for (const item of items) {
-                const normalizedItem =
-                    item.toLowerCase();
-
-                if (
-                    existing.has(
-                        normalizedItem
-                    )
-                ) {
-                    skipped++;
-
-                    continue;
-                }
-
-                try {
-                    await onAdd(item);
-
-                    existing.add(
-                        normalizedItem
+        useCallback(
+            async (
+                event: React.ClipboardEvent<HTMLInputElement>
+            ) => {
+                const text =
+                    event.clipboardData.getData(
+                        "text"
                     );
 
-                    added++;
-                } catch {
-                    skipped++;
+                if (
+                    !text.includes("\n")
+                ) {
+                    return;
                 }
-            }
 
-            if (added > 0) {
-                toast.success(
-                    `${added}件追加しました`
-                );
-            }
+                event.preventDefault();
 
-            if (skipped > 0) {
-                toast.error(
-                    `${skipped}件追加できませんでした`
-                );
-            }
-        };
+                const items =
+                    parseImportText(
+                        text
+                    );
+
+                if (!items.length) {
+                    return;
+                }
+
+                let added = 0;
+
+                let skipped = 0;
+
+                const existing =
+                    new Set(
+                        existingTodos
+                    );
+
+                for (const item of items) {
+                    const key =
+                        item.toLowerCase();
+
+                    if (
+                        existing.has(key)
+                    ) {
+                        skipped++;
+
+                        continue;
+                    }
+
+                    try {
+                        await onAdd(item);
+
+                        existing.add(key);
+
+                        added++;
+                    } catch {
+                        skipped++;
+                    }
+                }
+
+                if (added > 0) {
+                    toast.success(
+                        `${added}件追加しました`
+                    );
+                }
+
+                if (skipped > 0) {
+                    toast.error(
+                        `${skipped}件追加できませんでした`
+                    );
+                }
+            },
+            [
+                existingTodos,
+                onAdd,
+            ]
+        );
 
     return (
         <div className="border-b border-zinc-200 bg-white px-6 py-5">
@@ -334,9 +369,9 @@ export default function AddTodo({
                         aria-invalid={
                             !!error
                         }
-                        onChange={e => {
+                        onChange={event => {
                             setInput(
-                                e.target.value
+                                event.target.value
                             );
 
                             if (error) {
@@ -354,7 +389,7 @@ export default function AddTodo({
                             composing.current =
                                 false;
                         }}
-                        onKeyDown={e => {
+                        onKeyDown={event => {
                             if (
                                 composing.current
                             ) {
@@ -362,16 +397,18 @@ export default function AddTodo({
                             }
 
                             if (
-                                e.key ===
+                                event.key ===
                                 "Enter"
                             ) {
-                                e.preventDefault();
+                                event.preventDefault();
 
                                 handleSubmit();
+
+                                return;
                             }
 
                             if (
-                                e.key ===
+                                event.key ===
                                 "ArrowUp" &&
                                 !input &&
                                 lastAdded
@@ -379,14 +416,16 @@ export default function AddTodo({
                                 setInput(
                                     lastAdded
                                 );
+
+                                return;
                             }
 
                             if (
-                                e.key ===
+                                event.key ===
                                 "Escape" &&
                                 input
                             ) {
-                                clear();
+                                clearInput();
                             }
                         }}
                         className={clsx(
@@ -454,8 +493,4 @@ export default function AddTodo({
             </div>
         </div>
     );
-}
-
-function now() {
-    return Date.now();
 }
