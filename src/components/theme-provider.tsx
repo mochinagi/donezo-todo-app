@@ -1,15 +1,16 @@
 "use client";
 
 import {
-    ThemeProvider as NextThemesProvider,
-    useTheme,
-} from "next-themes";
-
-import {
     useEffect,
+    useMemo,
     useState,
     type ReactNode,
 } from "react";
+
+import {
+    ThemeProvider as NextThemesProvider,
+    useTheme,
+} from "next-themes";
 
 export type AppTheme =
     | "light"
@@ -34,8 +35,16 @@ const THEME_ORDER: AppTheme[] =
         "system",
     ];
 
-const isValidTheme = (
-    value: string
+const resolveTheme = (
+    value?: string
+): ResolvedTheme => {
+    return value === "dark"
+        ? "dark"
+        : "light";
+};
+
+const isAppTheme = (
+    value?: string | null
 ): value is AppTheme => {
     return THEME_ORDER.includes(
         value as AppTheme
@@ -50,10 +59,10 @@ export function ThemeProvider({
             attribute="class"
             defaultTheme="system"
             enableSystem
+            disableTransitionOnChange
             storageKey={
                 STORAGE_KEY
             }
-            disableTransitionOnChange
         >
             {children}
         </NextThemesProvider>
@@ -75,43 +84,46 @@ export function useAppTheme() {
         setMounted(true);
     }, []);
 
+    const currentTheme: AppTheme =
+        isAppTheme(theme)
+            ? theme
+            : "system";
+
+    const resolved =
+        resolveTheme(
+            resolvedTheme
+        );
+
+    const system =
+        resolveTheme(
+            systemTheme
+        );
+
     useEffect(() => {
-        if (
-            typeof window ===
-            "undefined" ||
-            !mounted
-        ) {
+        if (!mounted) {
             return;
         }
-
-        const resolved =
-            resolvedTheme === "dark"
-                ? "dark"
-                : "light";
 
         document.documentElement.dataset.theme =
             resolved;
     }, [
         mounted,
-        resolvedTheme,
+        resolved,
     ]);
 
     useEffect(() => {
-        if (
-            typeof window ===
-            "undefined"
-        ) {
-            return;
-        }
-
         const syncTheme = (
             event: StorageEvent
         ) => {
             if (
                 event.key !==
-                STORAGE_KEY ||
-                !event.newValue ||
-                !isValidTheme(
+                STORAGE_KEY
+            ) {
+                return;
+            }
+
+            if (
+                !isAppTheme(
                     event.newValue
                 )
             ) {
@@ -136,24 +148,20 @@ export function useAppTheme() {
         };
     }, [setTheme]);
 
-    const currentTheme: AppTheme =
-        isValidTheme(
-            theme ?? ""
-        )
-            ? theme
-            : "system";
+    const nextTheme =
+        useMemo(() => {
+            const index =
+                THEME_ORDER.indexOf(
+                    currentTheme
+                );
 
-    const resolved: ResolvedTheme =
-        resolvedTheme ===
-            "dark"
-            ? "dark"
-            : "light";
-
-    const system: ResolvedTheme =
-        systemTheme ===
-            "dark"
-            ? "dark"
-            : "light";
+            return THEME_ORDER[
+                (
+                    index + 1
+                ) %
+                THEME_ORDER.length
+            ];
+        }, [currentTheme]);
 
     const setAppTheme = (
         value: AppTheme
@@ -170,35 +178,8 @@ export function useAppTheme() {
     };
 
     const cycleTheme = () => {
-        if (
-            currentTheme ===
-            "light"
-        ) {
-            setTheme("dark");
-
-            return;
-        }
-
-        if (
-            currentTheme ===
-            "dark"
-        ) {
-            setTheme("system");
-
-            return;
-        }
-
-        setTheme("light");
+        setTheme(nextTheme);
     };
-
-    const nextTheme =
-        currentTheme ===
-            "light"
-            ? "dark"
-            : currentTheme ===
-                "dark"
-                ? "system"
-                : "light";
 
     return {
         mounted,
