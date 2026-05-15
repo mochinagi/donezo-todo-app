@@ -1,39 +1,48 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import clsx from "clsx";
-import { Input } from "@/components/ui/input";
-import { Search, X } from "lucide-react";
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 
-const categoryMap = {
+import clsx from "clsx";
+
+import {
+    Search,
+    X,
+} from "lucide-react";
+
+import { Input } from "@/components/ui/input";
+
+const CATEGORY_LABELS = {
     myday: "マイデイ",
     important: "重要",
     planned: "予定あり",
     tasks: "すべてのタスク",
 } as const;
 
-const SEARCH_HISTORY_KEY = "donezo-search-history";
+const SEARCH_HISTORY_KEY =
+    "donezo-search-history";
 
-type CategoryId = keyof typeof categoryMap;
+const SEARCH_DELAY = 200;
+
+type CategoryId =
+    keyof typeof CATEGORY_LABELS;
 
 type HeaderProps = {
     categoryId: CategoryId;
+
     search: string;
-    onSearchChange: (value: string) => void;
+
+    onSearchChange: (
+        value: string
+    ) => void;
+
     total?: number;
 };
-
-function buildSubtitle(search: string, total: number) {
-    const hasSearch = Boolean(search.trim());
-
-    if (hasSearch) {
-        return total > 0
-            ? `"${search}" · ${total}件`
-            : "検索結果がありません";
-    }
-
-    return total > 0 ? `${total}件のタスク` : "タスクがありません";
-}
 
 export default function Header({
     categoryId,
@@ -41,109 +50,234 @@ export default function Header({
     onSearchChange,
     total = 0,
 }: HeaderProps) {
-    const categoryName = categoryMap[categoryId] ?? "タスク";
+    const [value, setValue] =
+        useState(search);
 
-    const [value, setValue] = useState(search);
+    const inputRef =
+        useRef<HTMLInputElement>(null);
 
-    const inputRef = useRef<HTMLInputElement>(null);
-    const composingRef = useRef(false);
-    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const composing =
+        useRef(false);
 
-    const commitSearch = useCallback(
-        (next: string) => {
-            onSearchChange(next);
+    const timeoutRef =
+        useRef<
+            ReturnType<
+                typeof setTimeout
+            >
+        >(null);
 
-            if (next.trim()) {
-                localStorage.setItem(SEARCH_HISTORY_KEY, next);
-            }
-        },
-        [onSearchChange]
-    );
+    const categoryName =
+        CATEGORY_LABELS[
+        categoryId
+        ] ?? "タスク";
 
     useEffect(() => {
-        if (!composingRef.current) {
-            setValue(search);
+        if (
+            composing.current
+        ) {
+            return;
         }
+
+        setValue(search);
     }, [search]);
 
-    useEffect(() => {
-        if (composingRef.current) return;
+    const commitSearch =
+        useCallback(
+            (
+                nextValue: string
+            ) => {
+                onSearchChange(
+                    nextValue
+                );
 
-        if (debounceRef.current) {
-            clearTimeout(debounceRef.current);
+                if (
+                    nextValue.trim()
+                ) {
+                    localStorage.setItem(
+                        SEARCH_HISTORY_KEY,
+                        nextValue
+                    );
+
+                    return;
+                }
+
+                localStorage.removeItem(
+                    SEARCH_HISTORY_KEY
+                );
+            },
+            [onSearchChange]
+        );
+
+    useEffect(() => {
+        if (
+            composing.current
+        ) {
+            return;
         }
 
-        debounceRef.current = setTimeout(() => {
-            commitSearch(value);
-        }, 200);
+        if (
+            timeoutRef.current
+        ) {
+            clearTimeout(
+                timeoutRef.current
+            );
+        }
+
+        timeoutRef.current =
+            setTimeout(() => {
+                commitSearch(
+                    value
+                );
+            }, SEARCH_DELAY);
 
         return () => {
-            if (debounceRef.current) {
-                clearTimeout(debounceRef.current);
+            if (
+                timeoutRef.current
+            ) {
+                clearTimeout(
+                    timeoutRef.current
+                );
             }
         };
-    }, [value, commitSearch]);
+    }, [
+        value,
+        commitSearch,
+    ]);
 
     useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            const target = document.activeElement;
+        const handleKeyDown = (
+            event: KeyboardEvent
+        ) => {
+            const key =
+                event.key.toLowerCase();
+
+            const target =
+                document.activeElement;
 
             const isTyping =
-                target instanceof HTMLInputElement ||
-                target instanceof HTMLTextAreaElement;
+                target instanceof
+                HTMLInputElement ||
+                target instanceof
+                HTMLTextAreaElement;
 
-            const key = event.key.toLowerCase();
-
-            if ((event.metaKey || event.ctrlKey) && key === "k") {
+            if (
+                (
+                    event.metaKey ||
+                    event.ctrlKey
+                ) &&
+                key === "k"
+            ) {
                 event.preventDefault();
 
                 inputRef.current?.focus();
+
                 inputRef.current?.select();
 
-                if (!value) {
-                    const saved = localStorage.getItem(SEARCH_HISTORY_KEY);
-                    if (saved) setValue(saved);
+                if (value) {
+                    return;
+                }
+
+                const history =
+                    localStorage.getItem(
+                        SEARCH_HISTORY_KEY
+                    );
+
+                if (history) {
+                    setValue(
+                        history
+                    );
                 }
 
                 return;
             }
 
-            if (key === "/" && !isTyping) {
+            if (
+                key === "/" &&
+                !isTyping
+            ) {
                 event.preventDefault();
+
                 inputRef.current?.focus();
             }
         };
 
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
+        window.addEventListener(
+            "keydown",
+            handleKeyDown
+        );
+
+        return () => {
+            window.removeEventListener(
+                "keydown",
+                handleKeyDown
+            );
+        };
     }, [value]);
 
-    const clearSearch = () => {
-        setValue("");
-        onSearchChange("");
-        inputRef.current?.focus();
-    };
+    const clearSearch =
+        useCallback(() => {
+            setValue("");
 
-    const subtitle = buildSubtitle(search, total);
+            onSearchChange("");
+
+            localStorage.removeItem(
+                SEARCH_HISTORY_KEY
+            );
+
+            inputRef.current?.focus();
+        }, [onSearchChange]);
+
+    const subtitle =
+        useMemo(() => {
+            const hasSearch =
+                search.trim()
+                    .length > 0;
+
+            if (
+                hasSearch
+            ) {
+                if (
+                    total === 0
+                ) {
+                    return "検索結果がありません";
+                }
+
+                return `"${search}" ・ ${total}件`;
+            }
+
+            if (
+                total === 0
+            ) {
+                return "タスクがありません";
+            }
+
+            return `${total}件のタスク`;
+        }, [
+            search,
+            total,
+        ]);
 
     return (
         <header
             className={clsx(
-                "flex flex-col gap-4 border-b bg-background/80 px-6 py-4 backdrop-blur",
+                "flex flex-col gap-4 border-b border-zinc-200 bg-white/80 px-6 py-4 backdrop-blur",
+                "dark:border-zinc-800 dark:bg-zinc-950/80",
                 "sm:flex-row sm:items-center sm:justify-between"
             )}
         >
             <div className="min-w-0">
                 <h1 className="truncate text-3xl font-semibold tracking-tight">
-                    {categoryName}
+                    {
+                        categoryName
+                    }
                 </h1>
 
-                <p className="mt-1 text-sm text-muted-foreground">
+                <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
                     {subtitle}
                 </p>
             </div>
 
-            <div className="relative w-full sm:w-72">
+            <div className="relative w-full sm:w-80">
                 <Input
                     ref={inputRef}
                     value={value}
@@ -151,25 +285,44 @@ export default function Header({
                     placeholder="検索"
                     role="searchbox"
                     aria-label="タスク検索"
-                    className="pl-9 pr-9"
-                    onChange={(e) => setValue(e.target.value)}
+                    className="h-10 pl-9 pr-9"
+                    onChange={event => {
+                        setValue(
+                            event.target.value
+                        );
+                    }}
                     onCompositionStart={() => {
-                        composingRef.current = true;
+                        composing.current =
+                            true;
                     }}
-                    onCompositionEnd={(e) => {
-                        composingRef.current = false;
-                        setValue(e.currentTarget.value);
+                    onCompositionEnd={event => {
+                        composing.current =
+                            false;
+
+                        setValue(
+                            event.currentTarget.value
+                        );
                     }}
-                    onKeyDown={(event) => {
-                        if (event.key === "Escape") {
-                            if (value) {
+                    onKeyDown={event => {
+                        if (
+                            event.key ===
+                            "Escape"
+                        ) {
+                            if (
+                                value
+                            ) {
                                 clearSearch();
-                            } else {
-                                inputRef.current?.blur();
+
+                                return;
                             }
+
+                            inputRef.current?.blur();
                         }
 
-                        if (event.key === "Enter") {
+                        if (
+                            event.key ===
+                            "Enter"
+                        ) {
                             inputRef.current?.blur();
                         }
                     }}
@@ -177,16 +330,21 @@ export default function Header({
 
                 <Search
                     size={16}
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
                 />
 
                 {value && (
                     <button
-                        onClick={clearSearch}
+                        type="button"
                         aria-label="検索をクリア"
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:opacity-70"
+                        onClick={
+                            clearSearch
+                        }
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-200"
                     >
-                        <X size={16} />
+                        <X
+                            size={16}
+                        />
                     </button>
                 )}
             </div>
