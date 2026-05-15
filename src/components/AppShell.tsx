@@ -1,8 +1,10 @@
 "use client";
 
 import {
+    useCallback,
     useEffect,
     useState,
+    type ReactNode,
 } from "react";
 
 import clsx from "clsx";
@@ -20,40 +22,36 @@ import Sidebar from "@/components/Sidebar";
 import { Button } from "@/components/ui/button";
 
 type AppShellProps = {
-    children: React.ReactNode;
+    children: ReactNode;
 };
 
 export default function AppShell({
     children,
 }: AppShellProps) {
-    const pathname = usePathname();
+    const pathname =
+        usePathname();
 
     const [sidebarOpen, setSidebarOpen] =
         useState(false);
 
-    useEffect(() => {
-        setSidebarOpen(false);
-    }, [pathname]);
+    const closeSidebar =
+        useCallback(() => {
+            setSidebarOpen(false);
+        }, []);
 
-    useEffect(() => {
-        if (!sidebarOpen) {
-            document.body.classList.remove(
-                "overflow-hidden"
+    const toggleSidebar =
+        useCallback(() => {
+            setSidebarOpen(
+                current => !current
             );
+        }, []);
 
-            return;
-        }
-
-        document.body.classList.add(
-            "overflow-hidden"
-        );
-
-        return () => {
-            document.body.classList.remove(
-                "overflow-hidden"
-            );
-        };
-    }, [sidebarOpen]);
+    useEffect(() => {
+        closeSidebar();
+    }, [
+        pathname,
+        closeSidebar,
+    ]);
 
     useEffect(() => {
         const handleKeyDown = (
@@ -63,7 +61,7 @@ export default function AppShell({
                 event.key ===
                 "Escape"
             ) {
-                setSidebarOpen(false);
+                closeSidebar();
             }
         };
 
@@ -72,22 +70,36 @@ export default function AppShell({
             handleKeyDown
         );
 
+        document.body.classList.toggle(
+            "overflow-hidden",
+            sidebarOpen
+        );
+
         return () => {
             window.removeEventListener(
                 "keydown",
                 handleKeyDown
             );
+
+            document.body.classList.remove(
+                "overflow-hidden"
+            );
         };
-    }, []);
+    }, [
+        sidebarOpen,
+        closeSidebar,
+    ]);
 
     return (
-        <div className="flex h-screen overflow-hidden bg-zinc-50 dark:bg-zinc-900">
+        <div className="flex h-dvh overflow-hidden bg-zinc-50 dark:bg-zinc-900">
             <aside
-                role="dialog"
-                aria-modal="true"
                 aria-label="Sidebar"
+                aria-hidden={
+                    !sidebarOpen
+                }
                 className={clsx(
-                    "fixed inset-y-0 left-0 z-40 w-64 shrink-0 border-r border-zinc-200 bg-white shadow-xl transition-transform duration-300 ease-out dark:border-zinc-800 dark:bg-zinc-950 md:relative md:translate-x-0 md:shadow-none",
+                    "fixed inset-y-0 left-0 z-40 w-64 border-r border-zinc-200 bg-white transition-transform duration-300 dark:border-zinc-800 dark:bg-zinc-950",
+                    "shadow-xl md:relative md:translate-x-0 md:shadow-none",
                     sidebarOpen
                         ? "translate-x-0"
                         : "-translate-x-full"
@@ -99,14 +111,14 @@ export default function AppShell({
             <button
                 type="button"
                 aria-label="Close sidebar"
-                onClick={() =>
-                    setSidebarOpen(false)
+                onClick={
+                    closeSidebar
                 }
                 className={clsx(
-                    "fixed inset-0 z-30 bg-black/40 opacity-0 backdrop-blur-[1px] transition duration-300 md:hidden",
+                    "fixed inset-0 z-30 bg-black/40 transition-opacity duration-300 md:hidden",
                     sidebarOpen
-                        ? "pointer-events-auto opacity-100"
-                        : "pointer-events-none"
+                        ? "opacity-100"
+                        : "pointer-events-none opacity-0"
                 )}
             />
 
@@ -119,19 +131,17 @@ export default function AppShell({
                             size="icon"
                             variant="ghost"
                             className="md:hidden"
+                            aria-expanded={
+                                sidebarOpen
+                            }
+                            aria-controls="mobile-sidebar"
                             aria-label={
                                 sidebarOpen
                                     ? "Close sidebar"
                                     : "Open sidebar"
                             }
-                            aria-expanded={
-                                sidebarOpen
-                            }
-                            onClick={() =>
-                                setSidebarOpen(
-                                    current =>
-                                        !current
-                                )
+                            onClick={
+                                toggleSidebar
                             }
                         >
                             {sidebarOpen ? (
