@@ -5,53 +5,37 @@ import type {
   Viewport,
 } from "next";
 
-import { ThemeProvider } from "@/components/theme-provider";
-
 import AppShell from "@/components/AppShell";
+
+import {
+  ThemeProvider,
+} from "@/components/theme-provider";
+
 import AppToaster from "@/components/ui/toaster";
 
-const APP_NAME = "Donezo";
-
-const APP_DESCRIPTION =
-  "Task management workspace built with Next.js and Zustand.";
-
-const APP_URL =
-  "https://donezo.vercel.app";
-
-const bodyClassName = [
-  "min-h-screen",
-  "overflow-hidden",
-  "bg-zinc-50",
-  "font-sans",
-  "text-zinc-900",
-  "antialiased",
-  "selection:bg-zinc-900",
-  "selection:text-white",
-  "dark:bg-zinc-950",
-  "dark:text-zinc-100",
-  "dark:selection:bg-zinc-100",
-  "dark:selection:text-zinc-900",
-].join(" ");
-
 export const metadata: Metadata = {
-  metadataBase: new URL(APP_URL),
-
-  applicationName: APP_NAME,
+  metadataBase: new URL(
+    "https://donezo.vercel.app"
+  ),
 
   title: {
-    default: APP_NAME,
-    template: `%s | ${APP_NAME}`,
+    default: "Donezo",
+    template:
+      "%s | Donezo",
   },
 
-  description: APP_DESCRIPTION,
+  description:
+    "Task management workspace built with Next.js and Zustand.",
+
+  applicationName:
+    "Donezo",
 
   keywords: [
+    "todo",
     "task manager",
-    "todo app",
-    "productivity",
     "nextjs",
     "zustand",
-    "task tracking",
+    "productivity",
   ],
 
   authors: [
@@ -62,15 +46,6 @@ export const metadata: Metadata = {
 
   creator: "guatit",
 
-  category: "productivity",
-
-  referrer: "origin-when-cross-origin",
-
-  robots: {
-    index: true,
-    follow: true,
-  },
-
   alternates: {
     canonical: "/",
   },
@@ -78,51 +53,61 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
 
-    url: APP_URL,
+    siteName:
+      "Donezo",
 
-    siteName: APP_NAME,
+    url: "https://donezo.vercel.app",
 
-    title: APP_NAME,
+    title: "Donezo",
 
     description:
-      APP_DESCRIPTION,
+      "Task management workspace built with Next.js and Zustand.",
   },
 
   twitter: {
-    card: "summary_large_image",
+    card:
+      "summary_large_image",
 
-    title: APP_NAME,
+    title: "Donezo",
 
     description:
-      APP_DESCRIPTION,
+      "Task management workspace built with Next.js and Zustand.",
   },
 
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
-    title: APP_NAME,
+
+    title: "Donezo",
+
+    statusBarStyle:
+      "default",
+  },
+
+  manifest:
+    "/manifest.json",
+
+  icons: {
+    icon: "/favicon.ico",
+    apple:
+      "/apple-touch-icon.png",
   },
 
   formatDetection: {
     telephone: false,
   },
-
-  manifest: "/manifest.json",
-
-  icons: {
-    icon: "/favicon.ico",
-    apple: "/apple-touch-icon.png",
-  },
 };
 
-export const viewport: Viewport = {
-  width: "device-width",
+export const viewport: Viewport =
+{
+  width:
+    "device-width",
 
   initialScale: 1,
 
   maximumScale: 1,
 
-  colorScheme: "dark light",
+  colorScheme:
+    "dark light",
 
   interactiveWidget:
     "resizes-content",
@@ -132,14 +117,16 @@ export const viewport: Viewport = {
       media:
         "(prefers-color-scheme: light)",
 
-      color: "#fafafa",
+      color:
+        "#fafafa",
     },
 
     {
       media:
         "(prefers-color-scheme: dark)",
 
-      color: "#09090b",
+      color:
+        "#09090b",
     },
   ],
 };
@@ -157,16 +144,9 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body
-        className={
-          bodyClassName
-        }
+        className="min-h-dvh overflow-hidden bg-zinc-50 font-sans text-zinc-900 antialiased selection:bg-zinc-900 selection:text-white dark:bg-zinc-950 dark:text-zinc-100 dark:selection:bg-zinc-100 dark:selection:text-zinc-900"
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
+        <ThemeProvider>
           <a
             href="#main-content"
             className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-zinc-900 focus:px-3 focus:py-2 focus:text-sm focus:text-white dark:focus:bg-zinc-100 dark:focus:text-zinc-900"
@@ -177,12 +157,7 @@ export default function RootLayout({
           <AppToaster />
 
           <AppShell>
-            <main
-              id="main-content"
-              className="h-full min-h-screen"
-            >
-              {children}
-            </main>
+            {children}
           </AppShell>
         </ThemeProvider>
       </body>
