@@ -1,10 +1,16 @@
 "use client";
 
-import { useMemo, useCallback, useState } from "react";
-import { toast } from "@/components/ui/toaster";
+import {
+    useCallback,
+    useMemo,
+    useState,
+} from "react";
+
+import clsx from "clsx";
+
 import { Loader2 } from "lucide-react";
 
-/* ================= types ================= */
+import { toast } from "@/components/ui/toaster";
 
 type Todo = {
     id: string;
@@ -12,34 +18,40 @@ type Todo = {
     completed: boolean;
 };
 
-interface FooterProps {
+type FooterProps = {
     total: number;
     completed: number;
+
     onClearCompleted: () => Promise<Todo[]>;
-    onRestore?: (todos: Todo[]) => void;
+
+    onRestore?: (
+        todos: Todo[]
+    ) => void;
+
     showPercentage?: boolean;
-}
-
-/* ================= utils ================= */
-
-const clamp = (n: number, min: number, max: number) =>
-    Math.max(min, Math.min(max, n));
-
-const computeProgress = (total: number, completed: number) => {
-    if (total === 0) return 0;
-    return clamp(Math.round((completed / total) * 100), 0, 100);
 };
 
-const getStatus = (total: number, progress: number) => {
-    if (total === 0) return { text: "タスクがありません", color: "bg-gray-400" };
-    if (progress === 100) return { text: "すべて完了", color: "bg-green-500" };
-    if (progress >= 80) return { text: "もう少し", color: "bg-purple-500" };
-    if (progress >= 50) return { text: "進行中", color: "bg-blue-500" };
-    if (progress > 0) return { text: "開始済み", color: "bg-blue-400" };
-    return { text: "未開始", color: "bg-gray-400" };
-};
+const getProgress = (
+    total: number,
+    completed: number
+) => {
+    if (total === 0) {
+        return 0;
+    }
 
-/* ================= component ================= */
+    return Math.min(
+        100,
+        Math.max(
+            0,
+            Math.round(
+                (
+                    completed /
+                    total
+                ) * 100
+            )
+        )
+    );
+};
 
 export default function Footer({
     total,
@@ -48,88 +60,188 @@ export default function Footer({
     onRestore,
     showPercentage = true,
 }: FooterProps) {
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] =
+        useState(false);
 
-    const remaining = total - completed;
+    const remaining =
+        total - completed;
 
-    const progress = useMemo(
-        () => computeProgress(total, completed),
-        [total, completed]
-    );
+    const progress =
+        useMemo(() => {
+            return getProgress(
+                total,
+                completed
+            );
+        }, [
+            total,
+            completed,
+        ]);
 
-    const status = useMemo(
-        () => getStatus(total, progress),
-        [total, progress]
-    );
+    const statusText =
+        useMemo(() => {
+            if (total === 0) {
+                return "タスクがありません";
+            }
 
-    const handleClear = useCallback(async () => {
-        if (completed === 0 || loading) {
-            toast.info("削除対象なし");
-            return;
-        }
+            if (progress === 100) {
+                return "すべて完了";
+            }
 
-        toast.action("完了済みタスクを削除しますか？", "削除", async () => {
+            if (progress >= 70) {
+                return "進行中";
+            }
+
+            if (progress > 0) {
+                return "作業中";
+            }
+
+            return "未開始";
+        }, [
+            total,
+            progress,
+        ]);
+
+    const progressColor =
+        useMemo(() => {
+            if (progress === 100) {
+                return "bg-emerald-500";
+            }
+
+            if (progress >= 70) {
+                return "bg-blue-500";
+            }
+
+            if (progress > 0) {
+                return "bg-sky-400";
+            }
+
+            return "bg-zinc-400";
+        }, [progress]);
+
+    const handleClear =
+        useCallback(async () => {
+            if (
+                loading ||
+                completed === 0
+            ) {
+                return;
+            }
+
             try {
                 setLoading(true);
 
-                const removed = await onClearCompleted();
+                const removed =
+                    await onClearCompleted();
+
+                if (
+                    removed.length === 0
+                ) {
+                    return;
+                }
 
                 toast.success(
-                    "削除しました",
-                    `${removed.length}件`,
-                    { id: "clear-success" }
+                    `${removed.length}件削除しました`
                 );
 
-                if (onRestore && removed.length > 0) {
+                if (onRestore) {
                     toast.action(
                         "元に戻す",
                         "戻す",
-                        () => onRestore(removed),
-                        { id: "restore-action" }
+                        () => {
+                            onRestore(
+                                removed
+                            );
+                        }
                     );
                 }
             } catch {
-                toast.error("削除に失敗しました");
+                toast.error(
+                    "削除できませんでした"
+                );
             } finally {
                 setLoading(false);
             }
-        });
-    }, [completed, loading, onClearCompleted, onRestore]);
+        }, [
+            completed,
+            loading,
+            onClearCompleted,
+            onRestore,
+        ]);
 
     return (
-        <footer className="bg-white/80 dark:bg-gray-900/80 backdrop-blur border-t border-gray-200 dark:border-gray-700 px-6 py-4 space-y-4 max-w-2xl mx-auto">
-
-            <div className="flex justify-between items-center text-sm text-gray-600 dark:text-gray-300">
+        <footer className="border-t border-zinc-200 bg-white/80 px-6 py-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80">
+            <div className="flex items-center justify-between text-sm text-zinc-600 dark:text-zinc-300">
                 <span aria-live="polite">
-                    {total}件中 {completed}件（残り {remaining}件）
+                    {total}件中{" "}
+                    {completed}件完了
+                    ・残り{" "}
+                    {remaining}件
                 </span>
 
                 <button
-                    onClick={handleClear}
-                    disabled={completed === 0 || loading}
-                    className="flex items-center gap-1 px-3 py-1 rounded-md text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition disabled:opacity-40"
+                    type="button"
+                    onClick={
+                        handleClear
+                    }
+                    disabled={
+                        loading ||
+                        completed ===
+                        0
+                    }
+                    className={clsx(
+                        "flex items-center gap-1 rounded-md px-3 py-1 transition",
+                        "text-red-500 hover:bg-red-50",
+                        "dark:hover:bg-red-950/40",
+                        "disabled:pointer-events-none disabled:opacity-40"
+                    )}
                 >
-                    {loading && <Loader2 size={14} className="animate-spin" />}
-                    {loading ? "削除中" : "完了を削除"}
+                    {loading && (
+                        <Loader2
+                            size={14}
+                            className="animate-spin"
+                        />
+                    )}
+
+                    {loading
+                        ? "削除中"
+                        : "完了を削除"}
                 </button>
             </div>
 
             <div
-                className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden"
+                className="mt-4 h-2 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800"
                 role="progressbar"
-                aria-valuenow={progress}
-                aria-valuemin={0}
-                aria-valuemax={100}
+                aria-valuenow={
+                    progress
+                }
+                aria-valuemin={
+                    0
+                }
+                aria-valuemax={
+                    100
+                }
             >
                 <div
-                    className={`${status.color} h-full transition-all duration-500`}
-                    style={{ width: `${progress}%` }}
+                    style={{
+                        width: `${progress}%`,
+                    }}
+                    className={clsx(
+                        "h-full transition-all duration-300",
+                        progressColor
+                    )}
                 />
             </div>
 
-            <div className="flex justify-between text-xs text-gray-400">
-                <span>{status.text}</span>
-                {showPercentage && <span>{progress}%</span>}
+            <div className="mt-2 flex items-center justify-between text-xs text-zinc-400">
+                <span>
+                    {statusText}
+                </span>
+
+                {showPercentage && (
+                    <span>
+                        {progress}%
+                    </span>
+                )}
             </div>
         </footer>
     );
