@@ -1,10 +1,6 @@
 "use client";
 
-import {
-    useCallback,
-    useEffect,
-    useMemo,
-} from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import {
     useFilteredTodos,
@@ -12,126 +8,82 @@ import {
 } from "@/store/todoStore";
 
 export function useTodoState() {
-    const todos =
-        useTodoStore(
-            (state) => state.todos
-        );
+    const {
+        todos,
+
+        search,
+        setSearch,
+
+        activeCategory,
+        setActiveCategory,
+
+        addTodo,
+        toggleTodo,
+        togglePinned,
+        updateTodoText,
+        deleteTodo,
+        clearCompleted,
+
+        undo,
+        redo,
+
+        total,
+        completed,
+        active,
+
+        undoStack,
+        redoStack,
+    } = useTodoStore((state) => ({
+        todos: state.todos,
+
+        search: state.search,
+        setSearch: state.setSearch,
+
+        activeCategory: state.activeCategory,
+        setActiveCategory:
+            state.setActiveCategory,
+
+        addTodo: state.addTodo,
+        toggleTodo: state.toggleTodo,
+        togglePinned:
+            state.togglePinned,
+        updateTodoText:
+            state.updateTodoText,
+        deleteTodo: state.deleteTodo,
+        clearCompleted:
+            state.clearCompleted,
+
+        undo: state.undo,
+        redo: state.redo,
+
+        total: state.total,
+        completed: state.completed,
+        active: state.active,
+
+        undoStack: state.undoStack,
+        redoStack: state.redoStack,
+    }));
 
     const filteredTodos =
         useFilteredTodos();
 
-    const search =
-        useTodoStore(
-            (state) => state.search
-        );
-
-    const setSearch =
-        useTodoStore(
-            (state) =>
-                state.setSearch
-        );
-
-    const activeCategory =
-        useTodoStore(
-            (state) =>
-                state.activeCategory
-        );
-
-    const setActiveCategory =
-        useTodoStore(
-            (state) =>
-                state.setActiveCategory
-        );
-
-    const addTodo =
-        useTodoStore(
-            (state) =>
-                state.addTodo
-        );
-
-    const toggleTodo =
-        useTodoStore(
-            (state) =>
-                state.toggleTodo
-        );
-
-    const togglePinned =
-        useTodoStore(
-            (state) =>
-                state.togglePinned
-        );
-
-    const updateTodoText =
-        useTodoStore(
-            (state) =>
-                state.updateTodoText
-        );
-
-    const deleteTodo =
-        useTodoStore(
-            (state) =>
-                state.deleteTodo
-        );
-
-    const clearCompleted =
-        useTodoStore(
-            (state) =>
-                state.clearCompleted
-        );
-
-    const undo =
-        useTodoStore(
-            (state) =>
-                state.undo
-        );
-
-    const redo =
-        useTodoStore(
-            (state) =>
-                state.redo
-        );
-
-    const total =
-        useTodoStore(
-            (state) => state.total
-        );
-
-    const completed =
-        useTodoStore(
-            (state) =>
-                state.completed
-        );
-
-    const active =
-        useTodoStore(
-            (state) => state.active
-        );
-
-    const canUndo =
-        useTodoStore(
-            (state) =>
-                state.undoStack.length >
-                0
-        );
-
-    const canRedo =
-        useTodoStore(
-            (state) =>
-                state.redoStack.length >
-                0
-        );
-
     useEffect(() => {
-        const onKeyDown = (
+        const handleKeyDown = (
             event: KeyboardEvent
         ) => {
-            const modifier =
+            const isModifierPressed =
                 event.metaKey ||
                 event.ctrlKey;
 
+            if (!isModifierPressed) {
+                return;
+            }
+
+            const key =
+                event.key.toLowerCase();
+
             if (
-                modifier &&
-                event.key === "z" &&
+                key === "z" &&
                 !event.shiftKey
             ) {
                 event.preventDefault();
@@ -142,13 +94,10 @@ export function useTodoState() {
             }
 
             if (
-                modifier &&
+                key === "y" ||
                 (
-                    event.key === "y" ||
-                    (
-                        event.shiftKey &&
-                        event.key === "Z"
-                    )
+                    key === "z" &&
+                    event.shiftKey
                 )
             ) {
                 event.preventDefault();
@@ -159,13 +108,13 @@ export function useTodoState() {
 
         window.addEventListener(
             "keydown",
-            onKeyDown
+            handleKeyDown
         );
 
         return () => {
             window.removeEventListener(
                 "keydown",
-                onKeyDown
+                handleKeyDown
             );
         };
     }, [undo, redo]);
@@ -175,6 +124,15 @@ export function useTodoState() {
             total,
             completed,
             active,
+            completionRate:
+                total === 0
+                    ? 0
+                    : Math.round(
+                        (
+                            completed /
+                            total
+                        ) * 100
+                    ),
         }),
         [
             total,
@@ -185,15 +143,16 @@ export function useTodoState() {
 
     const remainingText =
         useMemo(() => {
-            if (active === 0) {
-                return "All tasks completed";
-            }
+            switch (active) {
+                case 0:
+                    return "All tasks completed";
 
-            if (active === 1) {
-                return "1 task remaining";
-            }
+                case 1:
+                    return "1 task remaining";
 
-            return `${active} tasks remaining`;
+                default:
+                    return `${active} tasks remaining`;
+            }
         }, [active]);
 
     const hasCompleted =
@@ -204,6 +163,12 @@ export function useTodoState() {
 
     const isFilteredEmpty =
         filteredTodos.length === 0;
+
+    const canUndo =
+        undoStack.length > 0;
+
+    const canRedo =
+        redoStack.length > 0;
 
     const resetSearch =
         useCallback(() => {
