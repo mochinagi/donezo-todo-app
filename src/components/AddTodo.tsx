@@ -1,9 +1,7 @@
 "use client";
 
 import {
-    useCallback,
     useEffect,
-    useMemo,
     useRef,
     useState,
 } from "react";
@@ -17,7 +15,6 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { toast } from "@/components/ui/toaster";
 
 import { useTodoStore } from "@/store/todoStore";
 
@@ -34,15 +31,7 @@ const STORAGE_TIME_KEY =
 const DRAFT_EXPIRE =
     1000 * 60 * 60 * 24;
 
-const SUBMIT_COOLDOWN = 250;
-
 type AddTodoProps = {
-    input: string;
-
-    setInput: (
-        value: string
-    ) => void;
-
     onAdd: (
         text: string
     ) => Promise<void> | void;
@@ -50,80 +39,33 @@ type AddTodoProps = {
 
 const normalize = (
     value: string
-) => {
-    return value
+) =>
+    value
         .replace(/\u3000/g, " ")
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, MAX_LENGTH);
-};
-
-const parseImportText = (
-    value: string
-) => {
-    return [
-        ...new Set(
-            value
-                .split("\n")
-                .map(normalize)
-                .filter(Boolean)
-        ),
-    ].slice(0, MAX_IMPORT);
-};
-
-const saveDraft = (
-    value: string
-) => {
-    if (!value.trim()) {
-        localStorage.removeItem(
-            STORAGE_KEY
-        );
-
-        localStorage.removeItem(
-            STORAGE_TIME_KEY
-        );
-
-        return;
-    }
-
-    localStorage.setItem(
-        STORAGE_KEY,
-        value
-    );
-
-    localStorage.setItem(
-        STORAGE_TIME_KEY,
-        String(Date.now())
-    );
-};
-
-const clearDraft = () => {
-    localStorage.removeItem(
-        STORAGE_KEY
-    );
-
-    localStorage.removeItem(
-        STORAGE_TIME_KEY
-    );
-};
 
 export default function AddTodo({
-    input,
-    setInput,
     onAdd,
 }: AddTodoProps) {
     const todos = useTodoStore(
-        state => state.todos
+        s => s.todos
     );
 
     const inputRef =
-        useRef<HTMLInputElement>(null);
+        useRef<HTMLInputElement>(
+            null
+        );
 
     const composing =
         useRef(false);
 
-    const submitLocked =
+    const locked =
         useRef(false);
+
+    const [value, setValue] =
+        useState("");
 
     const [submitting, setSubmitting] =
         useState(false);
@@ -135,23 +77,13 @@ export default function AddTodo({
         useState("");
 
     const normalized =
-        useMemo(
-            () => normalize(input),
-            [input]
-        );
-
-    const existingTodos =
-        useMemo(() => {
-            return new Set(
-                todos.map(todo =>
-                    todo.normalized.toLowerCase()
-                )
-            );
-        }, [todos]);
+        normalize(value);
 
     const duplicated =
-        existingTodos.has(
-            normalized.toLowerCase()
+        todos.some(
+            todo =>
+                todo.normalized ===
+                normalized.toLowerCase()
         );
 
     const remaining =
@@ -159,10 +91,6 @@ export default function AddTodo({
         normalized.length;
 
     useEffect(() => {
-        if (input) {
-            return;
-        }
-
         const draft =
             localStorage.getItem(
                 STORAGE_KEY
@@ -173,7 +101,10 @@ export default function AddTodo({
                 STORAGE_TIME_KEY
             );
 
-        if (!draft || !timestamp) {
+        if (
+            !draft ||
+            !timestamp
+        ) {
             return;
         }
 
@@ -183,199 +114,209 @@ export default function AddTodo({
             DRAFT_EXPIRE;
 
         if (expired) {
-            clearDraft();
+            localStorage.removeItem(
+                STORAGE_KEY
+            );
+
+            localStorage.removeItem(
+                STORAGE_TIME_KEY
+            );
 
             return;
         }
 
-        setInput(draft);
+        setValue(draft);
     }, []);
 
     useEffect(() => {
-        saveDraft(input);
-    }, [input]);
+        if (!value.trim()) {
+            localStorage.removeItem(
+                STORAGE_KEY
+            );
 
-    const clearInput =
-        useCallback(() => {
-            setInput("");
+            localStorage.removeItem(
+                STORAGE_TIME_KEY
+            );
 
-            setError("");
+            return;
+        }
 
-            clearDraft();
-
-            requestAnimationFrame(() => {
-                inputRef.current?.focus();
-            });
-        }, [setInput]);
-
-    const validate =
-        useCallback(() => {
-            if (!normalized) {
-                return "入力してください";
-            }
-
-            if (duplicated) {
-                return "既に存在します";
-            }
-
-            return "";
-        }, [
-            normalized,
-            duplicated,
-        ]);
-
-    const handleSubmit =
-        useCallback(async () => {
-            if (
-                submitting ||
-                submitLocked.current
-            ) {
-                return;
-            }
-
-            const validation =
-                validate();
-
-            if (validation) {
-                setError(validation);
-
-                return;
-            }
-
-            submitLocked.current =
-                true;
-
-            setSubmitting(true);
-
-            try {
-                await onAdd(normalized);
-
-                setLastAdded(normalized);
-
-                clearInput();
-            } catch {
-                setError(
-                    "追加できませんでした"
-                );
-            } finally {
-                setSubmitting(false);
-
-                window.setTimeout(() => {
-                    submitLocked.current =
-                        false;
-                }, SUBMIT_COOLDOWN);
-            }
-        }, [
-            submitting,
-            validate,
-            onAdd,
-            normalized,
-            clearInput,
-        ]);
-
-    const handlePaste =
-        useCallback(
-            async (
-                event: React.ClipboardEvent<HTMLInputElement>
-            ) => {
-                const text =
-                    event.clipboardData.getData(
-                        "text"
-                    );
-
-                if (
-                    !text.includes("\n")
-                ) {
-                    return;
-                }
-
-                event.preventDefault();
-
-                const items =
-                    parseImportText(
-                        text
-                    );
-
-                if (!items.length) {
-                    return;
-                }
-
-                let added = 0;
-
-                let skipped = 0;
-
-                const existing =
-                    new Set(
-                        existingTodos
-                    );
-
-                for (const item of items) {
-                    const key =
-                        item.toLowerCase();
-
-                    if (
-                        existing.has(key)
-                    ) {
-                        skipped++;
-
-                        continue;
-                    }
-
-                    try {
-                        await onAdd(item);
-
-                        existing.add(key);
-
-                        added++;
-                    } catch {
-                        skipped++;
-                    }
-                }
-
-                if (added > 0) {
-                    toast.success(
-                        `${added}件追加しました`
-                    );
-                }
-
-                if (skipped > 0) {
-                    toast.error(
-                        `${skipped}件追加できませんでした`
-                    );
-                }
-            },
-            [
-                existingTodos,
-                onAdd,
-            ]
+        localStorage.setItem(
+            STORAGE_KEY,
+            value
         );
 
+        localStorage.setItem(
+            STORAGE_TIME_KEY,
+            String(Date.now())
+        );
+    }, [value]);
+
+    const clearInput = () => {
+        setValue("");
+        setError("");
+
+        localStorage.removeItem(
+            STORAGE_KEY
+        );
+
+        localStorage.removeItem(
+            STORAGE_TIME_KEY
+        );
+
+        requestAnimationFrame(() => {
+            inputRef.current?.focus();
+        });
+    };
+
+    const submit = async () => {
+        if (
+            submitting ||
+            locked.current
+        ) {
+            return;
+        }
+
+        if (!normalized) {
+            setError(
+                "入力してください"
+            );
+
+            return;
+        }
+
+        if (duplicated) {
+            setError(
+                "既に存在します"
+            );
+
+            return;
+        }
+
+        locked.current = true;
+
+        setSubmitting(true);
+
+        try {
+            await onAdd(
+                normalized
+            );
+
+            setLastAdded(
+                normalized
+            );
+
+            clearInput();
+        } catch {
+            setError(
+                "追加できませんでした"
+            );
+        } finally {
+            setSubmitting(false);
+
+            setTimeout(() => {
+                locked.current =
+                    false;
+            }, 250);
+        }
+    };
+
+    const handlePaste = async (
+        event: React.ClipboardEvent<HTMLInputElement>
+    ) => {
+        const text =
+            event.clipboardData.getData(
+                "text"
+            );
+
+        if (
+            !text.includes("\n")
+        ) {
+            return;
+        }
+
+        event.preventDefault();
+
+        const items = [
+            ...new Set(
+                text
+                    .split("\n")
+                    .map(normalize)
+                    .filter(Boolean)
+            ),
+        ].slice(0, MAX_IMPORT);
+
+        if (!items.length) {
+            return;
+        }
+
+        const existing =
+            new Set(
+                todos.map(todo =>
+                    todo.normalized.toLowerCase()
+                )
+            );
+
+        let added = 0;
+
+        for (const item of items) {
+            const key =
+                item.toLowerCase();
+
+            if (
+                existing.has(key)
+            ) {
+                continue;
+            }
+
+            try {
+                await onAdd(item);
+
+                existing.add(key);
+
+                added++;
+            } catch {
+                //
+            }
+        }
+
+        if (added > 0) {
+            setValue("");
+            setError("");
+        }
+    };
+
     return (
-        <div className="border-b border-zinc-200 bg-white px-6 py-5">
+        <div className="border-b bg-background px-6 py-5">
             <div className="flex gap-3">
                 <div className="relative flex-1">
                     <Plus
                         size={16}
-                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
                     />
 
                     <Input
                         ref={inputRef}
                         autoFocus
                         autoComplete="off"
-                        disabled={submitting}
-                        value={input}
-                        placeholder="タスクを追加"
+                        disabled={
+                            submitting
+                        }
+                        value={value}
+                        placeholder="Add task"
                         aria-invalid={
                             !!error
                         }
-                        onChange={event => {
-                            setInput(
-                                event.target.value
+                        onChange={e => {
+                            setValue(
+                                e.target
+                                    .value
                             );
 
                             if (error) {
-                                setError("");
+                                setError(
+                                    ""
+                                );
                             }
                         }}
                         onPaste={
@@ -389,7 +330,7 @@ export default function AddTodo({
                             composing.current =
                                 false;
                         }}
-                        onKeyDown={event => {
+                        onKeyDown={e => {
                             if (
                                 composing.current
                             ) {
@@ -397,23 +338,36 @@ export default function AddTodo({
                             }
 
                             if (
-                                event.key ===
+                                (e.metaKey ||
+                                    e.ctrlKey) &&
+                                e.key ===
                                 "Enter"
                             ) {
-                                event.preventDefault();
+                                e.preventDefault();
 
-                                handleSubmit();
+                                submit();
 
                                 return;
                             }
 
                             if (
-                                event.key ===
+                                e.key ===
+                                "Enter"
+                            ) {
+                                e.preventDefault();
+
+                                submit();
+
+                                return;
+                            }
+
+                            if (
+                                e.key ===
                                 "ArrowUp" &&
-                                !input &&
+                                !value &&
                                 lastAdded
                             ) {
-                                setInput(
+                                setValue(
                                     lastAdded
                                 );
 
@@ -421,20 +375,22 @@ export default function AddTodo({
                             }
 
                             if (
-                                event.key ===
+                                e.key ===
                                 "Escape" &&
-                                input
+                                value
                             ) {
                                 clearInput();
                             }
                         }}
                         className={clsx(
                             "h-11 pl-10 pr-20",
+
                             error &&
                             "border-destructive",
+
                             duplicated &&
                             !error &&
-                            "border-amber-400"
+                            "border-amber-500"
                         )}
                     />
 
@@ -442,9 +398,11 @@ export default function AddTodo({
                         <span
                             className={clsx(
                                 "text-xs",
-                                remaining <= 10
+
+                                remaining <=
+                                    10
                                     ? "text-amber-600"
-                                    : "text-zinc-400"
+                                    : "text-muted-foreground"
                             )}
                         >
                             {
@@ -462,9 +420,7 @@ export default function AddTodo({
                         !normalized ||
                         duplicated
                     }
-                    onClick={
-                        handleSubmit
-                    }
+                    onClick={submit}
                     className="min-w-[96px]"
                 >
                     {submitting ? (
@@ -477,8 +433,8 @@ export default function AddTodo({
                     )}
 
                     {submitting
-                        ? "追加中"
-                        : "追加"}
+                        ? "Adding"
+                        : "Add"}
                 </Button>
             </div>
 
@@ -487,8 +443,8 @@ export default function AddTodo({
                     {error}
                 </div>
 
-                <div className="text-zinc-400">
-                    Enterで追加
+                <div className="text-muted-foreground">
+                    Enter to submit
                 </div>
             </div>
         </div>
