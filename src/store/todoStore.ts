@@ -9,19 +9,13 @@ export interface Todo {
     id: string;
     text: string;
     normalized: string;
-
     completed: boolean;
     completedAt: number | null;
-
     archived: boolean;
-
     priority: Priority;
     pinned: boolean;
-
     order: number;
-
     dueDate: number | null;
-
     createdAt: number;
     updatedAt: number;
 }
@@ -46,8 +40,14 @@ type BulkHistoryItem = {
 };
 
 type HistoryAction =
-    | { type: "add"; todo: Todo }
-    | { type: "delete"; removed: RemovedTodo[] }
+    | {
+        type: "add";
+        todo: Todo;
+    }
+    | {
+        type: "delete";
+        removed: RemovedTodo[];
+    }
     | {
         type: "update";
         id: string;
@@ -104,8 +104,8 @@ type TodoStore = {
     ) => void;
 
     reorderTodos: (
-        from: number,
-        to: number
+        activeId: string,
+        overId: string
     ) => void;
 
     deleteTodo: (id: string) => void;
@@ -113,6 +113,8 @@ type TodoStore = {
     deleteMany: (ids: string[]) => void;
 
     clearCompleted: () => void;
+
+    autoArchiveCompleted: () => void;
 
     undo: () => void;
 
@@ -129,14 +131,6 @@ type TodoStore = {
 
 const HISTORY_LIMIT = 50;
 
-const timestamp = () => Date.now();
-
-const normalizeText = (value: string) =>
-    value
-        .trim()
-        .replace(/\s+/g, " ")
-        .toLowerCase();
-
 const priorityWeight: Record<
     Priority,
     number
@@ -145,6 +139,18 @@ const priorityWeight: Record<
     medium: 2,
     low: 1,
 };
+
+const normalizeText = (value: string) =>
+    value
+        .trim()
+        .replace(/\s+/g, " ")
+        .toLowerCase();
+
+const reorderIndexes = (todos: Todo[]) =>
+    todos.map((todo, index) => ({
+        ...todo,
+        order: index,
+    }));
 
 const isOverdue = (
     todo: Todo,
@@ -156,15 +162,6 @@ const isOverdue = (
         !todo.archived &&
         todo.dueDate < now
     );
-
-const isStale = (
-    todo: Todo,
-    now: number
-) =>
-    !todo.completed &&
-    !todo.archived &&
-    now - todo.updatedAt >
-    1000 * 60 * 60 * 24 * 7;
 
 const sortTodos = (
     todos: Todo[],
@@ -200,46 +197,28 @@ const sortTodos = (
         return a.order - b.order;
     });
 
-const withUpdatedAt = (
-    todo: Todo,
-    patch: TodoPatch
-): Todo => ({
-    ...todo,
-    ...patch,
-    updatedAt: timestamp(),
-});
-
-const reorderIndexes = (todos: Todo[]) =>
-    todos.map((todo, index) => ({
-        ...todo,
-        order: index,
-    }));
-
-const trimHistory = (
-    stack: HistoryAction[]
-) => stack.slice(-HISTORY_LIMIT);
-
 const pushHistory = (
     state: TodoStore,
     action: HistoryAction
 ) => ({
-    undoStack: trimHistory([
+    undoStack: [
         ...state.undoStack,
         action,
-    ]),
+    ].slice(-HISTORY_LIMIT),
+
     redoStack: [],
 });
 
 const createBulkHistory = (
-    previousTodos: Map<string, Todo>,
-    updatedTodos: Map<string, Todo>
-): BulkHistoryItem[] => {
+    previous: Map<string, Todo>,
+    next: Map<string, Todo>
+) => {
     const items: BulkHistoryItem[] = [];
 
-    updatedTodos.forEach((updated, id) => {
-        const previous = previousTodos.get(id);
+    next.forEach((updated, id) => {
+        const current = previous.get(id);
 
-        if (!previous) {
+        if (!current) {
             return;
         }
 
@@ -249,18 +228,16 @@ const createBulkHistory = (
         (
             Object.keys(updated) as (keyof Todo)[]
         ).forEach(key => {
-            if (previous[key] !== updated[key]) {
+            if (current[key] !== updated[key]) {
                 before[key] =
-                    previous[key] as never;
+                    current[key] as never;
 
                 after[key] =
                     updated[key] as never;
             }
         });
 
-        if (
-            Object.keys(before).length > 0
-        ) {
+        if (Object.keys(before).length) {
             items.push({
                 id,
                 before,
@@ -270,6 +247,97 @@ const createBulkHistory = (
     });
 
     return items;
+};
+
+const applyHistory = (
+    todos: Todo[],
+    action: HistoryAction,
+    mode: "undo" | "redo"
+) => {
+    switch (action.type) {
+        case "add":
+            return mode === "undo"
+                ? todos.filter(
+                    todo =>
+                        todo.id !== action.todo.id
+                )
+                : reorderIndexes([
+                    action.todo,
+                    ...todos,
+                ]);
+
+        case "delete":
+            if (mode === "undo") {
+                const restored = [...todos];
+
+                action.removed
+                    .sort(
+                        (a, b) =>
+                            a.index - b.index
+                    )
+                    .forEach(item => {
+                        restored.splice(
+                            item.index,
+                            0,
+                            item.todo
+                        );
+                    });
+
+                return reorderIndexes(restored);
+            }
+
+            return reorderIndexes(
+                todos.filter(
+                    todo =>
+                        !action.removed.some(
+                            item =>
+                                item.todo.id ===
+                                todo.id
+                        )
+                )
+            );
+
+        case "update":
+            return todos.map(todo => {
+                if (todo.id !== action.id) {
+                    return todo;
+                }
+
+                return {
+                    ...todo,
+                    ...(mode === "undo"
+                        ? action.before
+                        : action.after),
+                };
+            });
+
+        case "bulk": {
+            const map = new Map(
+                action.items.map(item => [
+                    item.id,
+                    item,
+                ])
+            );
+
+            return todos.map(todo => {
+                const item = map.get(todo.id);
+
+                if (!item) {
+                    return todo;
+                }
+
+                return {
+                    ...todo,
+                    ...(mode === "undo"
+                        ? item.before
+                        : item.after),
+                };
+            });
+        }
+
+        default:
+            return todos;
+    }
 };
 
 export const useTodoStore =
@@ -298,9 +366,7 @@ export const useTodoStore =
                         }
 
                         const normalized =
-                            normalizeText(
-                                value
-                            );
+                            normalizeText(value);
 
                         const duplicated =
                             state.todos.some(
@@ -313,29 +379,19 @@ export const useTodoStore =
                             return state;
                         }
 
-                        const now =
-                            timestamp();
+                        const now = Date.now();
 
                         const todo: Todo = {
                             id: crypto.randomUUID(),
-
                             text: value,
                             normalized,
-
                             completed: false,
                             completedAt: null,
-
                             archived: false,
-
-                            priority:
-                                "medium",
-
+                            priority: "medium",
                             pinned: false,
-
                             order: 0,
-
                             dueDate: null,
-
                             createdAt: now,
                             updatedAt: now,
                         };
@@ -348,7 +404,6 @@ export const useTodoStore =
 
                         return {
                             ...state,
-
                             todos,
 
                             ...pushHistory(
@@ -374,9 +429,7 @@ export const useTodoStore =
                         }
 
                         const normalized =
-                            normalizeText(
-                                value
-                            );
+                            normalizeText(value);
 
                         const target =
                             state.todos.find(
@@ -408,14 +461,13 @@ export const useTodoStore =
                             return state;
                         }
 
-                        const updated =
-                            withUpdatedAt(
-                                target,
-                                {
-                                    text: value,
-                                    normalized,
-                                }
-                            );
+                        const updated = {
+                            ...target,
+                            text: value,
+                            normalized,
+                            updatedAt:
+                                Date.now(),
+                        };
 
                         const todos =
                             state.todos.map(
@@ -428,14 +480,12 @@ export const useTodoStore =
 
                         return {
                             ...state,
-
                             todos,
 
                             ...pushHistory(
                                 state,
                                 {
                                     type: "update",
-
                                     id,
 
                                     before: {
@@ -456,19 +506,6 @@ export const useTodoStore =
 
                 toggleTodo: id =>
                     set(state => {
-                        const target =
-                            state.todos.find(
-                                todo =>
-                                    todo.id === id
-                            );
-
-                        if (!target) {
-                            return state;
-                        }
-
-                        const completed =
-                            !target.completed;
-
                         const previous =
                             new Map<
                                 string,
@@ -496,17 +533,19 @@ export const useTodoStore =
                                         todo
                                     );
 
-                                    const next =
-                                        withUpdatedAt(
-                                            todo,
-                                            {
-                                                completed,
-                                                completedAt:
-                                                    completed
-                                                        ? timestamp()
-                                                        : null,
-                                            }
-                                        );
+                                    const completed =
+                                        !todo.completed;
+
+                                    const next = {
+                                        ...todo,
+                                        completed,
+                                        completedAt:
+                                            completed
+                                                ? Date.now()
+                                                : null,
+                                        updatedAt:
+                                            Date.now(),
+                                    };
 
                                     updated.set(
                                         todo.id,
@@ -517,20 +556,21 @@ export const useTodoStore =
                                 }
                             );
 
+                        const items =
+                            createBulkHistory(
+                                previous,
+                                updated
+                            );
+
                         return {
                             ...state,
-
                             todos,
 
                             ...pushHistory(
                                 state,
                                 {
                                     type: "bulk",
-                                    items:
-                                        createBulkHistory(
-                                            previous,
-                                            updated
-                                        ),
+                                    items,
                                 }
                             ),
                         };
@@ -541,16 +581,16 @@ export const useTodoStore =
                     completed
                 ) =>
                     set(state => {
-                        const affectedIds =
+                        const idSet =
                             new Set(ids);
 
-                        const previousTodos =
+                        const previous =
                             new Map<
                                 string,
                                 Todo
                             >();
 
-                        const updatedTodos =
+                        const updated =
                             new Map<
                                 string,
                                 Todo
@@ -560,61 +600,50 @@ export const useTodoStore =
                             state.todos.map(
                                 todo => {
                                     if (
-                                        !affectedIds.has(
+                                        !idSet.has(
                                             todo.id
                                         )
                                     ) {
                                         return todo;
                                     }
 
-                                    if (
-                                        todo.completed ===
-                                        completed
-                                    ) {
-                                        return todo;
-                                    }
-
-                                    previousTodos.set(
+                                    previous.set(
                                         todo.id,
                                         todo
                                     );
 
-                                    const updated =
-                                        withUpdatedAt(
-                                            todo,
-                                            {
-                                                completed,
-                                                completedAt:
-                                                    completed
-                                                        ? timestamp()
-                                                        : null,
-                                            }
-                                        );
+                                    const next = {
+                                        ...todo,
+                                        completed,
+                                        completedAt:
+                                            completed
+                                                ? Date.now()
+                                                : null,
+                                        updatedAt:
+                                            Date.now(),
+                                    };
 
-                                    updatedTodos.set(
+                                    updated.set(
                                         todo.id,
-                                        updated
+                                        next
                                     );
 
-                                    return updated;
+                                    return next;
                                 }
                             );
 
                         const items =
                             createBulkHistory(
-                                previousTodos,
-                                updatedTodos
+                                previous,
+                                updated
                             );
 
-                        if (
-                            items.length === 0
-                        ) {
+                        if (!items.length) {
                             return state;
                         }
 
                         return {
                             ...state,
-
                             todos,
 
                             ...pushHistory(
@@ -639,34 +668,30 @@ export const useTodoStore =
                             return state;
                         }
 
-                        const updated =
-                            withUpdatedAt(
-                                target,
-                                {
-                                    pinned:
-                                        !target.pinned,
-                                }
-                            );
-
-                        const todos =
-                            state.todos.map(
-                                todo =>
-                                    todo.id ===
-                                        id
-                                        ? updated
-                                        : todo
-                            );
+                        const updated = {
+                            ...target,
+                            pinned:
+                                !target.pinned,
+                            updatedAt:
+                                Date.now(),
+                        };
 
                         return {
                             ...state,
 
-                            todos,
+                            todos:
+                                state.todos.map(
+                                    todo =>
+                                        todo.id ===
+                                            id
+                                            ? updated
+                                            : todo
+                                ),
 
                             ...pushHistory(
                                 state,
                                 {
                                     type: "update",
-
                                     id,
 
                                     before: {
@@ -688,7 +713,7 @@ export const useTodoStore =
                     archived
                 ) =>
                     set(state => {
-                        const affectedIds =
+                        const idSet =
                             new Set(ids);
 
                         const previous =
@@ -707,16 +732,9 @@ export const useTodoStore =
                             state.todos.map(
                                 todo => {
                                     if (
-                                        !affectedIds.has(
+                                        !idSet.has(
                                             todo.id
                                         )
-                                    ) {
-                                        return todo;
-                                    }
-
-                                    if (
-                                        todo.archived ===
-                                        archived
                                     ) {
                                         return todo;
                                     }
@@ -726,13 +744,12 @@ export const useTodoStore =
                                         todo
                                     );
 
-                                    const next =
-                                        withUpdatedAt(
-                                            todo,
-                                            {
-                                                archived,
-                                            }
-                                        );
+                                    const next = {
+                                        ...todo,
+                                        archived,
+                                        updatedAt:
+                                            Date.now(),
+                                    };
 
                                     updated.set(
                                         todo.id,
@@ -749,15 +766,8 @@ export const useTodoStore =
                                 updated
                             );
 
-                        if (
-                            items.length === 0
-                        ) {
-                            return state;
-                        }
-
                         return {
                             ...state,
-
                             todos,
 
                             ...pushHistory(
@@ -781,44 +791,37 @@ export const useTodoStore =
                                     todo.id === id
                             );
 
-                        if (!target) {
-                            return state;
-                        }
-
                         if (
+                            !target ||
                             target.priority ===
                             priority
                         ) {
                             return state;
                         }
 
-                        const updated =
-                            withUpdatedAt(
-                                target,
-                                {
-                                    priority,
-                                }
-                            );
-
-                        const todos =
-                            state.todos.map(
-                                todo =>
-                                    todo.id ===
-                                        id
-                                        ? updated
-                                        : todo
-                            );
+                        const updated = {
+                            ...target,
+                            priority,
+                            updatedAt:
+                                Date.now(),
+                        };
 
                         return {
                             ...state,
 
-                            todos,
+                            todos:
+                                state.todos.map(
+                                    todo =>
+                                        todo.id ===
+                                            id
+                                            ? updated
+                                            : todo
+                                ),
 
                             ...pushHistory(
                                 state,
                                 {
                                     type: "update",
-
                                     id,
 
                                     before: {
@@ -849,40 +852,29 @@ export const useTodoStore =
                             return state;
                         }
 
-                        if (
-                            target.dueDate ===
-                            dueDate
-                        ) {
-                            return state;
-                        }
-
-                        const updated =
-                            withUpdatedAt(
-                                target,
-                                {
-                                    dueDate,
-                                }
-                            );
-
-                        const todos =
-                            state.todos.map(
-                                todo =>
-                                    todo.id ===
-                                        id
-                                        ? updated
-                                        : todo
-                            );
+                        const updated = {
+                            ...target,
+                            dueDate,
+                            updatedAt:
+                                Date.now(),
+                        };
 
                         return {
                             ...state,
 
-                            todos,
+                            todos:
+                                state.todos.map(
+                                    todo =>
+                                        todo.id ===
+                                            id
+                                            ? updated
+                                            : todo
+                                ),
 
                             ...pushHistory(
                                 state,
                                 {
                                     type: "update",
-
                                     id,
 
                                     before: {
@@ -899,11 +891,27 @@ export const useTodoStore =
                     }),
 
                 reorderTodos: (
-                    from,
-                    to
+                    activeId,
+                    overId
                 ) =>
                     set(state => {
+                        const from =
+                            state.todos.findIndex(
+                                todo =>
+                                    todo.id ===
+                                    activeId
+                            );
+
+                        const to =
+                            state.todos.findIndex(
+                                todo =>
+                                    todo.id ===
+                                    overId
+                            );
+
                         if (
+                            from === -1 ||
+                            to === -1 ||
                             from === to
                         ) {
                             return state;
@@ -912,17 +920,6 @@ export const useTodoStore =
                         const copied = [
                             ...state.todos,
                         ];
-
-                        if (
-                            from < 0 ||
-                            to < 0 ||
-                            from >=
-                            copied.length ||
-                            to >=
-                            copied.length
-                        ) {
-                            return state;
-                        }
 
                         const previous =
                             new Map(
@@ -963,7 +960,6 @@ export const useTodoStore =
 
                         return {
                             ...state,
-
                             todos,
 
                             ...pushHistory(
@@ -985,7 +981,7 @@ export const useTodoStore =
 
                 deleteMany: ids =>
                     set(state => {
-                        const affectedIds =
+                        const idSet =
                             new Set(ids);
 
                         const removed: RemovedTodo[] =
@@ -997,7 +993,7 @@ export const useTodoStore =
                                 index
                             ) => {
                                 if (
-                                    affectedIds.has(
+                                    idSet.has(
                                         todo.id
                                     )
                                 ) {
@@ -1011,27 +1007,22 @@ export const useTodoStore =
                             }
                         );
 
-                        if (
-                            removed.length ===
-                            0
-                        ) {
+                        if (!removed.length) {
                             return state;
                         }
-
-                        const todos =
-                            reorderIndexes(
-                                state.todos.filter(
-                                    todo =>
-                                        !affectedIds.has(
-                                            todo.id
-                                        )
-                                )
-                            );
 
                         return {
                             ...state,
 
-                            todos,
+                            todos:
+                                reorderIndexes(
+                                    state.todos.filter(
+                                        todo =>
+                                            !idSet.has(
+                                                todo.id
+                                            )
+                                    )
+                                ),
 
                             ...pushHistory(
                                 state,
@@ -1044,7 +1035,7 @@ export const useTodoStore =
                     }),
 
                 clearCompleted: () => {
-                    const completedIds =
+                    const ids =
                         get()
                             .todos.filter(
                                 todo =>
@@ -1055,10 +1046,99 @@ export const useTodoStore =
                                     todo.id
                             );
 
-                    get().deleteMany(
-                        completedIds
-                    );
+                    get().deleteMany(ids);
                 },
+
+                autoArchiveCompleted:
+                    () =>
+                        set(state => {
+                            const now =
+                                Date.now();
+
+                            const threshold =
+                                1000 *
+                                60 *
+                                60 *
+                                24 *
+                                7;
+
+                            const previous =
+                                new Map<
+                                    string,
+                                    Todo
+                                >();
+
+                            const updated =
+                                new Map<
+                                    string,
+                                    Todo
+                                >();
+
+                            const todos =
+                                state.todos.map(
+                                    todo => {
+                                        if (
+                                            !todo.completed ||
+                                            todo.archived ||
+                                            !todo.completedAt
+                                        ) {
+                                            return todo;
+                                        }
+
+                                        if (
+                                            now -
+                                            todo.completedAt <
+                                            threshold
+                                        ) {
+                                            return todo;
+                                        }
+
+                                        previous.set(
+                                            todo.id,
+                                            todo
+                                        );
+
+                                        const next =
+                                        {
+                                            ...todo,
+                                            archived:
+                                                true,
+                                            updatedAt:
+                                                now,
+                                        };
+
+                                        updated.set(
+                                            todo.id,
+                                            next
+                                        );
+
+                                        return next;
+                                    }
+                                );
+
+                            const items =
+                                createBulkHistory(
+                                    previous,
+                                    updated
+                                );
+
+                            if (!items.length) {
+                                return state;
+                            }
+
+                            return {
+                                ...state,
+                                todos,
+
+                                ...pushHistory(
+                                    state,
+                                    {
+                                        type: "bulk",
+                                        items,
+                                    }
+                                ),
+                            };
+                        }),
 
                 undo: () =>
                     set(state => {
@@ -1071,107 +1151,15 @@ export const useTodoStore =
                             return state;
                         }
 
-                        let todos = [
-                            ...state.todos,
-                        ];
-
-                        switch (
-                        action.type
-                        ) {
-                            case "add":
-                                todos =
-                                    todos.filter(
-                                        todo =>
-                                            todo.id !==
-                                            action
-                                                .todo
-                                                .id
-                                    );
-                                break;
-
-                            case "delete": {
-                                const restored =
-                                    [
-                                        ...todos,
-                                    ];
-
-                                action.removed
-                                    .sort(
-                                        (
-                                            a,
-                                            b
-                                        ) =>
-                                            a.index -
-                                            b.index
-                                    )
-                                    .forEach(
-                                        item => {
-                                            restored.splice(
-                                                item.index,
-                                                0,
-                                                item.todo
-                                            );
-                                        }
-                                    );
-
-                                todos =
-                                    reorderIndexes(
-                                        restored
-                                    );
-
-                                break;
-                            }
-
-                            case "update":
-                                todos =
-                                    todos.map(
-                                        todo =>
-                                            todo.id ===
-                                                action.id
-                                                ? {
-                                                    ...todo,
-                                                    ...action.before,
-                                                }
-                                                : todo
-                                    );
-                                break;
-
-                            case "bulk": {
-                                const historyMap =
-                                    new Map(
-                                        action.items.map(
-                                            item => [
-                                                item.id,
-                                                item,
-                                            ]
-                                        )
-                                    );
-
-                                todos =
-                                    todos.map(
-                                        todo => {
-                                            const item =
-                                                historyMap.get(
-                                                    todo.id
-                                                );
-
-                                            return item
-                                                ? {
-                                                    ...todo,
-                                                    ...item.before,
-                                                }
-                                                : todo;
-                                        }
-                                    );
-
-                                break;
-                            }
-                        }
-
                         return {
                             ...state,
 
-                            todos,
+                            todos:
+                                applyHistory(
+                                    state.todos,
+                                    action,
+                                    "undo"
+                                ),
 
                             undoStack:
                                 state.undoStack.slice(
@@ -1179,13 +1167,12 @@ export const useTodoStore =
                                     -1
                                 ),
 
-                            redoStack:
-                                trimHistory(
-                                    [
-                                        ...state.redoStack,
-                                        action,
-                                    ]
-                                ),
+                            redoStack: [
+                                ...state.redoStack,
+                                action,
+                            ].slice(
+                                -HISTORY_LIMIT
+                            ),
                         };
                     }),
 
@@ -1200,97 +1187,15 @@ export const useTodoStore =
                             return state;
                         }
 
-                        let todos = [
-                            ...state.todos,
-                        ];
-
-                        switch (
-                        action.type
-                        ) {
-                            case "add":
-                                todos =
-                                    reorderIndexes(
-                                        [
-                                            action.todo,
-                                            ...todos,
-                                        ]
-                                    );
-                                break;
-
-                            case "delete": {
-                                const ids =
-                                    new Set(
-                                        action.removed.map(
-                                            item =>
-                                                item
-                                                    .todo
-                                                    .id
-                                        )
-                                    );
-
-                                todos =
-                                    reorderIndexes(
-                                        todos.filter(
-                                            todo =>
-                                                !ids.has(
-                                                    todo.id
-                                                )
-                                        )
-                                    );
-
-                                break;
-                            }
-
-                            case "update":
-                                todos =
-                                    todos.map(
-                                        todo =>
-                                            todo.id ===
-                                                action.id
-                                                ? {
-                                                    ...todo,
-                                                    ...action.after,
-                                                }
-                                                : todo
-                                    );
-                                break;
-
-                            case "bulk": {
-                                const historyMap =
-                                    new Map(
-                                        action.items.map(
-                                            item => [
-                                                item.id,
-                                                item,
-                                            ]
-                                        )
-                                    );
-
-                                todos =
-                                    todos.map(
-                                        todo => {
-                                            const item =
-                                                historyMap.get(
-                                                    todo.id
-                                                );
-
-                                            return item
-                                                ? {
-                                                    ...todo,
-                                                    ...item.after,
-                                                }
-                                                : todo;
-                                        }
-                                    );
-
-                                break;
-                            }
-                        }
-
                         return {
                             ...state,
 
-                            todos,
+                            todos:
+                                applyHistory(
+                                    state.todos,
+                                    action,
+                                    "redo"
+                                ),
 
                             redoStack:
                                 state.redoStack.slice(
@@ -1298,20 +1203,18 @@ export const useTodoStore =
                                     -1
                                 ),
 
-                            undoStack:
-                                trimHistory(
-                                    [
-                                        ...state.undoStack,
-                                        action,
-                                    ]
-                                ),
+                            undoStack: [
+                                ...state.undoStack,
+                                action,
+                            ].slice(
+                                -HISTORY_LIMIT
+                            ),
                         };
                     }),
 
                 setSearch: value =>
                     set({
                         search: value,
-
                         searchNormalized:
                             normalizeText(
                                 value
@@ -1334,7 +1237,7 @@ export const useTodoStore =
             {
                 name: "todo-storage",
 
-                version: 30,
+                version: 31,
 
                 storage:
                     createJSONStorage(
@@ -1351,37 +1254,44 @@ export const useTodoStore =
                             (
                                 persisted.todos ??
                                 []
-                            ).map(
-                                todo => ({
-                                    ...todo,
+                            )
+                                .filter(
+                                    todo =>
+                                        todo &&
+                                        typeof todo.text ===
+                                        "string"
+                                )
+                                .map(
+                                    todo => ({
+                                        ...todo,
 
-                                    normalized:
-                                        todo.normalized ??
-                                        normalizeText(
-                                            todo.text
-                                        ),
+                                        normalized:
+                                            todo.normalized ??
+                                            normalizeText(
+                                                todo.text
+                                            ),
 
-                                    archived:
-                                        todo.archived ??
-                                        false,
+                                        archived:
+                                            todo.archived ??
+                                            false,
 
-                                    pinned:
-                                        todo.pinned ??
-                                        false,
+                                        pinned:
+                                            todo.pinned ??
+                                            false,
 
-                                    priority:
-                                        todo.priority ??
-                                        "medium",
+                                        priority:
+                                            todo.priority ??
+                                            "medium",
 
-                                    completedAt:
-                                        todo.completedAt ??
-                                        null,
+                                        completedAt:
+                                            todo.completedAt ??
+                                            null,
 
-                                    dueDate:
-                                        todo.dueDate ??
-                                        null,
-                                })
-                            );
+                                        dueDate:
+                                            todo.dueDate ??
+                                            null,
+                                    })
+                                );
 
                         return {
                             ...persisted,
@@ -1391,7 +1301,6 @@ export const useTodoStore =
 
                 partialize: state => ({
                     todos: state.todos,
-
                     activeCategory:
                         state.activeCategory,
                 }),
@@ -1401,6 +1310,8 @@ export const useTodoStore =
                         state?.setHydrated(
                             true
                         );
+
+                        state?.autoArchiveCompleted();
                     },
             }
         )
@@ -1408,9 +1319,9 @@ export const useTodoStore =
 
 export const useFilteredTodos = () =>
     useTodoStore(state => {
-        const now = timestamp();
+        const now = Date.now();
 
-        const filtered =
+        return sortTodos(
             state.todos.filter(todo => {
                 if (
                     state.activeCategory !==
@@ -1443,22 +1354,18 @@ export const useFilteredTodos = () =>
                     default:
                         return true;
                 }
-            });
-
-        return sortTodos(
-            filtered,
+            }),
             now
         );
     });
 
 export const useTodoStats = () =>
     useTodoStore(state => {
-        const now = timestamp();
+        const now = Date.now();
 
         let completed = 0;
         let archived = 0;
         let overdue = 0;
-        let stale = 0;
 
         for (const todo of state.todos) {
             if (todo.completed) {
@@ -1472,25 +1379,19 @@ export const useTodoStats = () =>
             if (isOverdue(todo, now)) {
                 overdue++;
             }
-
-            if (isStale(todo, now)) {
-                stale++;
-            }
         }
 
         return {
             total: state.todos.length,
 
-            completed,
-
             active:
                 state.todos.length -
                 completed,
 
+            completed,
+
             archived,
 
             overdue,
-
-            stale,
         };
     });
