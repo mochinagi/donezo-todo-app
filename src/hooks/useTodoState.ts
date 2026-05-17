@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useEffect } from "react";
 
 import {
     useFilteredTodos,
@@ -8,61 +8,68 @@ import {
 } from "@/store/todoStore";
 
 export function useTodoState() {
-    const {
-        todos,
+    const todos = useTodoStore(
+        state => state.todos
+    );
 
-        search,
-        setSearch,
+    const search = useTodoStore(
+        state => state.search
+    );
 
-        activeCategory,
-        setActiveCategory,
+    const setSearch = useTodoStore(
+        state => state.setSearch
+    );
 
-        addTodo,
-        toggleTodo,
-        togglePinned,
-        updateTodoText,
-        deleteTodo,
-        clearCompleted,
+    const activeCategory = useTodoStore(
+        state => state.activeCategory
+    );
 
-        undo,
-        redo,
+    const setActiveCategory =
+        useTodoStore(
+            state => state.setActiveCategory
+        );
 
-        total,
-        completed,
-        active,
+    const addTodo = useTodoStore(
+        state => state.addTodo
+    );
 
-        undoStack,
-        redoStack,
-    } = useTodoStore((state) => ({
-        todos: state.todos,
+    const toggleTodo = useTodoStore(
+        state => state.toggleTodo
+    );
 
-        search: state.search,
-        setSearch: state.setSearch,
+    const togglePinned = useTodoStore(
+        state => state.togglePinned
+    );
 
-        activeCategory: state.activeCategory,
-        setActiveCategory:
-            state.setActiveCategory,
+    const updateTodoText =
+        useTodoStore(
+            state => state.updateTodoText
+        );
 
-        addTodo: state.addTodo,
-        toggleTodo: state.toggleTodo,
-        togglePinned:
-            state.togglePinned,
-        updateTodoText:
-            state.updateTodoText,
-        deleteTodo: state.deleteTodo,
-        clearCompleted:
-            state.clearCompleted,
+    const deleteTodo = useTodoStore(
+        state => state.deleteTodo
+    );
 
-        undo: state.undo,
-        redo: state.redo,
+    const clearCompleted =
+        useTodoStore(
+            state => state.clearCompleted
+        );
 
-        total: state.total,
-        completed: state.completed,
-        active: state.active,
+    const undo = useTodoStore(
+        state => state.undo
+    );
 
-        undoStack: state.undoStack,
-        redoStack: state.redoStack,
-    }));
+    const redo = useTodoStore(
+        state => state.redo
+    );
+
+    const undoStack = useTodoStore(
+        state => state.undoStack
+    );
+
+    const redoStack = useTodoStore(
+        state => state.redoStack
+    );
 
     const filteredTodos =
         useFilteredTodos();
@@ -71,11 +78,11 @@ export function useTodoState() {
         const handleKeyDown = (
             event: KeyboardEvent
         ) => {
-            const isModifierPressed =
+            const modifierPressed =
                 event.metaKey ||
                 event.ctrlKey;
 
-            if (!isModifierPressed) {
+            if (!modifierPressed) {
                 return;
             }
 
@@ -87,7 +94,6 @@ export function useTodoState() {
                 !event.shiftKey
             ) {
                 event.preventDefault();
-
                 undo();
 
                 return;
@@ -101,7 +107,6 @@ export function useTodoState() {
                 )
             ) {
                 event.preventDefault();
-
                 redo();
             }
         };
@@ -119,69 +124,92 @@ export function useTodoState() {
         };
     }, [undo, redo]);
 
-    const stats = useMemo(
-        () => ({
-            total,
-            completed,
-            active,
-            completionRate:
-                total === 0
-                    ? 0
-                    : Math.round(
-                        (
-                            completed /
-                            total
-                        ) * 100
-                    ),
-        }),
-        [
-            total,
-            completed,
-            active,
-        ]
-    );
+    const sortedTodos = [
+        ...filteredTodos,
+    ].sort((a, b) => {
+        if (
+            a.pinned !== b.pinned
+        ) {
+            return a.pinned ? -1 : 1;
+        }
+
+        if (
+            a.completed !==
+            b.completed
+        ) {
+            return a.completed ? 1 : -1;
+        }
+
+        return (
+            new Date(
+                b.updatedAt ??
+                b.createdAt
+            ).getTime() -
+            new Date(
+                a.updatedAt ??
+                a.createdAt
+            ).getTime()
+        );
+    });
+
+    const total = todos.length;
+
+    const completed = todos.filter(
+        todo => todo.completed
+    ).length;
+
+    const active =
+        total - completed;
+
+    const completionRate =
+        total === 0
+            ? 0
+            : Math.round(
+                (
+                    completed /
+                    total
+                ) * 100
+            );
 
     const remainingText =
-        useMemo(() => {
-            switch (active) {
-                case 0:
-                    return "All tasks completed";
+        active === 0
+            ? "All tasks completed"
+            : active === 1
+                ? "1 task remaining"
+                : `${active} tasks remaining`;
 
-                case 1:
-                    return "1 task remaining";
+    const pinnedTodos =
+        sortedTodos.filter(
+            todo => todo.pinned
+        );
 
-                default:
-                    return `${active} tasks remaining`;
-            }
-        }, [active]);
+    const activeTodos =
+        sortedTodos.filter(
+            todo => !todo.completed
+        );
 
-    const hasCompleted =
-        completed > 0;
+    const completedTodos =
+        sortedTodos.filter(
+            todo => todo.completed
+        );
 
-    const isEmpty =
-        todos.length === 0;
-
-    const isFilteredEmpty =
-        filteredTodos.length === 0;
-
-    const canUndo =
-        undoStack.length > 0;
-
-    const canRedo =
-        redoStack.length > 0;
-
-    const resetSearch =
-        useCallback(() => {
-            setSearch("");
-        }, [setSearch]);
+    const completeAll = () => {
+        activeTodos.forEach(todo => {
+            toggleTodo(todo.id);
+        });
+    };
 
     return {
         todos,
-        filteredTodos,
+        filteredTodos:
+            sortedTodos,
+
+        pinnedTodos,
+        activeTodos,
+        completedTodos,
 
         search,
         setSearch,
-        resetSearch,
 
         activeCategory,
         setActiveCategory,
@@ -191,20 +219,35 @@ export function useTodoState() {
         togglePinned,
         updateTodoText,
         deleteTodo,
+
         clearCompleted,
+        completeAll,
 
         undo,
         redo,
 
-        canUndo,
-        canRedo,
+        canUndo:
+            undoStack.length > 0,
 
-        stats,
+        canRedo:
+            redoStack.length > 0,
+
+        stats: {
+            total,
+            completed,
+            active,
+            completionRate,
+        },
 
         remainingText,
 
-        hasCompleted,
-        isEmpty,
-        isFilteredEmpty,
+        hasCompleted:
+            completed > 0,
+
+        isEmpty:
+            total === 0,
+
+        isFilteredEmpty:
+            sortedTodos.length === 0,
     };
 }
