@@ -1,55 +1,20 @@
 "use client";
 
-import {
-    useEffect,
-    useMemo,
-    useState,
-    type ReactNode,
-} from "react";
-
+import { useEffect, useState, type ReactNode } from "react";
 import {
     ThemeProvider as NextThemesProvider,
     useTheme,
 } from "next-themes";
 
-export type AppTheme =
-    | "light"
-    | "dark"
-    | "system";
-
-type ResolvedTheme =
-    | "light"
-    | "dark";
+export type AppTheme = "light" | "dark" | "system";
 
 type ThemeProviderProps = {
     children: ReactNode;
 };
 
-const STORAGE_KEY =
-    "donezo-theme";
+const STORAGE_KEY = "donezo-theme";
 
-const THEME_ORDER: AppTheme[] =
-    [
-        "light",
-        "dark",
-        "system",
-    ];
-
-const resolveTheme = (
-    value?: string
-): ResolvedTheme => {
-    return value === "dark"
-        ? "dark"
-        : "light";
-};
-
-const isAppTheme = (
-    value?: string | null
-): value is AppTheme => {
-    return THEME_ORDER.includes(
-        value as AppTheme
-    );
-};
+const themeOrder: AppTheme[] = ["light", "dark", "system"];
 
 export function ThemeProvider({
     children,
@@ -59,10 +24,7 @@ export function ThemeProvider({
             attribute="class"
             defaultTheme="system"
             enableSystem
-            disableTransitionOnChange
-            storageKey={
-                STORAGE_KEY
-            }
+            storageKey={STORAGE_KEY}
         >
             {children}
         </NextThemesProvider>
@@ -77,27 +39,28 @@ export function useAppTheme() {
         systemTheme,
     } = useTheme();
 
-    const [mounted, setMounted] =
-        useState(false);
+    const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
         setMounted(true);
     }, []);
 
     const currentTheme: AppTheme =
-        isAppTheme(theme)
+        theme === "light" ||
+            theme === "dark" ||
+            theme === "system"
             ? theme
             : "system";
 
-    const resolved =
-        resolveTheme(
-            resolvedTheme
-        );
+    const resolvedThemeValue =
+        resolvedTheme === "dark"
+            ? "dark"
+            : "light";
 
-    const system =
-        resolveTheme(
-            systemTheme
-        );
+    const systemThemeValue =
+        systemTheme === "dark"
+            ? "dark"
+            : "light";
 
     useEffect(() => {
         if (!mounted) {
@@ -105,104 +68,108 @@ export function useAppTheme() {
         }
 
         document.documentElement.dataset.theme =
-            resolved;
-    }, [
-        mounted,
-        resolved,
-    ]);
+            resolvedThemeValue;
+
+        document.documentElement.style.colorScheme =
+            resolvedThemeValue;
+    }, [mounted, resolvedThemeValue]);
 
     useEffect(() => {
-        const syncTheme = (
+        const handleStorageChange = (
             event: StorageEvent
         ) => {
             if (
-                event.key !==
-                STORAGE_KEY
+                event.key !== STORAGE_KEY ||
+                !event.newValue
             ) {
                 return;
             }
 
             if (
-                !isAppTheme(
-                    event.newValue
-                )
+                event.newValue === "light" ||
+                event.newValue === "dark" ||
+                event.newValue === "system"
             ) {
-                return;
+                setTheme(event.newValue);
             }
-
-            setTheme(
-                event.newValue
-            );
         };
 
         window.addEventListener(
             "storage",
-            syncTheme
+            handleStorageChange
         );
 
         return () => {
             window.removeEventListener(
                 "storage",
-                syncTheme
+                handleStorageChange
             );
         };
     }, [setTheme]);
 
-    const nextTheme =
-        useMemo(() => {
-            const index =
-                THEME_ORDER.indexOf(
-                    currentTheme
-                );
+    const setAppTheme = (value: AppTheme) => {
+        document.documentElement.classList.add(
+            "[&_*]:!transition-none"
+        );
 
-            return THEME_ORDER[
-                (
-                    index + 1
-                ) %
-                THEME_ORDER.length
-            ];
-        }, [currentTheme]);
-
-    const setAppTheme = (
-        value: AppTheme
-    ) => {
         setTheme(value);
+
+        window.requestAnimationFrame(() => {
+            document.documentElement.classList.remove(
+                "[&_*]:!transition-none"
+            );
+        });
     };
 
     const toggleTheme = () => {
-        setTheme(
-            resolved === "dark"
+        setAppTheme(
+            resolvedThemeValue === "dark"
                 ? "light"
                 : "dark"
         );
     };
 
     const cycleTheme = () => {
-        setTheme(nextTheme);
+        const currentIndex =
+            themeOrder.indexOf(currentTheme);
+
+        const nextTheme =
+            themeOrder[
+            (currentIndex + 1) %
+            themeOrder.length
+            ];
+
+        setAppTheme(nextTheme);
     };
 
     return {
         mounted,
 
-        theme:
-            currentTheme,
+        theme: currentTheme,
 
         resolvedTheme:
-            resolved,
+            resolvedThemeValue,
 
         systemTheme:
-            system,
+            systemThemeValue,
 
-        nextTheme,
+        nextTheme:
+            themeOrder[
+            (themeOrder.indexOf(
+                currentTheme
+            ) +
+                1) %
+            themeOrder.length
+            ],
 
         isDark:
             mounted &&
-            resolved ===
+            resolvedThemeValue ===
             "dark",
 
         isLight:
             mounted &&
-            resolved ===
+            resolvedThemeValue ===
             "light",
 
         isSystem:
@@ -210,8 +177,7 @@ export function useAppTheme() {
             currentTheme ===
             "system",
 
-        setTheme:
-            setAppTheme,
+        setTheme: setAppTheme,
 
         toggleTheme,
 
